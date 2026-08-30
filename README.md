@@ -128,10 +128,17 @@ DanglingReferences + Messages transforms, simplified: no
 duplicate/ambiguous-name diagnostics, and `<problematic>`'s content is the
 reference's own visible text rather than real docutils' verbatim source
 slice (this parser doesn't track original source text on a node at all).
-An unmatched ANONYMOUS reference (too few anonymous targets for the
-references consuming them) and an unknown interpreted-text role both
-still stay a plain node instead — a real docutils error too, just a
-different, rarer one this project hasn't ported yet. A resolved
+An ANONYMOUS reference/target count mismatch IS covered too — real
+docutils checks this as a single whole-document condition, not
+per-reference (`AnonymousHyperlinks.apply`, read directly): if the counts
+don't match EXACTLY, in either direction, every anonymous reference in the
+document becomes `<problematic>`, all sharing ONE message. An unknown
+interpreted-text role still stays a plain node instead — a real docutils
+error too, but this parser has no role registry at all (every unrecognized
+name already looks "unknown" to it, even a real custom role a document
+defines via `.. role::`), so rewriting on that basis would produce false
+positives rather than fill a real gap; a role registry would need to come
+first. A resolved
 embedded-link reference doesn't get the extra `<target>` sibling node
 docutils emits alongside it (this parser sets `refuri`/`refname` directly
 on the `<reference>` instead; resolution still works the same way since

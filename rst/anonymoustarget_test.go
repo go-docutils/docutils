@@ -24,9 +24,9 @@ func TestAnonymousTargetResolution(t *testing.T) {
 			"<document>\n    <paragraph>\n        See \n        <reference anonymous=\"true\" name=\"first\" refuri=\"https://a.example\">\n            first\n         and \n        <reference anonymous=\"true\" name=\"second\" refuri=\"https://b.example\">\n            second\n        .\n    <target anonymous=\"true\" refuri=\"https://a.example\">\n    <target anonymous=\"true\" refuri=\"https://b.example\">\n",
 		},
 		{
-			"an anonymous reference with no matching target stays unresolved, not a crash",
+			"anonymous references with no matching targets become problematic, not a crash",
 			"See first__ and second__ but no target defined at all.\n",
-			"<document>\n    <paragraph>\n        See \n        <reference anonymous=\"true\" name=\"first\">\n            first\n         and \n        <reference anonymous=\"true\" name=\"second\">\n            second\n         but no target defined at all.\n",
+			"<document>\n    <paragraph>\n        See \n        <problematic id=\"problematic-2\" refid=\"system-message-1\">\n            first\n         and \n        <problematic id=\"problematic-3\" refid=\"system-message-1\">\n            second\n         but no target defined at all.\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-2 problematic-3\" id=\"system-message-1\">\n            <paragraph>\n                Anonymous hyperlink mismatch: 2 references but 0 targets.\n",
 		},
 		{
 			"an indirect anonymous target chases through a named target to its refuri",

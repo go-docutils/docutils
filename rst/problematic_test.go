@@ -9,12 +9,13 @@ import (
 
 // TestDanglingReferenceBecomesProblematic covers docutils' own
 // DanglingReferences + Messages transforms, simplified: a NAMED reference
-// (bare, backtick-quoted, or an embedded indirect alias — anonymous
-// references are not covered, see linkReferences' own doc comment) with no
-// matching target anywhere is rewritten to a <problematic> in place, and
-// every such message collects into one trailing
-// <section class="system-messages"> at the very end of the document,
-// docutils' own "loose messages get a dedicated section" convention.
+// (bare, backtick-quoted, or an embedded indirect alias — an ANONYMOUS
+// reference is checked differently, by whole-document count mismatch, see
+// TestAnonymousMismatchBecomesProblematic below) with no matching target
+// anywhere is rewritten to a <problematic> in place, and every such
+// message collects into one trailing <section class="system-messages">
+// at the very end of the document, docutils' own "loose messages get a
+// dedicated section" convention.
 func TestDanglingReferenceBecomesProblematic(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -47,16 +48,42 @@ func TestDanglingReferenceBecomesProblematic(t *testing.T) {
 	}
 }
 
-// TestAnonymousReferenceMismatchStaysUnresolved guards the deliberate
-// scope boundary linkReferences' own doc comment describes: an anonymous
-// reference with no available anonymous target left to consume is NOT
-// rewritten to <problematic> — real docutils reports a different error
-// for this (a position/count mismatch, not a missing name), which this
-// project's existing simplification already didn't replicate before this
-// feature, and still doesn't now.
-func TestAnonymousReferenceMismatchStaysUnresolved(t *testing.T) {
-	got := doctree.Dump(Parse("Too many anon refs: first__ second__.\n"))
-	if strings.Contains(got, "problematic") {
-		t.Errorf("an unmatched anonymous reference was rewritten to problematic, want it left alone:\n%s", got)
+// TestAnonymousMismatchBecomesProblematic covers docutils'
+// AnonymousHyperlinks.apply, read directly from transforms/references.py:
+// unlike a named reference, an anonymous reference/target mismatch is a
+// single whole-document condition (count `!=`, checked once — an earlier
+// pass at this got the direction wrong and treated it as "too many
+// references", which the second case below specifically guards against),
+// and when it doesn't match EVERY anonymous reference in the document
+// becomes <problematic>, all sharing ONE message.
+func TestAnonymousMismatchBecomesProblematic(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			"more references than targets",
+			"Too many anon refs: first__ second__.\n",
+			"<document>\n    <paragraph>\n        Too many anon refs: \n        <problematic id=\"problematic-2\" refid=\"system-message-1\">\n            first\n         \n        <problematic id=\"problematic-3\" refid=\"system-message-1\">\n            second\n        .\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-2 problematic-3\" id=\"system-message-1\">\n            <paragraph>\n                Anonymous hyperlink mismatch: 2 references but 0 targets.\n",
+		},
+		{
+			"MORE TARGETS than references also mismatches — not just an excess of references",
+			".. __: https://a.example\n.. __: https://b.example\n\nOnly one used: first__.\n",
+			"<document>\n    <target anonymous=\"true\" refuri=\"https://a.example\">\n    <target anonymous=\"true\" refuri=\"https://b.example\">\n    <paragraph>\n        Only one used: \n        <problematic id=\"problematic-2\" refid=\"system-message-1\">\n            first\n        .\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-2\" id=\"system-message-1\">\n            <paragraph>\n                Anonymous hyperlink mismatch: 1 references but 2 targets.\n",
+		},
+		{
+			"a balanced count is unaffected, no trailing section at all",
+			".. __: https://a.example\n.. __: https://b.example\n\nBoth used: first__ and second__.\n",
+			"<document>\n    <target anonymous=\"true\" refuri=\"https://a.example\">\n    <target anonymous=\"true\" refuri=\"https://b.example\">\n    <paragraph>\n        Both used: \n        <reference anonymous=\"true\" name=\"first\" refuri=\"https://a.example\">\n            first\n         and \n        <reference anonymous=\"true\" name=\"second\" refuri=\"https://b.example\">\n            second\n        .\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
+				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
+			}
+		})
 	}
 }

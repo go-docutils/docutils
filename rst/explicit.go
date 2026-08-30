@@ -1,6 +1,7 @@
 package rst
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -344,17 +345,25 @@ func normalizeName(s string) string {
 // walks it again setting refuri on every reference: by name for a named
 // one, or by consuming the next unused anonymous target in document order
 // for an anonymous one. A NAMED reference (bare, backtick-quoted, or
-// embedded-indirect-alias — anonymous ones are not covered, see
-// linkReferences) whose name matches no target anywhere is rewritten to a
-// <problematic> in place, docutils' own DanglingReferences transform,
-// simplified: no duplicate/ambiguous-name diagnostics, and the
+// embedded-indirect-alias) whose name matches no target anywhere is
+// rewritten to a <problematic> in place, docutils' own DanglingReferences
+// transform, simplified: no duplicate/ambiguous-name diagnostics, and the
 // <problematic>'s content is the reference's own VISIBLE text rather than
 // real docutils' verbatim source slice (rawsource) — this parser doesn't
 // track original source text on a reference node at all (see the package
 // SCOPE note on ids/source attributes), so "broken_" resynthesizes as
 // "broken", the same category of simplification already accepted
 // elsewhere in this project (go-richdoc/rst's own Raw* reconstruction
-// helpers) rather than a new one invented for this feature.
+// helpers) rather than a new one invented for this feature. An ANONYMOUS
+// reference is checked differently, matching real docutils'
+// AnonymousHyperlinks.apply (transforms/references.py, read directly, not
+// guessed from behavior — an earlier pass at this got the direction of
+// the check wrong): the count of anonymous references against the count
+// of anonymous targets is a single, whole-document condition (`!=`, not
+// merely "too many refs"), checked once — if they don't match EXACTLY,
+// EVERY anonymous reference in the document becomes <problematic>,
+// regardless of which side has the surplus, all sharing ONE message
+// (docutils' own "Anonymous hyperlink mismatch" error).
 func resolveTargets(doc *doctree.Element) {
 	direct := map[string]string{}
 	indirect := map[string]string{}
@@ -383,10 +392,39 @@ func resolveTargets(doc *doctree.Element) {
 	anonIndex := 0
 	var messages []*doctree.Element
 	msgCount := 0
-	linkReferences(doc, targets, anonURIs, &anonIndex, &messages, &msgCount)
+	var anonMismatch *doctree.Element
+	if n := countAnonymousReferences(doc); n != len(anonURIs) {
+		msgCount++
+		anonMismatch = doctree.NewElement(doctree.TagSystemMessage,
+			doctree.NewElement(doctree.TagParagraph, &doctree.Text{
+				Data: fmt.Sprintf(`Anonymous hyperlink mismatch: %d references but %d targets.`, n, len(anonURIs)),
+			}))
+		anonMismatch.SetAttr("id", "system-message-"+strconv.Itoa(msgCount))
+		messages = append(messages, anonMismatch)
+	}
+	linkReferences(doc, targets, anonURIs, anonMismatch, &anonIndex, &messages, &msgCount)
 	if len(messages) > 0 {
 		doc.Append(systemMessagesSection(messages))
 	}
+}
+
+// countAnonymousReferences counts every anonymous reference (bare "x__",
+// backtick-quoted "`x`__", or a substitution used as one, "|x|__" — see
+// inline.go's tryMarker) anywhere in the document, needed BEFORE the main
+// walk since the mismatch check below is whole-document, not incremental.
+func countAnonymousReferences(n doctree.Node) int {
+	el, ok := n.(*doctree.Element)
+	if !ok {
+		return 0
+	}
+	count := 0
+	if el.Tag == doctree.TagReference && el.Attr("anonymous") == "true" {
+		count++
+	}
+	for _, c := range el.Children {
+		count += countAnonymousReferences(c)
+	}
+	return count
 }
 
 // anonTarget is one ".. __: ..." target in document order: either a direct
@@ -451,14 +489,16 @@ func resolveIndirect(name string, direct, indirect map[string]string, depth int)
 
 // linkReferences resolves every reference under parent. It walks by
 // PARENT rather than by node (unlike the rest of this file's tree walks)
-// because a dangling named reference needs to REPLACE itself in its
-// parent's own child slice, not just gain an attribute — anonymous
-// references don't get this treatment: a mismatched anonymous
-// reference/target count is a real docutils error too, but a different
-// one (position bookkeeping, not a missing name), deliberately left as
-// this project's existing "just stays unresolved" simplification rather
-// than folded into the same mechanism.
-func linkReferences(parent *doctree.Element, targets map[string]string, anonTargets []string, anonIndex *int, messages *[]*doctree.Element, msgCount *int) {
+// because a dangling reference needs to REPLACE itself in its parent's own
+// child slice, not just gain an attribute. anonMismatch is non-nil exactly
+// when resolveTargets found the anonymous reference and target counts
+// don't match document-wide — in that case EVERY anonymous reference
+// becomes
+// <problematic>, sharing anonMismatch as their one <system_message>
+// (docutils' own "Anonymous hyperlink mismatch", a whole-document
+// condition, not a per-reference one — see resolveTargets); otherwise
+// anonymous references resolve by position exactly as before.
+func linkReferences(parent *doctree.Element, targets map[string]string, anonTargets []string, anonMismatch *doctree.Element, anonIndex *int, messages *[]*doctree.Element, msgCount *int) {
 	for i, c := range parent.Children {
 		el, ok := c.(*doctree.Element)
 		if !ok {
@@ -467,6 +507,10 @@ func linkReferences(parent *doctree.Element, targets map[string]string, anonTarg
 		if el.Tag == doctree.TagReference {
 			switch {
 			case el.Attr("anonymous") == "true":
+				if anonMismatch != nil {
+					parent.Children[i] = problematicAnonymousReference(el, anonMismatch, msgCount)
+					continue // the replacement has no children of its own to recurse into
+				}
 				if *anonIndex < len(anonTargets) {
 					if uri := anonTargets[*anonIndex]; uri != "" {
 						el.SetAttr("refuri", uri)
@@ -482,8 +526,28 @@ func linkReferences(parent *doctree.Element, targets map[string]string, anonTarg
 				}
 			}
 		}
-		linkReferences(el, targets, anonTargets, anonIndex, messages, msgCount)
+		linkReferences(el, targets, anonTargets, anonMismatch, anonIndex, messages, msgCount)
 	}
+}
+
+// problematicAnonymousReference builds the <problematic> for one
+// mismatched anonymous reference, pointing at the single SHARED msg — and
+// grows msg's own "backref" attribute to list every problematic that
+// points to it, real docutils' own "See backrefs attribute for IDs"
+// convention (space-joined here rather than a real attribute list, this
+// project's doctree.Element only carries string-valued attributes).
+func problematicAnonymousReference(ref *doctree.Element, msg *doctree.Element, msgCount *int) *doctree.Element {
+	*msgCount++
+	prbID := "problematic-" + strconv.Itoa(*msgCount)
+	prb := doctree.NewElement(doctree.TagProblematic, &doctree.Text{Data: doctree.AsText(ref)})
+	prb.SetAttr("id", prbID)
+	prb.SetAttr("refid", msg.Attr("id"))
+	if existing := msg.Attr("backref"); existing == "" {
+		msg.SetAttr("backref", prbID)
+	} else {
+		msg.SetAttr("backref", existing+" "+prbID)
+	}
+	return prb
 }
 
 // problematicReference builds the <problematic>/<system_message> pair for
