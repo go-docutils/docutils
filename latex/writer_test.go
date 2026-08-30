@@ -74,6 +74,11 @@ func TestRenderContains(t *testing.T) {
 			[]string{`\begin{description}`, `\item[{name}] value`, `\item[{Term}] Def.`},
 		},
 		{
+			"a leading field list promotes typed bibliographic fields",
+			":Author: Jane Doe\n:Authors: Jane Doe, John Smith\n:Version: 1.0\n\nBody.\n",
+			[]string{`\begin{description}`, `\item[{author}] Jane Doe`, `\item[{authors}] Jane Doe, John Smith`, `\item[{version}] 1.0`},
+		},
+		{
 			"simple table as tabular",
 			"=====  =====\na      b\n=====  =====\n1      2\n=====  =====\n",
 			[]string{`\begin{tabular}{ll}`, `a & b`, `1 & 2`, `\end{tabular}`},

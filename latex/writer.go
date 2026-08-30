@@ -123,7 +123,7 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		for _, line := range strings.Split(doctree.AsText(el), "\n") {
 			b.WriteString("% " + line + "\n")
 		}
-	case doctree.TagFieldList, doctree.TagDefinitionList, doctree.TagOptionList:
+	case doctree.TagFieldList, doctree.TagDefinitionList, doctree.TagOptionList, doctree.TagDocinfo:
 		wrapEnv(b, "description", func() { renderDescriptionItems(b, el, level) })
 	case doctree.TagOptionGroup:
 		renderOptionGroup(b, el)
@@ -257,6 +257,32 @@ func renderDescriptionItems(b *strings.Builder, list *doctree.Element, level int
 	for _, c := range list.Children {
 		pair, ok := c.(*doctree.Element)
 		if !ok {
+			continue
+		}
+		// A docinfo typed field (promoteDocInfo, rst/docinfo.go) is a
+		// bare element, not a (name, body) pair — its own tag name is the
+		// term docutils would otherwise have kept as a separate
+		// <field_name>.
+		switch pair.Tag {
+		case doctree.TagAuthors:
+			b.WriteString("\\item[{authors}] ")
+			first := true
+			for _, ac := range pair.Children {
+				author, ok := ac.(*doctree.Element)
+				if !ok || author.Tag != doctree.TagAuthor {
+					continue
+				}
+				if !first {
+					b.WriteString(", ")
+				}
+				first = false
+				renderChildren(b, author, level)
+			}
+			continue
+		case doctree.TagAuthor, doctree.TagOrganization, doctree.TagAddress, doctree.TagContact,
+			doctree.TagVersion, doctree.TagRevision, doctree.TagStatus, doctree.TagDate, doctree.TagCopyright:
+			b.WriteString("\\item[{" + pair.Tag + "}] ")
+			renderChildren(b, pair, level)
 			continue
 		}
 		nameTag, bodyTag := doctree.TagFieldName, doctree.TagFieldBody

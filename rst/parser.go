@@ -41,6 +41,7 @@ func Parse(source string) *doctree.Element {
 	p.parseDocument(splitLines(source), doc)
 	resolveTargets(doc)
 	resolveFootnoteNumbers(doc)
+	promoteDocInfo(doc)
 	return doc
 }
 

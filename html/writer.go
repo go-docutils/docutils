@@ -93,10 +93,32 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		b.WriteString("<!-- ")
 		b.WriteString(strings.ReplaceAll(doctree.AsText(el), "--", "- -"))
 		b.WriteString(" -->")
-	case doctree.TagFieldList, doctree.TagDefinitionList, doctree.TagOptionList:
+	case doctree.TagFieldList, doctree.TagDefinitionList, doctree.TagOptionList, doctree.TagDocinfo:
 		writeTag(b, "dl", "", el, headingLevel)
 	case doctree.TagField:
 		renderDefinitionPair(b, el, doctree.TagFieldName, doctree.TagFieldBody, headingLevel)
+	case doctree.TagAuthor, doctree.TagOrganization, doctree.TagAddress, doctree.TagContact,
+		doctree.TagVersion, doctree.TagRevision, doctree.TagStatus, doctree.TagDate, doctree.TagCopyright:
+		// A docinfo typed field (promoteDocInfo, rst/docinfo.go): the tag
+		// name itself is the term docutils would otherwise have kept as a
+		// separate <field_name> — there's nothing else to label it with.
+		b.WriteString("<dt>" + el.Tag + "</dt>")
+		writeTag(b, "dd", "", el, headingLevel)
+	case doctree.TagAuthors:
+		b.WriteString("<dt>authors</dt><dd>")
+		first := true
+		for _, c := range el.Children {
+			author, ok := c.(*doctree.Element)
+			if !ok || author.Tag != doctree.TagAuthor {
+				continue
+			}
+			if !first {
+				b.WriteString(", ")
+			}
+			first = false
+			renderChildren(b, author, headingLevel)
+		}
+		b.WriteString("</dd>")
 	case doctree.TagDefinitionListItem:
 		renderDefinitionPair(b, el, doctree.TagTerm, doctree.TagDefinition, headingLevel)
 	case doctree.TagOptionListItem:

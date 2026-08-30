@@ -25,9 +25,7 @@ import (
 // though the comparison target was pre-transform for the rest of the
 // shape. This project's own doctree.Dump format is used throughout
 // since ids/source attributes are not yet implemented (see the package
-// doc's SCOPE note). A field list at the very start of a document is
-// compared with `docinfo_xform: False` too — real docutils otherwise
-// promotes it to a typed `<docinfo>` node, not implemented here. An unknown interpreted-text role
+// doc's SCOPE note). An unknown interpreted-text role
 // is compared against docutils' error shape too (a problematic node
 // plus a system-message section): this parser has no role registry, so
 // it falls back to a generic <inline role="..."> instead of erroring
@@ -89,7 +87,7 @@ func TestParse(t *testing.T) {
 		{
 			name:   "field list with a continuation line indented less than the marker column, definition list",
 			source: ":author: Jane Doe\n:version: 1.0\n:date: 2026-08-30\n  continuation line for date\n\nTerm one\n    Definition of term one.\n\nTerm two\n    First paragraph of definition two.\n\n    Second paragraph of definition two.\n\n    - a nested bullet inside the definition\n",
-			want:   "<document>\n    <field_list>\n        <field>\n            <field_name>\n                author\n            <field_body>\n                <paragraph>\n                    Jane Doe\n        <field>\n            <field_name>\n                version\n            <field_body>\n                <paragraph>\n                    1.0\n        <field>\n            <field_name>\n                date\n            <field_body>\n                <paragraph>\n                    2026-08-30\n                    continuation line for date\n    <definition_list>\n        <definition_list_item>\n            <term>\n                Term one\n            <definition>\n                <paragraph>\n                    Definition of term one.\n        <definition_list_item>\n            <term>\n                Term two\n            <definition>\n                <paragraph>\n                    First paragraph of definition two.\n                <paragraph>\n                    Second paragraph of definition two.\n                <bullet_list bullet=\"-\">\n                    <list_item>\n                        <paragraph>\n                            a nested bullet inside the definition\n",
+			want:   "<document>\n    <docinfo>\n        <author>\n            Jane Doe\n        <version>\n            1.0\n        <date>\n            2026-08-30\n            continuation line for date\n    <definition_list>\n        <definition_list_item>\n            <term>\n                Term one\n            <definition>\n                <paragraph>\n                    Definition of term one.\n        <definition_list_item>\n            <term>\n                Term two\n            <definition>\n                <paragraph>\n                    First paragraph of definition two.\n                <paragraph>\n                    Second paragraph of definition two.\n                <bullet_list bullet=\"-\">\n                    <list_item>\n                        <paragraph>\n                            a nested bullet inside the definition\n",
 		},
 		{
 			name:   "a blank line after a would-be term prevents definition-list detection",

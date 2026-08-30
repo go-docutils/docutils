@@ -21,7 +21,15 @@ depth via first-seen title-style ordering), paragraphs, transitions,
 bullet lists, enumerated lists (arabic + `.` suffix only), field lists
 (including a docutils-shaped body-indent quirk: a continuation line
 indented less than the marker column, e.g. under `:date: 2026-08-30`,
-still belongs to the field), definition lists, line blocks (nested by
+still belongs to the field) — with a leading field list (the document's
+very own first child) promoted to a typed `<docinfo>`, registered
+bibliographic names (author, authors, organization, address, contact,
+version, revision, status, date, copyright, dedication, abstract,
+matched the same case/whitespace-insensitive way as any other reST
+name) becoming typed children rather than staying generic `<field>`s;
+`authors` splits a single field body on `;` (or, failing that, `,`)
+into one `<author>` per name; dedication/abstract become sibling
+`<topic>` elements instead, right after docinfo — definition lists, line blocks (nested by
 relative indentation, matching docutils' own sub-stanza grouping),
 doctest blocks (kept verbatim, ">>>" prompts included), block
 quotes, literal blocks (`::`), comments, directives (captured
@@ -114,14 +122,14 @@ enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
 content relies on it). An unresolved reference or an unknown
 interpreted-text role stays a plain node instead of being rewritten to
-`problematic` with an error message, a leading field list isn't
-promoted to a typed `<docinfo>` node, and a resolved embedded-link
+`problematic` with an error message, and a resolved embedded-link
 reference doesn't get the extra `<target>` sibling node docutils emits
-alongside it (this
-parser sets `refuri`/`refname` directly on the `<reference>` instead;
+alongside it (this parser sets `refuri`/`refname` directly on the `<reference>` instead;
 resolution still works the same way since it's all done by matching
-names, just without that second node) — all transforms/emissions
-real docutils applies after the initial parse (verified by comparing
+names, just without that second node) — genuinely unported transforms,
+unlike target/anonymous resolution, footnote numbering, and docinfo
+promotion above, each a deliberately simplified PORT of the
+corresponding real transform, not a parser-level gap (verified by comparing
 against `Parser().parse(src, document)` directly, before docutils' own
 transform pipeline runs, not `publish_string`'s fully-transformed
 output). A table's `<tgroup cols="N">`/`<colspec colwidth="W">` wrapper

@@ -106,6 +106,18 @@ const (
 	TagOptionArgument     = "option_argument"
 	TagDescription        = "description"
 	TagMath               = "math"
+	TagDocinfo            = "docinfo"
+	TagAuthor             = "author"
+	TagAuthors            = "authors"
+	TagOrganization       = "organization"
+	TagAddress            = "address"
+	TagContact            = "contact"
+	TagVersion            = "version"
+	TagRevision           = "revision"
+	TagStatus             = "status"
+	TagDate               = "date"
+	TagCopyright          = "copyright"
+	TagTopic              = "topic"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

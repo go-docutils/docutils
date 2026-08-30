@@ -64,6 +64,11 @@ func TestRender(t *testing.T) {
 			"<dl><dt>name</dt><dd><p>value</p></dd></dl><dl><dt>Term</dt><dd><p>Def.</p></dd></dl>",
 		},
 		{
+			"a leading field list promotes typed bibliographic fields",
+			":Author: Jane Doe\n:Authors: Jane Doe, John Smith\n:Version: 1.0\n\nBody.\n",
+			"<dl><dt>author</dt><dd>Jane Doe</dd><dt>authors</dt><dd>Jane Doe, John Smith</dd><dt>version</dt><dd>1.0</dd></dl><p>Body.</p>",
+		},
+		{
 			"simple table with header and colspan",
 			"=====  =====\na      b\n=====  =====\n1      2\n=====  =====\n",
 			"<table><thead><tr><th><p>a</p></th><th><p>b</p></th></tr></thead>" +
