@@ -40,9 +40,7 @@ import (
 // which produced plain text, no references at all. Implementing this
 // unconditionally would make this parser MORE aggressive than
 // docutils' own default, a real divergence rather than a gap filled.
-// Also not implemented: inline internal targets, a substitution
-// reference used as a hyperlink (|x|_ / |x|__), the extra <target>
-// sibling docutils
+// Also not implemented: the extra <target> sibling docutils
 // emits next to a resolved embedded-link reference (this parser sets
 // refuri/refname directly on the <reference> instead — reference
 // resolution still works the same way since resolveTargets matches by
@@ -194,6 +192,22 @@ func tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 		el := doctree.NewElement(m.tag, &doctree.Text{Data: content})
 		if m.tag == doctree.TagSubstitutionRef {
 			el.SetAttr("refname", normalizeWhitespace(content))
+			// A substitution reference used AS a hyperlink (|x|_ / |x|__):
+			// docutils wraps it in a <reference> pointing at a target with
+			// the same name (or, doubled, an anonymous one) — the
+			// substitution's own text becomes the reference's visible
+			// content, same as any other reference, but no "name" attribute
+			// (there is no separate display text to remember; unlike
+			// `text`_, the substitution IS the display).
+			if after := i + total; after < len(runes) && runes[after] == '_' {
+				ref := doctree.NewElement(doctree.TagReference, el)
+				if after+1 < len(runes) && runes[after+1] == '_' {
+					ref.SetAttr("anonymous", "true")
+					return ref, total + 2, true
+				}
+				ref.SetAttr("refname", normalizeName(content))
+				return ref, total + 1, true
+			}
 		}
 		return el, total, true
 	}

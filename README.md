@@ -46,7 +46,9 @@ when unnamed, same mechanism as anonymous targets above), citations
 (`[CITE2002]_`, never auto-numbered), substitution definitions/references
 (`|name|`, its content likewise captured structurally rather than
 executed — a substitution definition is a directive invocation, most
-often `replace::`), and inline markup for `**strong**`, `*emphasis*`,
+often `replace::`; `|name|_`/`|name|__` used AS a hyperlink resolves the
+same way a bare/anonymous reference does, just wrapping the substitution
+instead of carrying its own display text), and inline markup for `**strong**`, `*emphasis*`,
 `` ``literal`` ``, a bare `` `x` `` with no role (docutils' DEFAULT
 role, `title_reference`), named/anonymous references both bare (`x_`,
 `x__`) and backtick-quoted (`` `x`_ ``, `` `x`__ ``) including an
@@ -105,8 +107,7 @@ built-in roles, `pep-reference`/`rfc-reference` (checked against
 implementing them unconditionally would diverge from upstream's own
 default rather than fill a real gap) and `raw` (arbitrary raw
 passthrough by format, a real security consideration for untrusted
-input this parser has never had to reason about), and a substitution
-reference used as a hyperlink. Title-style
+input this parser has never had to reason about). Title-style
 consistency and enumerator-sequence validation are not
 enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
