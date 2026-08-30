@@ -239,6 +239,7 @@ func (p *parser) buildSimpleTable(block []string) (*doctree.Element, bool) {
 	}
 
 	table := doctree.NewElement(doctree.TagTable)
+	tgroup := newTgroup(columns)
 	var thead *doctree.Element
 	tbody := doctree.NewElement(doctree.TagTbody)
 	for _, row := range rows {
@@ -261,10 +262,31 @@ func (p *parser) buildSimpleTable(block []string) (*doctree.Element, bool) {
 		}
 	}
 	if thead != nil {
-		table.Append(thead)
+		tgroup.Append(thead)
 	}
-	table.Append(tbody)
+	tgroup.Append(tbody)
+	table.Append(tgroup)
 	return table, true
+}
+
+// newTgroup builds the <tgroup cols="N"> wrapper docutils always puts
+// between <table> and its <thead>/<tbody>, with a <colspec colwidth="W">
+// per column (W = that column's character width in the source table,
+// verified against real docutils: the exact dash/equals-run length between
+// border markers, not some normalized fraction). Writers that don't use
+// this metadata (this project's html/latex, and go-richdoc/rst) fall
+// through to it harmlessly — colspec has no children, and an unrecognized
+// tag's default handling is to render its children (none) and nothing
+// else.
+func newTgroup(columns []tableColumn) *doctree.Element {
+	tgroup := doctree.NewElement(doctree.TagTgroup)
+	tgroup.SetAttr("cols", strconv.Itoa(len(columns)))
+	for _, col := range columns {
+		spec := doctree.NewElement(doctree.TagColspec)
+		spec.SetAttr("colwidth", strconv.Itoa(col.end-col.start))
+		tgroup.Append(spec)
+	}
+	return tgroup
 }
 
 // initSimpleTableRow computes each cell's morecols (colspan-1) by

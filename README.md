@@ -116,17 +116,19 @@ interpreted-text role stays a plain node instead of being rewritten to
 `problematic` with an error message, a leading field list isn't
 promoted to a typed `<docinfo>` node, a line block with a
 deeper-indented sub-line stays FLAT instead of being nested into a
-sub-`<line_block>`, a resolved embedded-link reference doesn't get
+sub-`<line_block>`, and a resolved embedded-link reference doesn't get
 the extra `<target>` sibling node docutils emits alongside it (this
 parser sets `refuri`/`refname` directly on the `<reference>` instead;
 resolution still works the same way since it's all done by matching
-names, just without that second node), and a table gets no
-`<tgroup>`/`<colspec>` column-width wrapper — all transforms/emissions
-real docutils applies after (or, for tgroup/colspec, as writer-facing
-metadata alongside) the initial parse (verified by comparing against
-`Parser().parse(src, document)` directly, before docutils' own
+names, just without that second node) — all transforms/emissions
+real docutils applies after the initial parse (verified by comparing
+against `Parser().parse(src, document)` directly, before docutils' own
 transform pipeline runs, not `publish_string`'s fully-transformed
-output). Sphinx's `autodoc` extension (and `napoleon`, downstream of
+output). A table's `<tgroup cols="N">`/`<colspec colwidth="W">` wrapper
+IS produced (verified: it's part of the bare parse, not a later
+transform or writer-side addition, unlike the above), the `html`/
+`latex` writers and `go-richdoc/rst` all unwrap it transparently.
+Sphinx's `autodoc` extension (and `napoleon`, downstream of
 it) is out of scope entirely: it works by importing and introspecting
 live Python code, which is not portable to pure Go.
 

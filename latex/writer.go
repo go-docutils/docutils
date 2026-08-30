@@ -328,10 +328,24 @@ func renderOption(b *strings.Builder, opt *doctree.Element) {
 // renderTable renders a <table>[<thead>]<tbody> as a plain "l"-columned
 // tabular environment. Cell content is FLATTENED to plain text (see the
 // package doc comment) — no nested lists or multiple paragraphs.
+// tableGroup returns the element actually holding <thead>/<tbody>: a
+// <table>'s <tgroup> child (docutils always wraps rows in one, alongside
+// <colspec> column-width metadata this writer has no use for — a fixed
+// "l" column spec covers every table already), or the table itself if
+// there is no tgroup wrapper.
+func tableGroup(table *doctree.Element) *doctree.Element {
+	for _, c := range table.Children {
+		if ce, ok := c.(*doctree.Element); ok && ce.Tag == doctree.TagTgroup {
+			return ce
+		}
+	}
+	return table
+}
+
 func renderTable(b *strings.Builder, table *doctree.Element, level int) {
 	cols := 0
 	var thead, tbody *doctree.Element
-	for _, c := range table.Children {
+	for _, c := range tableGroup(table).Children {
 		ce, ok := c.(*doctree.Element)
 		if !ok {
 			continue

@@ -92,6 +92,8 @@ const (
 	TagAcronym            = "acronym"
 	TagInline             = "inline"
 	TagTable              = "table"
+	TagTgroup             = "tgroup"
+	TagColspec            = "colspec"
 	TagThead              = "thead"
 	TagTbody              = "tbody"
 	TagRow                = "row"

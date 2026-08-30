@@ -402,6 +402,14 @@ func (p *parser) gridTableFromCells(cells []gridCell, rowseps, colseps map[int]b
 	}
 
 	table := doctree.NewElement(doctree.TagTable)
+	gridCols := make([]tableColumn, numCols)
+	for cn := range gridCols {
+		// colBounds[cn]/[cn+1] are the '+' positions bracketing this
+		// column; -1 excludes the separator itself, matching newTgroup's
+		// existing end-start convention for a simple table's columns.
+		gridCols[cn] = tableColumn{start: colBounds[cn], end: colBounds[cn+1] - 1}
+	}
+	tgroup := newTgroup(gridCols)
 	var thead *doctree.Element
 	tbody := doctree.NewElement(doctree.TagTbody)
 	for rn := 0; rn < numRows; rn++ {
@@ -431,9 +439,10 @@ func (p *parser) gridTableFromCells(cells []gridCell, rowseps, colseps map[int]b
 		}
 	}
 	if thead != nil {
-		table.Append(thead)
+		tgroup.Append(thead)
 	}
-	table.Append(tbody)
+	tgroup.Append(tbody)
+	table.Append(tgroup)
 	return table
 }
 
