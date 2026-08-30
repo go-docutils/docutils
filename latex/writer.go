@@ -174,6 +174,12 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		wrapCmd(b, "textsubscript", el, level)
 	case doctree.TagSuperscript:
 		wrapCmd(b, "textsuperscript", el, level)
+	case doctree.TagMath:
+		// Verbatim, NOT escapeText: the content is TeX math source itself
+		// (docutils' math_role stores it raw/unparsed), and escaping its
+		// own special characters (^, _, \) would corrupt the very syntax
+		// $...$ math mode depends on.
+		b.WriteString("$" + doctree.AsText(el) + "$")
 	case doctree.TagAbbreviation, doctree.TagAcronym, doctree.TagInline:
 		renderChildren(b, el, level)
 	case doctree.TagReference:

@@ -103,6 +103,7 @@ const (
 	TagOptionString       = "option_string"
 	TagOptionArgument     = "option_argument"
 	TagDescription        = "description"
+	TagMath               = "math"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

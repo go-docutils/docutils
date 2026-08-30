@@ -325,10 +325,22 @@ func isRoleNameChar(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-'
 }
 
-// roleTags maps docutils' built-in GENERIC role canonical/alias names
+// roleTags maps docutils' built-in role canonical/alias names
 // (docutils.parsers.rst.languages.en.roles, English only — this parser
 // doesn't support other languages' role names) to the doctree tag they
 // produce. A role not in this table falls back to a generic <inline>.
+//
+// Most entries here are the GENERIC roles (emphasis/strong/literal/...),
+// which really do just alias an existing markup tag. "code" and "math" are
+// docutils' two other always-registered roles (roles.py's code_role/
+// math_role) and are simplified the same way: real docutils.roles.code_role
+// supports Pygments syntax-highlight tokenization via a `:language:` role
+// option (this parser has no role-option/directive-option syntax at all,
+// see explicit.go), but with no language set — the common case, and the
+// only one reachable without that syntax — it degrades to exactly a plain
+// <literal>, which is what mapping "code" onto TagLiteral produces exactly.
+// math_role always produces a dedicated <math> node (never <inline>,
+// unlike every other role here) holding the raw, unparsed TeX source.
 var roleTags = map[string]string{
 	"emphasis":        doctree.TagEmphasis,
 	"strong":          doctree.TagStrong,
@@ -344,6 +356,8 @@ var roleTags = map[string]string{
 	"ab":              doctree.TagAbbreviation,
 	"acronym":         doctree.TagAcronym,
 	"ac":              doctree.TagAcronym,
+	"code":            doctree.TagLiteral,
+	"math":            doctree.TagMath,
 }
 
 func roleElement(role, content string) *doctree.Element {

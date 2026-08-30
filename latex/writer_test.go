@@ -23,6 +23,16 @@ func TestRenderContains(t *testing.T) {
 			[]string{`\emph{em}`, `\textbf{strong}`, `\texttt{code}`},
 		},
 		{
+			"code role renders the same as a backtick literal",
+			":code:`x = 1`\n",
+			[]string{`\texttt{x = 1}`},
+		},
+		{
+			"math role renders as inline math mode, verbatim (not LaTeX-escaped)",
+			"A :math:`x^2 + y_1` term.\n",
+			[]string{`$x^2 + y_1$`},
+		},
+		{
 			"nested sections use increasing-depth commands",
 			"Top\n===\n\nSub\n---\n",
 			[]string{`\section{Top}`, `\subsection{Sub}`},

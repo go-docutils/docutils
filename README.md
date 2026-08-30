@@ -40,7 +40,12 @@ embedded email address), interpreted text with a role, prefix
 (`` :role:`x` ``) or suffix (`` `x`:role: ``), for docutils' built-in
 GENERIC roles (`emphasis`, `strong`, `literal`, `subscript`/`sub`,
 `superscript`/`sup`, `title-reference`/`title`/`t`,
-`abbreviation`/`ab`, `acronym`/`ac`) — any other role name (there is no
+`abbreviation`/`ab`, `acronym`/`ac`), plus its other two always-registered
+roles, `code` (no syntax highlighting — this parser has no
+role-option syntax to carry a `:language:`, so it degrades to exactly
+the plain `<literal>` real docutils itself falls back to with no
+language set) and `math` (a dedicated `<math>` node holding the raw,
+unescaped TeX source, rendered by both writers below) — any other role name (there is no
 `.. role::` registry, same philosophy as directives) falls back to a
 generic `<inline role="name">` rather than docutils' error, and
 backslash escapes; standalone URI (`scheme://...`) and email
@@ -67,9 +72,15 @@ text, matching docutils' own TransitionCorrection).
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
 `lineblock.go`/`inline.go`/`table.go`/`gridtable.go` doc comments for
-the exact list and why): docutils' non-generic
-built-in roles (`code`, `math`, `pep-reference`, `rfc-reference`,
-`raw`), indirect/anonymous hyperlink *targets* (as opposed to
+the exact list and why): docutils' two remaining non-generic
+built-in roles, `pep-reference`/`rfc-reference` (checked against
+`Parser().parse()` with default settings — docutils' own
+`pep_references`/`rfc_references` settings default to **off**, so
+implementing them unconditionally would diverge from upstream's own
+default rather than fill a real gap) and `raw` (arbitrary raw
+passthrough by format, a real security consideration for untrusted
+input this parser has never had to reason about), indirect/anonymous
+hyperlink *targets* (as opposed to
 *references*, which — see above — are supported), inline internal
 targets, a substitution reference used as a hyperlink. Title-style
 consistency and enumerator-sequence validation are not
@@ -122,8 +133,11 @@ html5_polyglot where there's an obvious correspondence
 em/strong/code/cite/sub/sup/abbr; a grid-table cell's column/row span
 becomes `colspan`/`rowspan`, HTML's own native primitives for exactly
 this; an option list becomes a `<dl>`, each item's comma-separated
-flags joined into one `<dt>`, e.g. `<dt>-f, --file=FILE</dt>`); a
-directive (including a
+flags joined into one `<dt>`, e.g. `<dt>-f, --file=FILE</dt>`; a
+`:math:` role becomes the raw TeX source wrapped in `\(...\)`, the
+MathJax inline-delimiter convention, plain text with no wrapping tag
+or script dependency — MathJax auto-detects it with no markup of its
+own to hook into); a directive (including a
 substitution definition's embedded `replace::`) renders as
 `<pre class="directive" data-directive="name">` rather than being
 silently dropped, since there's no semantic dispatch to render it
@@ -156,7 +170,11 @@ constructs (`itemize`/`enumerate`/`quote`/`verbatim`/`description`/
 package — a field list, a definition list, AND an option list (its
 comma-separated flags joined into one `\item[{...}]`) all share the
 same `description` environment, since none of the three has a native
-LaTeX construct of its own. A table's cell content is flattened to
+LaTeX construct of its own. A `:math:` role renders as core `$...$`
+inline math mode — its content is TeX source already, written
+verbatim rather than through the usual text-escaping pass, which
+would otherwise corrupt the very characters (`^`, `_`, `\`) math mode
+depends on. A table's cell content is flattened to
 plain text — a nested
 list or multi-paragraph cell would need a `p{width}` column + minipage
 to stay valid LaTeX, not implemented here. A grid-table cell's column

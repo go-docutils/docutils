@@ -80,6 +80,16 @@ func TestRender(t *testing.T) {
 			"<p><sub>x</sub> <sup>y</sup> <abbr>WHO</abbr></p>",
 		},
 		{
+			"code role renders as a plain code span, same as a backtick literal",
+			":code:`x = 1`\n",
+			"<p><code>x = 1</code></p>",
+		},
+		{
+			"math role renders with the MathJax inline delimiters, HTML-escaped",
+			"A :math:`x < y` term.\n",
+			`<p>A \(x &lt; y\) term.</p>`,
+		},
+		{
 			"comment renders as an HTML comment",
 			".. a comment\n",
 			"<!-- a comment -->",

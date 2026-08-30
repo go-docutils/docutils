@@ -156,6 +156,13 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		writeTag(b, "sup", "", el, headingLevel)
 	case doctree.TagAbbreviation, doctree.TagAcronym:
 		writeTag(b, "abbr", "", el, headingLevel)
+	case doctree.TagMath:
+		// The MathJax inline-delimiter convention (\(...\)), plain text
+		// with no wrapping tag or CSS class: MathJax auto-detects it with
+		// no markup of its own to hook into, and a page with no MathJax
+		// script loaded still shows readable TeX source instead of a
+		// broken widget — this writer has no CSS/JS dependency to add.
+		b.WriteString(`\(` + escapeText(doctree.AsText(el)) + `\)`)
 	case doctree.TagInline:
 		attrs := ""
 		if role := el.Attr("role"); role != "" {
