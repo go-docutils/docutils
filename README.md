@@ -121,6 +121,43 @@ import "github.com/go-docutils/docutils/html"
 fmt.Println(html.Render(doc)) // e.g. "<p>Hello <em>world</em>.</p>"
 ```
 
+**`latex`**: `latex.Render(doc) string` renders a doctree to a complete,
+standalone, compilable `.tex` document — meant as input to a LaTeX
+engine such as [go-tex](https://github.com/go-tex). Unlike `html.Render`
+(a fragment meant to be embedded), LaTeX has no equivalent to dropping a
+fragment into a hosting page, so a full document — a fixed
+`\documentclass{article}` with a minimal preamble (`hyperref` only, for
+working links/anchors) — is the useful unit. Also deliberately NOT a
+port of docutils' latex2e writer (`writers/latex2e/__init__.py`, ~3486
+lines: multiple document classes, syntax-highlighted listings, real
+LaTeX `\footnote`-machinery bridged across the doctree's separate
+footnote-definition/-reference nodes via custom preamble macros,
+docinfo-to-titlepage conversion). This uses only vanilla LaTeX
+constructs (`itemize`/`enumerate`/`quote`/`verbatim`/`description`/
+`verse`/`tabular`), so it always compiles without a custom macro
+package. A table's cell content is flattened to plain text — a nested
+list or multi-paragraph cell would need a `p{width}` column + minipage
+to stay valid LaTeX, not implemented here. Footnotes/citations don't use
+LaTeX's native `\footnote` (it wants inline content at the reference
+point, docutils' doctree has them as separate nodes); a reference
+renders as a `\hyperlink` jump to a labeled paragraph where the
+definition appears in the document's normal flow, not a page-bottom
+note. Verified by actually compiling representative output (special
+characters, nested sections past LaTeX's 5 native depths, every
+implemented construct together) with
+[tectonic](https://tectonic-typesetting.github.io/) during development
+— real PDFs, zero errors — not just structural comparison; that step
+isn't part of `go test` itself since a LaTeX engine isn't a build
+dependency of this module (same "reference tool, not a runtime
+dependency" rule as the docutils foreign judge).
+
+```go
+import "github.com/go-docutils/docutils/latex"
+
+os.WriteFile("out.tex", []byte(latex.Render(doc)), 0644)
+// tectonic out.tex  (or any other LaTeX engine, incl. go-tex)
+```
+
 ## Testing
 
 `go test ./...`. Fixtures in `rst/parser_test.go` were generated from
@@ -130,5 +167,5 @@ hand-transcribed (for footnotes/citations/substitutions, "docutils
 foreign judge" means `Parser().parse(src, document)` directly rather
 than `publish_string`, to see the tree before docutils' own transforms
 run — see the `rst` package doc comment). Coverage as of this writing:
-`doctree` 97%, `rst` 93%, `html` 87%. `go vet ./...` and `gofmt -l .`
-clean.
+`doctree` 97%, `rst` 93%, `html` 87%, `latex` 87%. `go vet ./...` and
+`gofmt -l .` clean.
