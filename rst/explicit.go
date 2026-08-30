@@ -25,9 +25,9 @@ import (
 // (a direct URI, or chased through however many INDIRECT hops — see
 // bareIndirectTargetName), an INLINE target inside a paragraph (see
 // inline.go's tryInlineTarget), or ANONYMOUS (`.. __: uri`, resolved by
-// document-order position rather than by name — see resolveTargets); an
-// indirect anonymous target (`.. __: othername_`) is not implemented, a
-// rare compound of two already-rare constructs. An
+// document-order position rather than by name — see resolveTargets),
+// including an INDIRECT anonymous target (`.. __: othername_`, chased the
+// same way a named indirect target is). An
 // unresolved reference (no matching target) is left as a bare
 // `reference` node with no `refuri` attribute; real docutils instead
 // runs an error transform that rewrites it to a `problematic` node and
@@ -282,9 +282,15 @@ func parseHyperlinkTarget(lines []string, i int, rest string) (doctree.Node, int
 // referenceOrPhrase) matches the Nth anonymous target, textual order,
 // regardless of any text either one carries (verified against real
 // docutils: this holds whether the targets appear before or after their
-// references). resolveTargets implements the matching; indirect chasing
-// ("__" pointing at a named reference rather than a URI) is not
-// implemented here — a rare compound of two already-rare constructs.
+// references). resolveTargets implements the matching. The value may
+// itself be a bare "othername_" reference rather than a URI — an INDIRECT
+// anonymous target (".. __: othername_") — chased the same way a named
+// indirect target is (see bareIndirectTargetName); verified against real
+// docutils that an anonymous reference still consumes its document-order
+// slot even when the chase fails to resolve (it just ends up with no
+// refuri set, this codebase's usual treatment of an unresolved reference,
+// rather than docutils' own refid-to-the-target-itself fallback, which
+// depends on error-reporting machinery not implemented here).
 func parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int) {
 	body, next := gatherExplicitBody(lines, i)
 	uri := strings.TrimSpace(rest)
@@ -293,7 +299,11 @@ func parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int
 	}
 	el := doctree.NewElement(doctree.TagTarget)
 	el.SetAttr("anonymous", "true")
-	el.SetAttr("refuri", uri)
+	if indirect, ok := bareIndirectTargetName(uri); ok {
+		el.SetAttr("refname", normalizeName(indirect))
+	} else {
+		el.SetAttr("refuri", uri)
+	}
 	return el, next
 }
 
@@ -337,7 +347,7 @@ func normalizeName(s string) string {
 func resolveTargets(doc *doctree.Element) {
 	direct := map[string]string{}
 	indirect := map[string]string{}
-	var anonTargets []string
+	var anonTargets []anonTarget
 	collectTargets(doc, direct, indirect, &anonTargets)
 	targets := map[string]string{}
 	for name := range direct {
@@ -348,11 +358,28 @@ func resolveTargets(doc *doctree.Element) {
 			targets[name] = uri
 		}
 	}
+	anonURIs := make([]string, len(anonTargets))
+	for i, t := range anonTargets {
+		switch {
+		case t.refuri != "":
+			anonURIs[i] = t.refuri
+		case t.refname != "":
+			if uri, ok := resolveIndirect(t.refname, direct, indirect, 0); ok {
+				anonURIs[i] = uri
+			}
+		}
+	}
 	anonIndex := 0
-	linkReferences(doc, targets, anonTargets, &anonIndex)
+	linkReferences(doc, targets, anonURIs, &anonIndex)
 }
 
-func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTargets *[]string) {
+// anonTarget is one ".. __: ..." target in document order: either a direct
+// URI or, for an indirect anonymous target, the name it chases.
+type anonTarget struct {
+	refuri, refname string
+}
+
+func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTargets *[]anonTarget) {
 	el, ok := n.(*doctree.Element)
 	if !ok {
 		return
@@ -360,7 +387,7 @@ func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTarg
 	if el.Tag == doctree.TagTarget {
 		switch {
 		case el.Attr("anonymous") == "true":
-			*anonTargets = append(*anonTargets, el.Attr("refuri"))
+			*anonTargets = append(*anonTargets, anonTarget{refuri: el.Attr("refuri"), refname: el.Attr("refname")})
 		case el.Attr("name") != "":
 			name := el.Attr("name")
 			switch {
@@ -408,7 +435,9 @@ func linkReferences(n doctree.Node, targets map[string]string, anonTargets []str
 		switch {
 		case el.Attr("anonymous") == "true":
 			if *anonIndex < len(anonTargets) {
-				el.SetAttr("refuri", anonTargets[*anonIndex])
+				if uri := anonTargets[*anonIndex]; uri != "" {
+					el.SetAttr("refuri", uri)
+				}
 				*anonIndex++
 			}
 		case el.Attr("refname") != "":

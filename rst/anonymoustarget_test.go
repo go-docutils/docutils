@@ -28,6 +28,16 @@ func TestAnonymousTargetResolution(t *testing.T) {
 			"See first__ and second__ but no target defined at all.\n",
 			"<document>\n    <paragraph>\n        See \n        <reference anonymous=\"true\" name=\"first\">\n            first\n         and \n        <reference anonymous=\"true\" name=\"second\">\n            second\n         but no target defined at all.\n",
 		},
+		{
+			"an indirect anonymous target chases through a named target to its refuri",
+			".. _real: https://example.org/real\n\n.. __: real_\n\nit__\n",
+			"<document>\n    <target name=\"real\" refuri=\"https://example.org/real\">\n    <target anonymous=\"true\" refname=\"real\">\n    <paragraph>\n        <reference anonymous=\"true\" name=\"it\" refuri=\"https://example.org/real\">\n            it\n",
+		},
+		{
+			"an indirect anonymous target that fails to chase still consumes its document-order slot",
+			".. __: nosuch_\n\n.. __: https://example.org/second\n\nfirst__ second__\n",
+			"<document>\n    <target anonymous=\"true\" refname=\"nosuch\">\n    <target anonymous=\"true\" refuri=\"https://example.org/second\">\n    <paragraph>\n        <reference anonymous=\"true\" name=\"first\">\n            first\n         \n        <reference anonymous=\"true\" name=\"second\" refuri=\"https://example.org/second\">\n            second\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
