@@ -1,0 +1,65 @@
+package rst
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/go-docutils/docutils/doctree"
+)
+
+func TestBareIndirectTargetName(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantName string
+		wantOK   bool
+	}{
+		{"another_", "another", true},
+		{"https://example.com", "", false},
+		{"https://example.com/foo_", "", false}, // ends in "_" but not a bare simplename
+		{"_", "", false},                        // no name before the underscore
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		name, ok := bareIndirectTargetName(tc.in)
+		if ok != tc.wantOK || name != tc.wantName {
+			t.Errorf("bareIndirectTargetName(%q) = (%q, %v), want (%q, %v)", tc.in, name, ok, tc.wantName, tc.wantOK)
+		}
+	}
+}
+
+func TestIndirectTargetResolution(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			"one hop resolves to the direct target's uri",
+			".. _target: another_\n\n.. _another: https://example.com\n\nSee target_.\n",
+			"<document>\n    <target name=\"target\" refname=\"another\">\n    <target name=\"another\" refuri=\"https://example.com\">\n    <paragraph>\n        See \n        <reference name=\"target\" refname=\"target\" refuri=\"https://example.com\">\n            target\n        .\n",
+		},
+		{
+			"a multi-hop chain resolves through every indirect target",
+			".. _a: b_\n.. _b: c_\n.. _c: https://example.com\n\nSee a_.\n",
+			"<document>\n    <target name=\"a\" refname=\"b\">\n    <target name=\"b\" refname=\"c\">\n    <target name=\"c\" refuri=\"https://example.com\">\n    <paragraph>\n        See \n        <reference name=\"a\" refname=\"a\" refuri=\"https://example.com\">\n            a\n        .\n",
+		},
+		{
+			"a cycle leaves the reference unresolved instead of looping forever",
+			".. _a: b_\n.. _b: a_\n\nSee a_.\n",
+			"<document>\n    <target name=\"a\" refname=\"b\">\n    <target name=\"b\" refname=\"a\">\n    <paragraph>\n        See \n        <reference name=\"a\" refname=\"a\">\n            a\n        .\n",
+		},
+		{
+			"a url that happens to end in an underscore is not mistaken for an indirect target",
+			".. _weird: https://example.com/foo_\n\nSee weird_.\n",
+			"<document>\n    <target name=\"weird\" refuri=\"https://example.com/foo_\">\n    <paragraph>\n        See \n        <reference name=\"weird\" refname=\"weird\" refuri=\"https://example.com/foo_\">\n            weird\n        .\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
+				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
+			}
+		})
+	}
+}

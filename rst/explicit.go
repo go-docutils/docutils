@@ -242,7 +242,11 @@ func parseComment(lines []string, i int, rest string) (doctree.Node, int) {
 
 // parseHyperlinkTarget recognizes ".. _name: uri", where uri may
 // continue on subsequent body lines (concatenated with no added
-// whitespace, matching how docutils reconstructs a wrapped URI).
+// whitespace, matching how docutils reconstructs a wrapped URI). When the
+// value is itself a bare "othername_" reference rather than a URI, this is
+// an INDIRECT target (docutils' parse_target/is_reference): "refname" is
+// set instead of "refuri", and resolveTargets chases through it to find
+// the final URI.
 func parseHyperlinkTarget(lines []string, i int, rest string) (doctree.Node, int) {
 	body, next := gatherExplicitBody(lines, i)
 	name, uri := rest, ""
@@ -257,8 +261,35 @@ func parseHyperlinkTarget(lines []string, i int, rest string) (doctree.Node, int
 	}
 	el := doctree.NewElement(doctree.TagTarget)
 	el.SetAttr("name", normalizeName(name))
-	el.SetAttr("refuri", uri)
+	if indirect, ok := bareIndirectTargetName(uri); ok {
+		el.SetAttr("refname", normalizeName(indirect))
+	} else {
+		el.SetAttr("refuri", uri)
+	}
 	return el, next
+}
+
+// bareIndirectTargetName reports whether uri, taken as a WHOLE, is a bare
+// "othername_" reference (docutils' parse_target: the target's value ends
+// in "_" AND the entire value matches its own bare-reference grammar — a
+// real URI ending in "_", like ".../foo_", does NOT match, since it
+// contains characters (":", "/") a simplename can't). The backtick-quoted
+// phrase form ("`other name`_") is not implemented here: rare for a
+// target's own value, unlike a reference's.
+func bareIndirectTargetName(uri string) (string, bool) {
+	if len(uri) < 2 || uri[len(uri)-1] != '_' {
+		return "", false
+	}
+	body := uri[:len(uri)-1]
+	if body == "" {
+		return "", false
+	}
+	for _, r := range body {
+		if !isSimpleNameChar(r) {
+			return "", false
+		}
+	}
+	return body, true
 }
 
 // normalizeName mirrors docutils.nodes.fully_normalize_name: case- and
@@ -267,37 +298,71 @@ func normalizeName(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
 
-// resolveTargets walks the tree once to collect every hyperlink
-// target's URI by normalized name, then walks it again setting refuri
-// on every reference whose refname matches — docutils' target
-// resolution transform, drastically simplified (no indirect targets, no
-// duplicate/ambiguous-name diagnostics).
+// resolveTargets walks the tree once to collect every hyperlink target by
+// normalized name — split into "direct" (has its own refuri, or is an
+// inline internal target with none, resolved to a same-document anchor)
+// and "indirect" (an indirect target: its value is itself another target's
+// name, chased through resolveIndirect until a direct one is reached) — then
+// walks it again setting refuri on every reference whose refname matches.
+// docutils' target resolution transform, drastically simplified (no
+// duplicate/ambiguous-name diagnostics, no anonymous targets).
 func resolveTargets(doc *doctree.Element) {
+	direct := map[string]string{}
+	indirect := map[string]string{}
+	collectTargets(doc, direct, indirect)
 	targets := map[string]string{}
-	collectTargets(doc, targets)
+	for name := range direct {
+		targets[name] = direct[name]
+	}
+	for name := range indirect {
+		if uri, ok := resolveIndirect(name, direct, indirect, 0); ok {
+			targets[name] = uri
+		}
+	}
 	linkReferences(doc, targets)
 }
 
-func collectTargets(n doctree.Node, targets map[string]string) {
+func collectTargets(n doctree.Node, direct, indirect map[string]string) {
 	el, ok := n.(*doctree.Element)
 	if !ok {
 		return
 	}
 	if el.Tag == doctree.TagTarget {
 		if name := el.Attr("name"); name != "" {
-			uri := el.Attr("refuri")
-			if uri == "" {
+			switch {
+			case el.Attr("refuri") != "":
+				direct[name] = el.Attr("refuri")
+			case el.Attr("refname") != "":
+				indirect[name] = el.Attr("refname")
+			default:
 				// An inline internal target ("_`text`") carries no URI of
 				// its own — it IS the destination, a same-document anchor
 				// a reference resolves to by pointing at its own id.
-				uri = "#" + name
+				direct[name] = "#" + name
 			}
-			targets[name] = uri
 		}
 	}
 	for _, c := range el.Children {
-		collectTargets(c, targets)
+		collectTargets(c, direct, indirect)
 	}
+}
+
+// resolveIndirect chases an indirect target's refname chain
+// ("a" -> "b" -> "c" -> a real refuri) to its final URI. depth guards
+// against a cycle ("a" -> "b" -> "a"), which real docutils reports as an
+// error; this simplified version just leaves it unresolved, same as any
+// other name with no matching target.
+func resolveIndirect(name string, direct, indirect map[string]string, depth int) (string, bool) {
+	if depth > 20 {
+		return "", false
+	}
+	if uri, ok := direct[name]; ok {
+		return uri, true
+	}
+	if next, ok := indirect[name]; ok {
+		return resolveIndirect(next, direct, indirect, depth+1)
+	}
+	return "", false
 }
 
 func linkReferences(n doctree.Node, targets map[string]string) {
