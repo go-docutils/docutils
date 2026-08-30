@@ -59,6 +59,11 @@ func TestRenderContains(t *testing.T) {
 			[]string{`\href{https://python.org}{Python}`},
 		},
 		{
+			"inline internal target and a same-document reference to it use hypertarget/hyperlink, not href",
+			"See the _`term` and later `term`_.\n",
+			[]string{`\hypertarget{term}{term}`, `\hyperlink{term}{term}`},
+		},
+		{
 			"footnote reference links to its footnote by hypertarget",
 			"See [1]_.\n\n.. [1] Text.\n",
 			[]string{`\hyperlink{1}{[1]}`, `\hypertarget{1}{}`, `Text.`},

@@ -68,7 +68,17 @@ argument joined by a space/`=`/embedded delimiter, reusing the same
 marker+indented-continuation machinery as field lists — a marker with
 no following content at all, on its own line or indented beneath it,
 is not really an option list item and falls back to plain paragraph
-text, matching docutils' own TransitionCorrection).
+text, matching docutils' own TransitionCorrection); and inline
+internal targets (`` _`text` `` — a target INSIDE a paragraph, as
+opposed to the block-level `.. _name: uri` hyperlink target above,
+docutils' own target pattern in `Inliner.patterns`). Unlike a
+block-level target, this one keeps its content as visible text and
+carries no URI of its own — a reference resolving to one now resolves
+to a same-document anchor (`#name`) instead, which both writers render
+with a real anchor point (HTML `<a id="name">text</a>`; LaTeX
+`\hypertarget`/`\hyperlink`, not `\href` — a `#`-prefixed refuri routes
+to the internal-link path specifically, since `\href`'s usual URL
+escaping would corrupt hyperref's own `#`-marker convention).
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
 `lineblock.go`/`inline.go`/`table.go`/`gridtable.go` doc comments for
@@ -81,8 +91,8 @@ default rather than fill a real gap) and `raw` (arbitrary raw
 passthrough by format, a real security consideration for untrusted
 input this parser has never had to reason about), indirect/anonymous
 hyperlink *targets* (as opposed to
-*references*, which — see above — are supported), inline internal
-targets, a substitution reference used as a hyperlink. Title-style
+*references*, which — see above — are supported), a substitution
+reference used as a hyperlink. Title-style
 consistency and enumerator-sequence validation are not
 enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real

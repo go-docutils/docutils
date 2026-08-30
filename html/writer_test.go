@@ -49,6 +49,11 @@ func TestRender(t *testing.T) {
 			"<p>See nowhere now.</p>",
 		},
 		{
+			"inline internal target keeps its text and gets an id; a later reference resolves to a same-document anchor",
+			"See the _`term` and later `term`_.\n",
+			`<p>See the <a id="term">term</a> and later <a href="#term">term</a>.</p>`,
+		},
+		{
 			"footnote reference links to its footnote by id",
 			"See [1]_.\n\n.. [1] Text.\n",
 			`<p>See <a href="#1">1</a>.</p><div class="footnote" id="1"><span class="label">1</span><p>Text.</p></div>`,

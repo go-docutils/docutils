@@ -285,7 +285,14 @@ func collectTargets(n doctree.Node, targets map[string]string) {
 	}
 	if el.Tag == doctree.TagTarget {
 		if name := el.Attr("name"); name != "" {
-			targets[name] = el.Attr("refuri")
+			uri := el.Attr("refuri")
+			if uri == "" {
+				// An inline internal target ("_`text`") carries no URI of
+				// its own — it IS the destination, a same-document anchor
+				// a reference resolves to by pointing at its own id.
+				uri = "#" + name
+			}
+			targets[name] = uri
 		}
 	}
 	for _, c := range el.Children {

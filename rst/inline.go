@@ -76,6 +76,12 @@ func parseInline(text string) []doctree.Node {
 			i += consumed
 			continue
 		}
+		if node, consumed, ok := tryInlineTarget(runes, i); ok {
+			flush()
+			out = append(out, node)
+			i += consumed
+			continue
+		}
 		if node, consumed, ok := tryInterpretedOrPhraseRef(runes, i); ok {
 			flush()
 			out = append(out, node)
@@ -408,6 +414,33 @@ func tryBareReference(runes []rune, i int) (doctree.Node, int, bool) {
 		el.SetAttr("refname", normalizeName(name))
 	}
 	return el, end - i, true
+}
+
+// tryInlineTarget recognizes an inline internal target, "_`text`" — a
+// target INSIDE a paragraph (as opposed to the block-level ".. _name: uri"
+// hyperlink target explicit.go's parseHyperlinkTarget handles), docutils'
+// own target pattern in Inliner.patterns. Unlike a block target, this one
+// keeps its content as visible text (docutils: <target ids="..."
+// names="...">text</target>) — the name a reference resolves against comes
+// from that text, normalized the same way as any other reference name.
+func tryInlineTarget(runes []rune, i int) (doctree.Node, int, bool) {
+	if runes[i] != '_' || i+1 >= len(runes) || runes[i+1] != '`' {
+		return nil, 0, false
+	}
+	if !validStartBoundary(runes, i, 2) {
+		return nil, 0, false
+	}
+	closeAt, closeLen, ok := findClose(runes, i+2, "`")
+	if !ok {
+		return nil, 0, false
+	}
+	content := unescapeRunes(runes[i+2 : closeAt])
+	if content == "" {
+		return nil, 0, false
+	}
+	el := doctree.NewElement(doctree.TagTarget, &doctree.Text{Data: content})
+	el.SetAttr("name", normalizeName(content))
+	return el, (closeAt + closeLen) - i, true
 }
 
 func isSimpleNameChar(r rune) bool {

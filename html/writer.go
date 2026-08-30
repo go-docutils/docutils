@@ -115,8 +115,12 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 	case doctree.TagLabel:
 		writeTag(b, "span", ` class="label"`, el, headingLevel)
 	case doctree.TagTarget:
+		// writeTag, not a bare self-closing "<a id=...></a>": a block-level
+		// hyperlink target has no children, so this renders identically to
+		// before for that case, but an inline internal target ("_`text`")
+		// has real visible text as its content, which must not be dropped.
 		if name := el.Attr("name"); name != "" {
-			b.WriteString(`<a id="` + escapeAttr(name) + `"></a>`)
+			writeTag(b, "a", ` id="`+escapeAttr(name)+`"`, el, headingLevel)
 		}
 	case doctree.TagDirective:
 		name := el.Attr("name")

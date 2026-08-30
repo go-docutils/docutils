@@ -147,8 +147,14 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		renderChildren(b, el, level)
 		b.WriteString("]} ")
 	case doctree.TagTarget:
+		// The second \hypertarget group is the visible content: empty for
+		// a block-level hyperlink target (no children, same as before),
+		// but an inline internal target ("_`text`") has real visible text
+		// that must not be dropped.
 		if name := el.Attr("name"); name != "" {
-			b.WriteString("\\hypertarget{" + escapeText(name) + "}{}")
+			b.WriteString("\\hypertarget{" + escapeText(name) + "}{")
+			renderChildren(b, el, level)
+			b.WriteString("}")
 		}
 	case doctree.TagDirective:
 		name := el.Attr("name")
@@ -183,11 +189,23 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 	case doctree.TagAbbreviation, doctree.TagAcronym, doctree.TagInline:
 		renderChildren(b, el, level)
 	case doctree.TagReference:
-		if uri := el.Attr("refuri"); uri != "" {
+		uri := el.Attr("refuri")
+		switch {
+		case strings.HasPrefix(uri, "#"):
+			// A same-document anchor (an inline internal target resolves
+			// to "#name", never a real URL) — \hyperlink, not \href: the
+			// leading "#" is hyperref's OWN internal-link marker, and
+			// escapeURL's "#"->"\#" escaping (correct for a URL's real
+			// fragment) would corrupt it here, the same distinction
+			// footnote/citation references below already make.
+			b.WriteString("\\hyperlink{" + escapeText(uri[1:]) + "}{")
+			renderChildren(b, el, level)
+			b.WriteString("}")
+		case uri != "":
 			b.WriteString("\\href{" + escapeURL(uri) + "}{")
 			renderChildren(b, el, level)
 			b.WriteString("}")
-		} else {
+		default:
 			renderChildren(b, el, level)
 		}
 	case doctree.TagSubstitutionRef:
