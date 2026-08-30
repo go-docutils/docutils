@@ -85,6 +85,7 @@ const (
 	TagFootnoteReference  = "footnote_reference"
 	TagCitationReference  = "citation_reference"
 	TagSubstitutionDef    = "substitution_definition"
+	TagTitleReference     = "title_reference"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

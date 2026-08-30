@@ -10,20 +10,25 @@ import (
 // Expected trees below were cross-checked against reference docutils
 // 0.23 for element shape. For most cases this used
 // `publish_string(..., writer_name='pseudoxml', settings_overrides=
-// {'doctitle_xform': False})`; for footnotes/citations/substitutions,
-// which docutils resolves (numbering, substitution-value inlining) via
-// transforms that run AFTER parsing, comparison instead used a bare
-// `Parser().parse(src, document)` to see the raw pre-transform tree —
-// numbering/inlining are not implemented here, matching the same
-// "structural capture, not executed" scope as directives. This
-// project's own doctree.Dump format is used throughout since
-// ids/names/source attributes are not yet implemented (see the package
-// doc's SCOPE note). A field list at the very start of a document is
-// compared with `docinfo_xform: False` too — real docutils otherwise
-// promotes it to a typed `<docinfo>` node, not implemented here. A line
-// block with an indented sub-line is compared against docutils' FLAT
-// shape too: real docutils nests such a line into a sub-`<line_block>`
-// by relative indent (nest_line_block_lines), not implemented here (see
+// {'doctitle_xform': False})`; for footnotes/citations/substitutions and
+// for reference-resolution attributes, which docutils assigns via
+// transforms that run AFTER parsing (numbering, substitution-value
+// inlining, indirect-target/embedded-link resolution into a sibling
+// <target> node), comparison instead used a bare
+// `Parser().parse(src, document)` to see the raw pre-transform tree.
+// This parser's OWN reference-resolution pass (resolveTargets, see
+// explicit.go) runs at the end of Parse, so a refuri some fixtures below
+// show already filled in is this parser resolving it eagerly, matching
+// docutils' post-transform behavior even though the comparison target
+// was pre-transform for the rest of the shape. This project's own
+// doctree.Dump format is used throughout since ids/source attributes
+// are not yet implemented (see the package doc's SCOPE note). A field
+// list at the very start of a document is compared with
+// `docinfo_xform: False` too — real docutils otherwise promotes it to a
+// typed `<docinfo>` node, not implemented here. A line block with an
+// indented sub-line is compared against docutils' FLAT shape too: real
+// docutils nests such a line into a sub-`<line_block>` by relative
+// indent (nest_line_block_lines), not implemented here (see
 // lineblock.go). Two more known, documented divergences: a directive
 // (including a substitution definition's embedded `replace::`) is
 // captured structurally rather than dispatched to semantics, and an
@@ -63,12 +68,12 @@ func TestParse(t *testing.T) {
 		{
 			name:   "comment, directive, hyperlink target with reference resolution, literal block",
 			source: "Intro paragraph.\n\n.. This is a comment.\n   Second comment line.\n\n.. note::\n\n   This is directive content.\n   Second line.\n\nSee `Example`_ for details.\n\n.. _Example: https://example.com\n\nHere is a code sample::\n\n    def f():\n        return 1\n\nDone.\n",
-			want:   "<document>\n    <paragraph>\n        Intro paragraph.\n    <comment>\n        This is a comment.\n        Second comment line.\n    <directive name=\"note\">\n        This is directive content.\n        Second line.\n    <paragraph>\n        See \n        <reference refname=\"Example\" refuri=\"https://example.com\">\n            Example\n         for details.\n    <target name=\"example\" refuri=\"https://example.com\">\n    <paragraph>\n        Here is a code sample:\n    <literal_block>\n        def f():\n            return 1\n    <paragraph>\n        Done.\n",
+			want:   "<document>\n    <paragraph>\n        Intro paragraph.\n    <comment>\n        This is a comment.\n        Second comment line.\n    <directive name=\"note\">\n        This is directive content.\n        Second line.\n    <paragraph>\n        See \n        <reference name=\"Example\" refname=\"example\" refuri=\"https://example.com\">\n            Example\n         for details.\n    <target name=\"example\" refuri=\"https://example.com\">\n    <paragraph>\n        Here is a code sample:\n    <literal_block>\n        def f():\n            return 1\n    <paragraph>\n        Done.\n",
 		},
 		{
 			name:   "unresolved reference, empty comment, plain comment, directive with no content",
 			source: "An unresolved `Nowhere`_ reference.\n\n..\n\n.. plain comment no directive shape\n\n.. figure::\n",
-			want:   "<document>\n    <paragraph>\n        An unresolved \n        <reference refname=\"Nowhere\">\n            Nowhere\n         reference.\n    <comment>\n    <comment>\n        plain comment no directive shape\n    <directive name=\"figure\">\n",
+			want:   "<document>\n    <paragraph>\n        An unresolved \n        <reference name=\"Nowhere\" refname=\"nowhere\">\n            Nowhere\n         reference.\n    <comment>\n    <comment>\n        plain comment no directive shape\n    <directive name=\"figure\">\n",
 		},
 		{
 			name:   "list item containing a comment and a literal block",
@@ -105,6 +110,11 @@ func TestParse(t *testing.T) {
 			source: "- item with a footnote\n\n  .. [1] A footnote inside a list item.\n\n- item with a substitution definition\n\n  .. |x| replace:: y\n",
 			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a footnote\n            <footnote name=\"1\">\n                <label>\n                    1\n                <paragraph>\n                    A footnote inside a list item.\n        <list_item>\n            <paragraph>\n                item with a substitution definition\n            <substitution_definition arguments=\"y\" name=\"replace\" substitution=\"x\">\n",
 		},
+		{
+			name:   "bare and embedded-link references, indirect alias, default-role bare text",
+			source: "A bare_ reference and an anon__ one.\n\n.. _bare: https://bare.example.com\n\nEmbedded `Python <https://python.org>`_ link, an anonymous `embedded <https://anon.example.com>`__ link,\nand an indirect `alias name <target_>`_ reference.\n\n.. _target: https://indirect.example.com\n\nPlain `text` uses the default role.\n",
+			want:   "<document>\n    <paragraph>\n        A \n        <reference name=\"bare\" refname=\"bare\" refuri=\"https://bare.example.com\">\n            bare\n         reference and an \n        <reference anonymous=\"true\" name=\"anon\">\n            anon\n         one.\n    <target name=\"bare\" refuri=\"https://bare.example.com\">\n    <paragraph>\n        Embedded \n        <reference name=\"Python\" refuri=\"https://python.org\">\n            Python\n         link, an anonymous \n        <reference name=\"embedded\" refuri=\"https://anon.example.com\">\n            embedded\n         link,\n        and an indirect \n        <reference name=\"alias name\" refname=\"target\" refuri=\"https://indirect.example.com\">\n            alias name\n         reference.\n    <target name=\"target\" refuri=\"https://indirect.example.com\">\n    <paragraph>\n        Plain \n        <title_reference>\n            text\n         uses the default role.\n",
+		},
 	}
 
 	for _, tc := range cases {
@@ -126,11 +136,11 @@ func TestInline(t *testing.T) {
 		{"strong", "a **bold** word", "a \n<strong>\n    bold\n word\n"},
 		{"emphasis", "an *italic* word", "an \n<emphasis>\n    italic\n word\n"},
 		{"literal", "some ``code()`` here", "some \n<literal>\n    code()\n here\n"},
-		{"named reference", "see `Section`_ for details", "see \n<reference refname=\"Section\">\n    Section\n for details\n"},
+		{"named reference", "see `Section`_ for details", "see \n<reference name=\"Section\" refname=\"section\">\n    Section\n for details\n"},
 		{"no nested markup inside strong", "**a *b* c**", "<strong>\n    a *b* c\n"},
 		{"unmatched marker stays literal", "2 * 3 = 6", "2 * 3 = 6\n"},
 		{"backslash escape suppresses markup", "\\*not emphasis\\*", "*not emphasis*\n"},
-		{"anonymous reference", "see `some text`__ end", "see \n<reference anonymous=\"true\" refname=\"some text\">\n    some text\n end\n"},
+		{"anonymous reference", "see `some text`__ end", "see \n<reference anonymous=\"true\" name=\"some text\">\n    some text\n end\n"},
 		{"unclosed marker falls back to plain text", "an *unclosed emphasis stays plain", "an *unclosed emphasis stays plain\n"},
 		{"substitution reference", "see |name| here", "see \n<substitution_reference refname=\"name\">\n    name\n here\n"},
 		{"manually numbered footnote reference", "see [1]_ here", "see \n<footnote_reference refname=\"1\">\n    1\n here\n"},
@@ -138,6 +148,11 @@ func TestInline(t *testing.T) {
 		{"named auto-numbered footnote reference", "see [#note]_ here", "see \n<footnote_reference auto=\"1\" refname=\"note\">\n here\n"},
 		{"auto-symbol footnote reference", "see [*]_ here", "see \n<footnote_reference auto=\"*\">\n here\n"},
 		{"citation reference", "see [CIT2002]_ here", "see \n<citation_reference refname=\"cit2002\">\n    CIT2002\n here\n"},
+		{"bare word reference", "see bare_ here", "see \n<reference name=\"bare\" refname=\"bare\">\n    bare\n here\n"},
+		{"bare anonymous word reference", "see anon__ here", "see \n<reference anonymous=\"true\" name=\"anon\">\n    anon\n here\n"},
+		{"bare default-role text", "see `plain text` here", "see \n<title_reference>\n    plain text\n here\n"},
+		{"embedded URI phrase reference", "see `Python <https://python.org>`_ here", "see \n<reference name=\"Python\" refuri=\"https://python.org\">\n    Python\n here\n"},
+		{"embedded indirect alias phrase reference", "see `alias <target_>`_ here", "see \n<reference name=\"alias\" refname=\"target\">\n    alias\n here\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

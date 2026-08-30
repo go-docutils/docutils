@@ -12,16 +12,24 @@ import (
 // Inliner.parse.
 //
 // SCOPE (v1): strong (**x**), emphasis (*x*), literal (two backticks
-// around x), simple named reference (`x`_ and x_) and anonymous
-// reference (x__), substitution reference (|x|), footnote/citation
-// reference ([1]_ / [#]_ / [#name]_ / [*]_ / [name]_), and backslash
-// escapes. NOT yet ported: interpreted text roles (`x`:role:), embedded
-// URIs in phrase references, standalone URI/email/PEP/RFC recognition,
-// inline internal targets, a substitution reference used as a
-// hyperlink (|x|_ / |x|__). Content between markers is treated as plain
-// text and is not re-parsed for further inline markup, matching
-// docutils' actual (not merely documented) behavior: nested inline
-// markup does not match.
+// around x), a bare `x` with no role (docutils' DEFAULT role:
+// title_reference), named/anonymous reference both bare (x_, x__) and
+// backtick-quoted (`x`_, `x`__) including an embedded URI or indirect
+// name-alias target (`text <https://example.com>`_, `text <alias_>`_),
+// substitution reference (|x|), footnote/citation reference ([1]_ /
+// [#]_ / [#name]_ / [*]_ / [name]_), and backslash escapes. NOT yet
+// ported: interpreted text roles (`x`:role: / :role:`x` — anything
+// other than the bare/default-role form above), standalone
+// URI/email/PEP/RFC recognition, inline internal targets, a
+// substitution reference used as a hyperlink (|x|_ / |x|__), the extra
+// <target> sibling docutils emits next to a resolved embedded-link
+// reference (this parser sets refuri/refname directly on the
+// <reference> instead — reference resolution still works the same way
+// since resolveTargets matches by name, it just doesn't produce that
+// second node). Content between markers is treated as plain text and is
+// not re-parsed for further inline markup, matching docutils' actual
+// (not merely documented) behavior: nested inline markup does not
+// match.
 func parseInline(text string) []doctree.Node {
 	runes := escapeBackslashes(text)
 	var out []doctree.Node
@@ -37,6 +45,12 @@ func parseInline(text string) []doctree.Node {
 	n := len(runes)
 	for i < n {
 		if node, consumed, ok := tryFootnoteRef(runes, i); ok {
+			flush()
+			out = append(out, node)
+			i += consumed
+			continue
+		}
+		if node, consumed, ok := tryBareReference(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
@@ -149,25 +163,112 @@ func tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 	return nil, 0, false
 }
 
-// referenceOrPhrase builds a `text`_ / `text`__ reference node, checking
-// the text immediately after the closing backquote for the trailing
-// underscore(s), and returns how many extra runes that consumed.
+// referenceOrPhrase builds either a title_reference (bare `text`, no
+// trailing underscore — docutils' DEFAULT role) or a `text`_ / `text`__
+// reference node (checking the text immediately after the closing
+// backquote for the trailing underscore(s)), and returns how many extra
+// runes that consumed.
 func referenceOrPhrase(content string, afterClose int, runes []rune) (*doctree.Element, int) {
+	if !(afterClose < len(runes) && runes[afterClose] == '_') {
+		return doctree.NewElement(doctree.TagTitleReference, &doctree.Text{Data: content}), 0
+	}
 	anonymous := false
-	extra := 0
-	if afterClose < len(runes) && runes[afterClose] == '_' {
-		extra++
-		if afterClose+1 < len(runes) && runes[afterClose+1] == '_' {
-			anonymous = true
-			extra++
+	extra := 1
+	if afterClose+1 < len(runes) && runes[afterClose+1] == '_' {
+		anonymous = true
+		extra = 2
+	}
+	display, target, kind, hasEmbedded := splitEmbeddedLink(content)
+	text := content
+	if hasEmbedded {
+		text = display
+	}
+	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
+	el.SetAttr("name", normalizeWhitespace(text))
+	switch {
+	case hasEmbedded && kind == "uri":
+		el.SetAttr("refuri", target)
+	case hasEmbedded && kind == "name":
+		el.SetAttr("refname", normalizeName(target))
+	case anonymous:
+		el.SetAttr("anonymous", "true")
+	default:
+		el.SetAttr("refname", normalizeName(text))
+	}
+	return el, extra
+}
+
+// splitEmbeddedLink recognizes docutils' "embedded URI or alias" form
+// of a phrase reference: `display text <target>`_, where <target> is
+// either a URI (kind "uri") or, when it ends in "_" and doesn't look
+// like a URI, the name of another target defined elsewhere (kind
+// "name"). The "<" must be preceded by whitespace or start the string,
+// matching docutils' embedded_link pattern.
+func splitEmbeddedLink(content string) (display, target, kind string, ok bool) {
+	if !strings.HasSuffix(content, ">") {
+		return "", "", "", false
+	}
+	idx := strings.LastIndexByte(content, '<')
+	if idx < 0 || !(idx == 0 || content[idx-1] == ' ') {
+		return "", "", "", false
+	}
+	target = content[idx+1 : len(content)-1]
+	if target == "" {
+		return "", "", "", false
+	}
+	display = strings.TrimRight(content[:idx], " ")
+	if strings.HasSuffix(target, "_") && !strings.Contains(target, "://") {
+		return display, target[:len(target)-1], "name", true
+	}
+	if strings.Contains(target, "@") && !strings.Contains(target, "://") {
+		target = "mailto:" + target
+	}
+	return display, target, "uri", true
+}
+
+// tryBareReference recognizes a reference with no backtick delimiters
+// at all: word_ / word__ (docutils' 'whole' construct: a `simplename`
+// immediately followed by one or two trailing underscores). Only
+// letters, digits, and hyphens make up the name here — an internal "_"
+// would itself look like the very suffix this is trying to detect, so
+// (like real reST) a name containing one isn't reachable through this
+// bare form; write it backtick-quoted instead.
+func tryBareReference(runes []rune, i int) (doctree.Node, int, bool) {
+	if !isSimpleNameChar(runes[i]) || !validStartBoundary(runes, i, 0) {
+		return nil, 0, false
+	}
+	j := i
+	for j < len(runes) && isSimpleNameChar(runes[j]) {
+		j++
+	}
+	if j >= len(runes) || runes[j] != '_' {
+		return nil, 0, false
+	}
+	anonymous := false
+	end := j + 1
+	if end < len(runes) && runes[end] == '_' {
+		anonymous = true
+		end++
+	}
+	if end < len(runes) {
+		next := runes[end]
+		if !unicode.IsSpace(next) && !unicode.IsPunct(next) {
+			return nil, 0, false
 		}
 	}
-	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: content})
+	name := unescapeRunes(runes[i:j])
+	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: name})
+	el.SetAttr("name", normalizeWhitespace(name))
 	if anonymous {
 		el.SetAttr("anonymous", "true")
+	} else {
+		el.SetAttr("refname", normalizeName(name))
 	}
-	el.SetAttr("refname", content)
-	return el, extra
+	return el, end - i, true
+}
+
+func isSimpleNameChar(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-'
 }
 
 // tryFootnoteRef recognizes "[label]_" — a footnote reference ("[1]_",
