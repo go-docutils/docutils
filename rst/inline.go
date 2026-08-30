@@ -32,10 +32,17 @@ import (
 // recognition — no backtick quoting or trailing `_` needed at all,
 // matching docutils' implicit_inline fallback. NOT yet ported: docutils'
 // non-generic built-in roles (code, math, pep-reference, rfc-reference,
-// raw — each has real, non-generic behavior this doesn't replicate),
-// standalone PEP/RFC recognition (pep-123, RFC 123), inline internal
-// targets, a substitution reference used as a hyperlink (|x|_ / |x|__),
-// the extra <target> sibling docutils
+// raw — each has real, non-generic behavior this doesn't replicate).
+// Standalone PEP/RFC recognition (pep-123, RFC 123) is deliberately NOT
+// implemented, and not merely deferred: docutils' own pep_references/
+// rfc_references settings default to None (off) — verified against
+// Parser().parse() on "pep-8, PEP 257, RFC 2822" with default settings,
+// which produced plain text, no references at all. Implementing this
+// unconditionally would make this parser MORE aggressive than
+// docutils' own default, a real divergence rather than a gap filled.
+// Also not implemented: inline internal targets, a substitution
+// reference used as a hyperlink (|x|_ / |x|__), the extra <target>
+// sibling docutils
 // emits next to a resolved embedded-link reference (this parser sets
 // refuri/refname directly on the <reference> instead — reference
 // resolution still works the same way since resolveTargets matches by

@@ -108,6 +108,11 @@ func TestRenderContains(t *testing.T) {
 			"=====  =====\n1      one\n2      two\n=====  =====\n",
 			[]string{`\begin{tabular}{ll}`, `1 & one`, `2 & two`},
 		},
+		{
+			"grid table column span renders as \\multicolumn",
+			"+-----+-----+-----+\n| a   | b   | c   |\n+-----+-----+-----+\n| wide      | d   |\n+-----+-----+-----+\n",
+			[]string{`\begin{tabular}{lll}`, `a & b & c`, `\multicolumn{2}{l}{wide} & d`},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

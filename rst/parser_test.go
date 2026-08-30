@@ -11,36 +11,35 @@ import (
 // 0.23 for element shape. For most cases this used
 // `publish_string(..., writer_name='pseudoxml', settings_overrides=
 // {'doctitle_xform': False})`; for footnotes/citations/substitutions,
-// reference-resolution attributes, and simple tables, comparison instead
-// used a bare `Parser().parse(src, document)` to see the raw
-// pre-transform tree — some of these node shapes (numbering,
-// substitution-value inlining, indirect-target/embedded-link resolution
-// into a sibling <target>, and a table's <tgroup>/<colspec> column-width
-// metadata) are produced by transforms or writer-side code that run
-// AFTER parsing, not by the parser itself. This parser's OWN
-// reference-resolution pass (resolveTargets, see explicit.go) runs at
-// the end of Parse, so a refuri some fixtures below show already filled
-// in is this parser resolving it eagerly, matching docutils'
-// post-transform behavior even though the comparison target was
-// pre-transform for the rest of the shape. This project's own
-// doctree.Dump format is used throughout since ids/source attributes
-// are not yet implemented (see the package doc's SCOPE note). A field
-// list at the very start of a document is compared with
-// `docinfo_xform: False` too — real docutils otherwise promotes it to a
-// typed `<docinfo>` node, not implemented here. A line block with an
-// indented sub-line is compared against docutils' FLAT shape too: real
-// docutils nests such a line into a sub-`<line_block>` by relative
-// indent (nest_line_block_lines), not implemented here (see
-// lineblock.go). An unknown interpreted-text role is compared against
-// docutils' error shape too (a problematic node plus a system-message
-// section): this parser has no role registry, so it falls back to a
-// generic <inline role="..."> instead of erroring (see inline.go). The
-// simple-table fixtures are docutils' OWN SimpleTableParser docstring
-// example, verbatim — including its header, multi-line cell, nested
-// bullet list, and column-span row — plus this parser's own no-header
-// and inside-a-list-item cases; only the tgroup/colspec wrapper is
-// missing from the comparison, documented in table.go. Two more known,
-// documented divergences: a directive (including a substitution
+// reference-resolution attributes, and tables, comparison instead used a
+// bare `Parser().parse(src, document)` to see the raw pre-transform
+// tree — some of these node shapes (numbering, substitution-value
+// inlining, indirect-target/embedded-link resolution into a sibling
+// <target>, and a table's <tgroup>/<colspec> column-width metadata) are
+// produced by transforms or writer-side code that run AFTER parsing,
+// not by the parser itself. This parser's OWN reference-resolution pass
+// (resolveTargets, see explicit.go) runs at the end of Parse, so a
+// refuri some fixtures below show already filled in is this parser
+// resolving it eagerly, matching docutils' post-transform behavior even
+// though the comparison target was pre-transform for the rest of the
+// shape. This project's own doctree.Dump format is used throughout
+// since ids/source attributes are not yet implemented (see the package
+// doc's SCOPE note). A field list at the very start of a document is
+// compared with `docinfo_xform: False` too — real docutils otherwise
+// promotes it to a typed `<docinfo>` node, not implemented here. A
+// line block with an indented sub-line is compared against docutils'
+// FLAT shape too: real docutils nests such a line into a
+// sub-`<line_block>` by relative indent (nest_line_block_lines), not
+// implemented here (see lineblock.go). An unknown interpreted-text role
+// is compared against docutils' error shape too (a problematic node
+// plus a system-message section): this parser has no role registry, so
+// it falls back to a generic <inline role="..."> instead of erroring
+// (see inline.go). The simple-table and grid-table fixtures are
+// docutils' OWN SimpleTableParser/GridTableParser docstring examples,
+// verbatim — including header, multi-line cell, nested bullet list, and
+// column-span/row-span rows; only the tgroup/colspec wrapper is missing
+// from the comparison (documented in table.go/gridtable.go). Two more
+// known, documented divergences: a directive (including a substitution
 // definition's embedded `replace::`) is captured structurally rather
 // than dispatched to semantics, and an unresolved reference stays a
 // bare reference node instead of being rewritten to `problematic` with
@@ -155,6 +154,21 @@ func TestParse(t *testing.T) {
 			name:   "standalone URI inside a list item and email in another",
 			source: "- see https://example.com here\n- and jane@example.org too\n\nA URL at end of line: https://example.com/end\n",
 			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                see \n                <reference refuri=\"https://example.com\">\n                    https://example.com\n                 here\n        <list_item>\n            <paragraph>\n                and \n                <reference refuri=\"mailto:jane@example.org\">\n                    jane@example.org\n                 too\n    <paragraph>\n        A URL at end of line: \n        <reference refuri=\"https://example.com/end\">\n            https://example.com/end\n",
+		},
+		{
+			name:   "grid table with header, column span, row span, and a nested list",
+			source: "+------------------------+------------+----------+----------+\n| Header row, column 1   | Header 2   | Header 3 | Header 4 |\n+========================+============+==========+==========+\n| body row 1, column 1   | column 2   | column 3 | column 4 |\n+------------------------+------------+----------+----------+\n| body row 2             | Cells may span columns.          |\n+------------------------+------------+---------------------+\n| body row 3             | Cells may  | - Table cells       |\n+------------------------+ span rows. | - contain           |\n| body row 4             |            | - body elements.    |\n+------------------------+------------+---------------------+\n",
+			want:   "<document>\n    <table>\n        <thead>\n            <row>\n                <entry>\n                    <paragraph>\n                        Header row, column 1\n                <entry>\n                    <paragraph>\n                        Header 2\n                <entry>\n                    <paragraph>\n                        Header 3\n                <entry>\n                    <paragraph>\n                        Header 4\n        <tbody>\n            <row>\n                <entry>\n                    <paragraph>\n                        body row 1, column 1\n                <entry>\n                    <paragraph>\n                        column 2\n                <entry>\n                    <paragraph>\n                        column 3\n                <entry>\n                    <paragraph>\n                        column 4\n            <row>\n                <entry>\n                    <paragraph>\n                        body row 2\n                <entry morecols=\"2\">\n                    <paragraph>\n                        Cells may span columns.\n            <row>\n                <entry>\n                    <paragraph>\n                        body row 3\n                <entry morerows=\"1\">\n                    <paragraph>\n                        Cells may\n                        span rows.\n                <entry morecols=\"1\" morerows=\"1\">\n                    <bullet_list bullet=\"-\">\n                        <list_item>\n                            <paragraph>\n                                Table cells\n                        <list_item>\n                            <paragraph>\n                                contain\n                        <list_item>\n                            <paragraph>\n                                body elements.\n            <row>\n                <entry>\n                    <paragraph>\n                        body row 4\n",
+		},
+		{
+			name:   "headerless grid table",
+			source: "+-----+-----+\n| a   | b   |\n+-----+-----+\n| 1   | 2   |\n+-----+-----+\n",
+			want:   "<document>\n    <table>\n        <tbody>\n            <row>\n                <entry>\n                    <paragraph>\n                        a\n                <entry>\n                    <paragraph>\n                        b\n            <row>\n                <entry>\n                    <paragraph>\n                        1\n                <entry>\n                    <paragraph>\n                        2\n",
+		},
+		{
+			name:   "grid table inside a list item",
+			source: "- item with a grid table\n\n  +-----+-----+\n  | a   | b   |\n  +-----+-----+\n  | 1   | 2   |\n  +-----+-----+\n\n- item two\n",
+			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a grid table\n            <table>\n                <tbody>\n                    <row>\n                        <entry>\n                            <paragraph>\n                                a\n                        <entry>\n                            <paragraph>\n                                b\n                    <row>\n                        <entry>\n                            <paragraph>\n                                1\n                        <entry>\n                            <paragraph>\n                                2\n        <list_item>\n            <paragraph>\n                item two\n",
 		},
 	}
 

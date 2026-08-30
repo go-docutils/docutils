@@ -47,23 +47,27 @@ backslash escapes; standalone URI (`scheme://...`) and email
 (`user@host`) recognition — no backtick quoting or trailing `_` needed
 at all, e.g. plain `https://example.com` in running text becomes a
 reference on its own, trailing sentence punctuation (`, and .`)
-correctly excluded from the link; and SIMPLE tables (`=====`-bordered,
-with an optional `-----`-underlined column-span row and a
+correctly excluded from the link; SIMPLE tables (`=====`-bordered, with
+an optional `-----`-underlined column-span row and a
 multi-line/nested-list cell content — docutils' own SimpleTableParser
-docstring example is this parser's own test fixture, verbatim).
+docstring example is this parser's own test fixture, verbatim); and
+GRID tables (`+---+---+`-bordered, `|`-separated columns, an optional
+`+===+===+` head/body separator, cells spanning multiple ROWS as well
+as columns — likewise docutils' own GridTableParser docstring example,
+verbatim, traced with the same BFS cell-rectangle algorithm as
+upstream: a queue of corner candidates, scanning right/down/left/up
+around each cell to close its rectangle and discover the next cells'
+starting corners).
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
-`lineblock.go`/`inline.go`/`table.go` doc comments for the exact list
-and why): option lists (deferred — complex marker grammar, rare outside
-man-page-style CLI docs), GRID tables (`+---+---+`-bordered — a real 2D
-cell-boundary scan in 4 directions, meaningfully more work than simple
-tables, which were done first), docutils' non-generic built-in roles
-(`code`, `math`, `pep-reference`, `rfc-reference`, `raw`), standalone
-PEP/RFC recognition (`pep-123`, `RFC 123`), indirect/anonymous
-hyperlink *targets* (as opposed to *references*, which — see above —
-are supported), inline internal targets, a substitution reference used
-as a hyperlink.
-Title-style consistency and enumerator-sequence validation are not
+`lineblock.go`/`inline.go`/`table.go`/`gridtable.go` doc comments for
+the exact list and why): option lists (deferred — complex marker
+grammar, rare outside man-page-style CLI docs), docutils' non-generic
+built-in roles (`code`, `math`, `pep-reference`, `rfc-reference`,
+`raw`), indirect/anonymous hyperlink *targets* (as opposed to
+*references*, which — see above — are supported), inline internal
+targets, a substitution reference used as a hyperlink. Title-style
+consistency and enumerator-sequence validation are not
 enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
 content relies on it). An unresolved reference or an unknown
@@ -110,7 +114,9 @@ another parser's worth of work, for a stylesheet Sphinx doesn't even
 use (it has its own Jinja2 templates). Tag choices follow
 html5_polyglot where there's an obvious correspondence
 (section/h1-h6/p/ul/ol/li/blockquote/table/thead/tbody/tr/td/th,
-em/strong/code/cite/sub/sup/abbr); a directive (including a
+em/strong/code/cite/sub/sup/abbr; a grid-table cell's column/row span
+becomes `colspan`/`rowspan`, HTML's own native primitives for exactly
+this); a directive (including a
 substitution definition's embedded `replace::`) renders as
 `<pre class="directive" data-directive="name">` rather than being
 silently dropped, since there's no semantic dispatch to render it
@@ -142,7 +148,14 @@ constructs (`itemize`/`enumerate`/`quote`/`verbatim`/`description`/
 `verse`/`tabular`), so it always compiles without a custom macro
 package. A table's cell content is flattened to plain text — a nested
 list or multi-paragraph cell would need a `p{width}` column + minipage
-to stay valid LaTeX, not implemented here. Footnotes/citations don't use
+to stay valid LaTeX, not implemented here. A grid-table cell's column
+span renders as `\multicolumn` (plain LaTeX, no package); its ROW span
+does NOT — plain `tabular` has no rowspan primitive without the
+`multirow` package, which this writer deliberately never depends on, so
+a row-spanning cell's content still appears but isn't merged, which can
+visually misalign a later row that relied on the merge (real row/column
+spans both work correctly in `html.Render`, since HTML has native
+primitives for this and no such package constraint). Footnotes/citations don't use
 LaTeX's native `\footnote` (it wants inline content at the reference
 point, docutils' doctree has them as separate nodes); a reference
 renders as a `\hyperlink` jump to a labeled paragraph where the
@@ -172,5 +185,5 @@ hand-transcribed (for footnotes/citations/substitutions, "docutils
 foreign judge" means `Parser().parse(src, document)` directly rather
 than `publish_string`, to see the tree before docutils' own transforms
 run — see the `rst` package doc comment). Coverage as of this writing:
-`doctree` 97%, `rst` 93%, `html` 87%, `latex` 87%. `go vet ./...` and
+`doctree` 97%, `rst` 93%, `html` 89%, `latex` 87%. `go vet ./...` and
 `gofmt -l .` clean.

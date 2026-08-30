@@ -18,7 +18,16 @@
 // full document is the useful unit. A table's cell content is flattened to
 // plain text (doctree.AsText) rather than walked recursively: a nested
 // list or multi-paragraph cell needs a `p{width}` column + minipage to be
-// valid LaTeX, not implemented here. Footnotes/citations don't use LaTeX's
+// valid LaTeX, not implemented here. A grid-table cell's column span
+// (morecols) is rendered with `\multicolumn` (plain LaTeX, no package);
+// its ROW span (morerows — a cell spanning multiple text rows) is NOT
+// rendered specially at all: plain `tabular` has no rowspan primitive
+// without the `multirow` package, which this writer deliberately never
+// depends on (see the module doc comment) — a row-spanning grid-table
+// cell's content still appears, just not merged, so a later row that
+// relied on that merge to stay aligned may visually misalign. Real
+// row/column spans work correctly in html.Render (`rowspan`/`colspan`
+// are native HTML). Footnotes/citations don't use LaTeX's
 // native \footnote (which wants inline content at the reference point, not
 // docutils' separate reference/definition nodes) — a reference renders as
 // a hyperref jump to a labeled paragraph where the definition appears in
@@ -311,7 +320,13 @@ func renderTableRows(b *strings.Builder, group *doctree.Element) {
 			if !ok || entry.Tag != doctree.TagEntry {
 				continue
 			}
-			cells = append(cells, escapeText(doctree.AsText(entry)))
+			text := escapeText(doctree.AsText(entry))
+			if mc := entry.Attr("morecols"); mc != "" {
+				if n, err := strconv.Atoi(mc); err == nil {
+					text = `\multicolumn{` + strconv.Itoa(n+1) + `}{l}{` + text + `}`
+				}
+			}
+			cells = append(cells, text)
 		}
 		b.WriteString(strings.Join(cells, " & ") + " \\\\\n")
 	}

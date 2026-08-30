@@ -231,7 +231,12 @@ func renderRow(b *strings.Builder, cellTag string, row *doctree.Element, heading
 		attrs := ""
 		if mc := entry.Attr("morecols"); mc != "" {
 			if n, err := strconv.Atoi(mc); err == nil {
-				attrs = ` colspan="` + strconv.Itoa(n+1) + `"`
+				attrs += ` colspan="` + strconv.Itoa(n+1) + `"`
+			}
+		}
+		if mr := entry.Attr("morerows"); mr != "" {
+			if n, err := strconv.Atoi(mr); err == nil {
+				attrs += ` rowspan="` + strconv.Itoa(n+1) + `"`
 			}
 		}
 		writeTag(b, cellTag, attrs, entry, headingLevel)

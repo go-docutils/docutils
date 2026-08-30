@@ -109,6 +109,18 @@ func TestRender(t *testing.T) {
 			"An auto footnote [#]_.\n\n.. [#] Text.\n",
 			`<p>An auto footnote .</p><div class="footnote"><p>Text.</p></div>`,
 		},
+		{
+			"grid table column span renders as colspan",
+			"+-----+-----+-----+\n| a   | b   | c   |\n+-----+-----+-----+\n| wide      | d   |\n+-----+-----+-----+\n",
+			`<table><tbody><tr><td><p>a</p></td><td><p>b</p></td><td><p>c</p></td></tr>` +
+				`<tr><td colspan="2"><p>wide</p></td><td><p>d</p></td></tr></tbody></table>`,
+		},
+		{
+			"grid table row span renders as rowspan",
+			"+-----+------+\n| a   | tall |\n+-----+      |\n| b   |      |\n+-----+------+\n",
+			`<table><tbody><tr><td><p>a</p></td><td rowspan="2"><p>tall</p></td></tr>` +
+				`<tr><td><p>b</p></td></tr></tbody></table>`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
