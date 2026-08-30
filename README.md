@@ -36,28 +36,36 @@ role, `title_reference`), named/anonymous references both bare (`x_`,
 `x__`) and backtick-quoted (`` `x`_ ``, `` `x`__ ``) including an
 embedded URI or indirect-name target (`` `text <https://example.com>`_
 ``, `` `text <alias_>`_ ``, with `mailto:` auto-prefixing for an
-embedded email address), and backslash escapes.
+embedded email address), interpreted text with a role, prefix
+(`` :role:`x` ``) or suffix (`` `x`:role: ``), for docutils' built-in
+GENERIC roles (`emphasis`, `strong`, `literal`, `subscript`/`sub`,
+`superscript`/`sup`, `title-reference`/`title`/`t`,
+`abbreviation`/`ab`, `acronym`/`ac`) — any other role name (there is no
+`.. role::` registry, same philosophy as directives) falls back to a
+generic `<inline role="name">` rather than docutils' error, and
+backslash escapes.
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
 `lineblock.go`/`inline.go` doc comments for the exact list and why):
 option lists (deferred — complex marker grammar, rare outside
-man-page-style CLI docs), tables, interpreted-text roles other than the
-bare/default-role form above (`` `x`:role: `` / `` :role:`x` ``),
-standalone URI/email/PEP/RFC recognition, indirect/anonymous hyperlink
-*targets* (as opposed to *references*, which — see above — are
-supported), inline internal targets, a substitution reference used as a
-hyperlink. Title-style consistency and enumerator-sequence validation
-are not enforced. An unresolved reference stays a bare node instead of
-being rewritten to `problematic` with an error message, a leading field
-list isn't promoted to a typed `<docinfo>` node, a line block with a
-deeper-indented sub-line stays FLAT instead of being nested into a
-sub-`<line_block>`, footnotes/citations get no auto-numbering or
-auto-symbol resolution, and a resolved embedded-link reference doesn't
-get the extra `<target>` sibling node docutils emits alongside it (this
-parser sets `refuri`/`refname` directly on the `<reference>` instead;
-resolution still works the same way since it's all done by matching
-names, just without that second node) — all transforms/emissions real
-docutils applies after the initial parse (verified by comparing against
+man-page-style CLI docs), tables, docutils' non-generic built-in roles
+(`code`, `math`, `pep-reference`, `rfc-reference`, `raw`), standalone
+URI/email/PEP/RFC recognition, indirect/anonymous hyperlink *targets*
+(as opposed to *references*, which — see above — are supported),
+inline internal targets, a substitution reference used as a hyperlink.
+Title-style consistency and enumerator-sequence validation are not
+enforced. An unresolved reference or an unknown interpreted-text role
+stays a plain node instead of being rewritten to `problematic` with an
+error message, a leading field list isn't promoted to a typed
+`<docinfo>` node, a line block with a deeper-indented sub-line stays
+FLAT instead of being nested into a sub-`<line_block>`,
+footnotes/citations get no auto-numbering or auto-symbol resolution,
+and a resolved embedded-link reference doesn't get the extra `<target>`
+sibling node docutils emits alongside it (this parser sets
+`refuri`/`refname` directly on the `<reference>` instead; resolution
+still works the same way since it's all done by matching names, just
+without that second node) — all transforms/emissions real docutils
+applies after the initial parse (verified by comparing against
 `Parser().parse(src, document)` directly, before docutils' own
 transform pipeline runs, not `publish_string`'s fully-transformed
 output). Sphinx's `autodoc` extension (and `napoleon`, downstream of

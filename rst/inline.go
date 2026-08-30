@@ -12,24 +12,34 @@ import (
 // Inliner.parse.
 //
 // SCOPE (v1): strong (**x**), emphasis (*x*), literal (two backticks
-// around x), a bare `x` with no role (docutils' DEFAULT role:
-// title_reference), named/anonymous reference both bare (x_, x__) and
-// backtick-quoted (`x`_, `x`__) including an embedded URI or indirect
-// name-alias target (`text <https://example.com>`_, `text <alias_>`_),
-// substitution reference (|x|), footnote/citation reference ([1]_ /
-// [#]_ / [#name]_ / [*]_ / [name]_), and backslash escapes. NOT yet
-// ported: interpreted text roles (`x`:role: / :role:`x` — anything
-// other than the bare/default-role form above), standalone
-// URI/email/PEP/RFC recognition, inline internal targets, a
-// substitution reference used as a hyperlink (|x|_ / |x|__), the extra
-// <target> sibling docutils emits next to a resolved embedded-link
-// reference (this parser sets refuri/refname directly on the
-// <reference> instead — reference resolution still works the same way
-// since resolveTargets matches by name, it just doesn't produce that
-// second node). Content between markers is treated as plain text and is
-// not re-parsed for further inline markup, matching docutils' actual
-// (not merely documented) behavior: nested inline markup does not
-// match.
+// around x), interpreted text with a role — prefix (:role:`x`) or
+// suffix (`x`:role:) — for the small fixed set of docutils' built-in
+// GENERIC roles (emphasis, strong, literal, subscript/sub,
+// superscript/sup, title-reference/title/t, abbreviation/ab,
+// acronym/ac; see roleTags) plus a bare `x` with no role at all
+// (docutils' DEFAULT role, title_reference); any OTHER role name falls
+// back to a generic <inline role="name"> instead of docutils' `.. role
+// ::`-registry dispatch (there is no role registry here, same
+// no-registry philosophy as directives) — real docutils also ERRORS on
+// a role it cannot find at all (rewriting it to `problematic`), which
+// this parser does not replicate, so an unknown role never fails, it
+// just becomes generic. Named/anonymous reference both bare (x_, x__)
+// and backtick-quoted (`x`_, `x`__) including an embedded URI or
+// indirect name-alias target (`text <https://example.com>`_, `text
+// <alias_>`_), substitution reference (|x|), footnote/citation
+// reference ([1]_ / [#]_ / [#name]_ / [*]_ / [name]_), and backslash
+// escapes. NOT yet ported: docutils' non-generic built-in roles (code,
+// math, pep-reference, rfc-reference, raw — each has real, non-generic
+// behavior this doesn't replicate), standalone URI/email/PEP/RFC
+// recognition, inline internal targets, a substitution reference used
+// as a hyperlink (|x|_ / |x|__), the extra <target> sibling docutils
+// emits next to a resolved embedded-link reference (this parser sets
+// refuri/refname directly on the <reference> instead — reference
+// resolution still works the same way since resolveTargets matches by
+// name, it just doesn't produce that second node). Content between
+// markers is treated as plain text and is not re-parsed for further
+// inline markup, matching docutils' actual (not merely documented)
+// behavior: nested inline markup does not match.
 func parseInline(text string) []doctree.Node {
 	runes := escapeBackslashes(text)
 	var out []doctree.Node
@@ -51,6 +61,12 @@ func parseInline(text string) []doctree.Node {
 			continue
 		}
 		if node, consumed, ok := tryBareReference(runes, i); ok {
+			flush()
+			out = append(out, node)
+			i += consumed
+			continue
+		}
+		if node, consumed, ok := tryInterpretedOrPhraseRef(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
@@ -114,17 +130,20 @@ func escapeBackslashes(s string) []rune {
 	return out
 }
 
-// marker describes one inline-markup delimiter pair.
+// marker describes one inline-markup delimiter pair. Backtick-quoted
+// text (interpreted text / phrase references) is NOT in this table —
+// its content needs role/underscore lookahead beyond "does the closing
+// delimiter match", so it's handled separately by
+// tryInterpretedOrPhraseRef.
 type marker struct {
 	open string
-	tag  string // doctree tag, or "" for reference handling
+	tag  string
 }
 
 var markers = []marker{
 	{"**", doctree.TagStrong},
 	{"``", doctree.TagLiteral},
 	{"*", doctree.TagEmphasis},
-	{"`", ""}, // interpreted/phrase reference, handled specially below
 	{"|", doctree.TagSubstitutionRef},
 }
 
@@ -150,10 +169,6 @@ func tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 			continue // start-string immediately followed by end-string: no match
 		}
 		total := (closeAt + closeLen) - i
-		if m.tag == "" {
-			el, extra := referenceOrPhrase(content, closeAt+closeLen, runes)
-			return el, total + extra, true
-		}
 		el := doctree.NewElement(m.tag, &doctree.Text{Data: content})
 		if m.tag == doctree.TagSubstitutionRef {
 			el.SetAttr("refname", normalizeWhitespace(content))
@@ -224,6 +239,104 @@ func splitEmbeddedLink(content string) (display, target, kind string, ok bool) {
 		target = "mailto:" + target
 	}
 	return display, target, "uri", true
+}
+
+// tryInterpretedOrPhraseRef handles every backtick-quoted construct:
+// role-prefixed (:role:`x`), role-suffixed (`x`:role:), a plain phrase
+// reference or bare title_reference (referenceOrPhrase, no role at
+// all). docutils.parsers.rst.states.Inliner.interpreted_or_phrase_ref.
+func tryInterpretedOrPhraseRef(runes []rune, i int) (doctree.Node, int, bool) {
+	backtickAt := i
+	prefixRole := ""
+	if runes[i] == ':' {
+		role, afterColon, ok := tryRoleName(runes, i+1)
+		if !ok || afterColon >= len(runes) || runes[afterColon] != '`' {
+			return nil, 0, false
+		}
+		prefixRole = role
+		backtickAt = afterColon
+	}
+	if runes[backtickAt] != '`' {
+		return nil, 0, false
+	}
+	if backtickAt+1 < len(runes) && runes[backtickAt+1] == '`' {
+		// A single backtick immediately followed by another is the
+		// START of a double-backtick literal (``x``), not interpreted
+		// text — docutils' backquote pattern is '`(?!`)'. Let tryMarker
+		// handle it instead.
+		return nil, 0, false
+	}
+	if !validStartBoundary(runes, i, backtickAt-i+1) {
+		return nil, 0, false
+	}
+	closeAt, closeLen, ok := findClose(runes, backtickAt+1, "`")
+	if !ok {
+		return nil, 0, false
+	}
+	content := unescapeRunes(runes[backtickAt+1 : closeAt])
+	if content == "" {
+		return nil, 0, false
+	}
+	afterClose := closeAt + closeLen
+
+	if prefixRole != "" {
+		return roleElement(prefixRole, content), afterClose - i, true
+	}
+	if afterClose < len(runes) && runes[afterClose] == ':' {
+		if role, afterRole, ok := tryRoleName(runes, afterClose+1); ok {
+			return roleElement(role, content), afterRole - i, true
+		}
+	}
+	el, extra := referenceOrPhrase(content, afterClose, runes)
+	return el, (afterClose - i) + extra, true
+}
+
+// tryRoleName recognizes a ":name" immediately followed by a closing
+// ":" starting at `from` (the position right after the opening ":"),
+// returning the role name and the position right after the closing ":".
+func tryRoleName(runes []rune, from int) (name string, after int, ok bool) {
+	j := from
+	for j < len(runes) && isRoleNameChar(runes[j]) {
+		j++
+	}
+	if j == from || j >= len(runes) || runes[j] != ':' {
+		return "", 0, false
+	}
+	return string(runes[from:j]), j + 1, true
+}
+
+func isRoleNameChar(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-'
+}
+
+// roleTags maps docutils' built-in GENERIC role canonical/alias names
+// (docutils.parsers.rst.languages.en.roles, English only — this parser
+// doesn't support other languages' role names) to the doctree tag they
+// produce. A role not in this table falls back to a generic <inline>.
+var roleTags = map[string]string{
+	"emphasis":        doctree.TagEmphasis,
+	"strong":          doctree.TagStrong,
+	"literal":         doctree.TagLiteral,
+	"subscript":       doctree.TagSubscript,
+	"sub":             doctree.TagSubscript,
+	"superscript":     doctree.TagSuperscript,
+	"sup":             doctree.TagSuperscript,
+	"title-reference": doctree.TagTitleReference,
+	"title":           doctree.TagTitleReference,
+	"t":               doctree.TagTitleReference,
+	"abbreviation":    doctree.TagAbbreviation,
+	"ab":              doctree.TagAbbreviation,
+	"acronym":         doctree.TagAcronym,
+	"ac":              doctree.TagAcronym,
+}
+
+func roleElement(role, content string) *doctree.Element {
+	if tag, ok := roleTags[strings.ToLower(role)]; ok {
+		return doctree.NewElement(tag, &doctree.Text{Data: content})
+	}
+	el := doctree.NewElement(doctree.TagInline, &doctree.Text{Data: content})
+	el.SetAttr("role", strings.ToLower(role))
+	return el
 }
 
 // tryBareReference recognizes a reference with no backtick delimiters

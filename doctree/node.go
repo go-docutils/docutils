@@ -86,6 +86,11 @@ const (
 	TagCitationReference  = "citation_reference"
 	TagSubstitutionDef    = "substitution_definition"
 	TagTitleReference     = "title_reference"
+	TagSubscript          = "subscript"
+	TagSuperscript        = "superscript"
+	TagAbbreviation       = "abbreviation"
+	TagAcronym            = "acronym"
+	TagInline             = "inline"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

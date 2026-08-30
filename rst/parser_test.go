@@ -29,11 +29,15 @@ import (
 // indented sub-line is compared against docutils' FLAT shape too: real
 // docutils nests such a line into a sub-`<line_block>` by relative
 // indent (nest_line_block_lines), not implemented here (see
-// lineblock.go). Two more known, documented divergences: a directive
-// (including a substitution definition's embedded `replace::`) is
-// captured structurally rather than dispatched to semantics, and an
-// unresolved reference stays a bare reference node instead of being
-// rewritten to `problematic` with an appended system-message section.
+// lineblock.go). An unknown interpreted-text role is compared against
+// docutils' error shape too (a problematic node plus a system-message
+// section): this parser has no role registry, so it falls back to a
+// generic <inline role="..."> instead of erroring (see inline.go).
+// Two more known, documented divergences: a directive (including a
+// substitution definition's embedded `replace::`) is captured
+// structurally rather than dispatched to semantics, and an unresolved
+// reference stays a bare reference node instead of being rewritten to
+// `problematic` with an appended system-message section.
 func TestParse(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -115,6 +119,11 @@ func TestParse(t *testing.T) {
 			source: "A bare_ reference and an anon__ one.\n\n.. _bare: https://bare.example.com\n\nEmbedded `Python <https://python.org>`_ link, an anonymous `embedded <https://anon.example.com>`__ link,\nand an indirect `alias name <target_>`_ reference.\n\n.. _target: https://indirect.example.com\n\nPlain `text` uses the default role.\n",
 			want:   "<document>\n    <paragraph>\n        A \n        <reference name=\"bare\" refname=\"bare\" refuri=\"https://bare.example.com\">\n            bare\n         reference and an \n        <reference anonymous=\"true\" name=\"anon\">\n            anon\n         one.\n    <target name=\"bare\" refuri=\"https://bare.example.com\">\n    <paragraph>\n        Embedded \n        <reference name=\"Python\" refuri=\"https://python.org\">\n            Python\n         link, an anonymous \n        <reference name=\"embedded\" refuri=\"https://anon.example.com\">\n            embedded\n         link,\n        and an indirect \n        <reference name=\"alias name\" refname=\"target\" refuri=\"https://indirect.example.com\">\n            alias name\n         reference.\n    <target name=\"target\" refuri=\"https://indirect.example.com\">\n    <paragraph>\n        Plain \n        <title_reference>\n            text\n         uses the default role.\n",
 		},
+		{
+			name:   "interpreted text roles: prefix, suffix, aliases, unknown role, literal unaffected",
+			source: "plain `text` here, a suffix role `role text`:emphasis: and a prefix role :strong:`prefix role`.\nAlso :sub:`subscript`, :sup:`superscript`, :title:`a title`, :ab:`WHO`, :acronym:`NASA`.\nAn unknown role :custom:`text` becomes generic, and so does `other`:unknown-role:.\nA literal ``code()`` still works fine next to it.\n",
+			want:   "<document>\n    <paragraph>\n        plain \n        <title_reference>\n            text\n         here, a suffix role \n        <emphasis>\n            role text\n         and a prefix role \n        <strong>\n            prefix role\n        .\n        Also \n        <subscript>\n            subscript\n        , \n        <superscript>\n            superscript\n        , \n        <title_reference>\n            a title\n        , \n        <abbreviation>\n            WHO\n        , \n        <acronym>\n            NASA\n        .\n        An unknown role \n        <inline role=\"custom\">\n            text\n         becomes generic, and so does \n        <inline role=\"unknown-role\">\n            other\n        .\n        A literal \n        <literal>\n            code()\n         still works fine next to it.\n",
+		},
 	}
 
 	for _, tc := range cases {
@@ -153,6 +162,10 @@ func TestInline(t *testing.T) {
 		{"bare default-role text", "see `plain text` here", "see \n<title_reference>\n    plain text\n here\n"},
 		{"embedded URI phrase reference", "see `Python <https://python.org>`_ here", "see \n<reference name=\"Python\" refuri=\"https://python.org\">\n    Python\n here\n"},
 		{"embedded indirect alias phrase reference", "see `alias <target_>`_ here", "see \n<reference name=\"alias\" refname=\"target\">\n    alias\n here\n"},
+		{"prefix role", "see :strong:`bold text` here", "see \n<strong>\n    bold text\n here\n"},
+		{"suffix role", "see `bold text`:strong: here", "see \n<strong>\n    bold text\n here\n"},
+		{"role alias sub/sup", "see :sub:`x` and :sup:`y` here", "see \n<subscript>\n    x\n and \n<superscript>\n    y\n here\n"},
+		{"unknown role falls back to generic inline", "see :custom:`x` here", "see \n<inline role=\"custom\">\n    x\n here\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
