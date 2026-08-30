@@ -120,15 +120,25 @@ input this parser has never had to reason about). Title-style
 consistency and enumerator-sequence validation are not
 enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
-content relies on it). An unresolved reference or an unknown
-interpreted-text role stays a plain node instead of being rewritten to
-`problematic` with an error message, and a resolved embedded-link
-reference doesn't get the extra `<target>` sibling node docutils emits
-alongside it (this parser sets `refuri`/`refname` directly on the `<reference>` instead;
-resolution still works the same way since it's all done by matching
-names, just without that second node) — genuinely unported transforms,
-unlike target/anonymous resolution, footnote numbering, and docinfo
-promotion above, each a deliberately simplified PORT of the
+content relies on it). A dangling NAMED reference (bare, backtick-quoted,
+or an embedded indirect alias — matched by name and found nowhere) IS
+rewritten to `<problematic>`, with every such message collected into a
+trailing `<section class="system-messages">`, docutils' own
+DanglingReferences + Messages transforms, simplified: no
+duplicate/ambiguous-name diagnostics, and `<problematic>`'s content is the
+reference's own visible text rather than real docutils' verbatim source
+slice (this parser doesn't track original source text on a node at all).
+An unmatched ANONYMOUS reference (too few anonymous targets for the
+references consuming them) and an unknown interpreted-text role both
+still stay a plain node instead — a real docutils error too, just a
+different, rarer one this project hasn't ported yet. A resolved
+embedded-link reference doesn't get the extra `<target>` sibling node
+docutils emits alongside it (this parser sets `refuri`/`refname` directly
+on the `<reference>` instead; resolution still works the same way since
+it's all done by matching names, just without that second node) —
+genuinely unported transforms, unlike target/anonymous resolution,
+footnote numbering, docinfo promotion, and dangling-named-reference
+rewriting above, each a deliberately simplified PORT of the
 corresponding real transform, not a parser-level gap (verified by comparing
 against `Parser().parse(src, document)` directly, before docutils' own
 transform pipeline runs, not `publish_string`'s fully-transformed

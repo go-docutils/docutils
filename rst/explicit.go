@@ -1,6 +1,7 @@
 package rst
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/go-docutils/docutils/doctree"
@@ -342,8 +343,18 @@ func normalizeName(s string) string {
 // anonymous ones (".. __: uri") into a separate document-order list — then
 // walks it again setting refuri on every reference: by name for a named
 // one, or by consuming the next unused anonymous target in document order
-// for an anonymous one. docutils' target resolution transform, drastically
-// simplified (no duplicate/ambiguous-name diagnostics).
+// for an anonymous one. A NAMED reference (bare, backtick-quoted, or
+// embedded-indirect-alias — anonymous ones are not covered, see
+// linkReferences) whose name matches no target anywhere is rewritten to a
+// <problematic> in place, docutils' own DanglingReferences transform,
+// simplified: no duplicate/ambiguous-name diagnostics, and the
+// <problematic>'s content is the reference's own VISIBLE text rather than
+// real docutils' verbatim source slice (rawsource) — this parser doesn't
+// track original source text on a reference node at all (see the package
+// SCOPE note on ids/source attributes), so "broken_" resynthesizes as
+// "broken", the same category of simplification already accepted
+// elsewhere in this project (go-richdoc/rst's own Raw* reconstruction
+// helpers) rather than a new one invented for this feature.
 func resolveTargets(doc *doctree.Element) {
 	direct := map[string]string{}
 	indirect := map[string]string{}
@@ -370,7 +381,12 @@ func resolveTargets(doc *doctree.Element) {
 		}
 	}
 	anonIndex := 0
-	linkReferences(doc, targets, anonURIs, &anonIndex)
+	var messages []*doctree.Element
+	msgCount := 0
+	linkReferences(doc, targets, anonURIs, &anonIndex, &messages, &msgCount)
+	if len(messages) > 0 {
+		doc.Append(systemMessagesSection(messages))
+	}
 }
 
 // anonTarget is one ".. __: ..." target in document order: either a direct
@@ -410,9 +426,16 @@ func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTarg
 
 // resolveIndirect chases an indirect target's refname chain
 // ("a" -> "b" -> "c" -> a real refuri) to its final URI. depth guards
-// against a cycle ("a" -> "b" -> "a"), which real docutils reports as an
-// error; this simplified version just leaves it unresolved, same as any
-// other name with no matching target.
+// against a cycle ("a" -> "b" -> "a") — checked against the foreign judge:
+// real docutils does NOT report this as an error at all, it resolves
+// SILENTLY to an odd same-document self-reference (the reference ends up
+// pointing at its own cycle's first target by id) that this project
+// doesn't replicate; this simplified version just leaves a cycle
+// unresolved, same as any other name with no matching target, which
+// (since problematic-rewriting was added) now surfaces it as a dangling
+// reference — a real practical difference from real docutils' silence,
+// but arguably a more honest one for a document that has an actual bug in
+// it.
 func resolveIndirect(name string, direct, indirect map[string]string, depth int) (string, bool) {
 	if depth > 20 {
 		return "", false
@@ -426,27 +449,72 @@ func resolveIndirect(name string, direct, indirect map[string]string, depth int)
 	return "", false
 }
 
-func linkReferences(n doctree.Node, targets map[string]string, anonTargets []string, anonIndex *int) {
-	el, ok := n.(*doctree.Element)
-	if !ok {
-		return
-	}
-	if el.Tag == doctree.TagReference {
-		switch {
-		case el.Attr("anonymous") == "true":
-			if *anonIndex < len(anonTargets) {
-				if uri := anonTargets[*anonIndex]; uri != "" {
-					el.SetAttr("refuri", uri)
+// linkReferences resolves every reference under parent. It walks by
+// PARENT rather than by node (unlike the rest of this file's tree walks)
+// because a dangling named reference needs to REPLACE itself in its
+// parent's own child slice, not just gain an attribute — anonymous
+// references don't get this treatment: a mismatched anonymous
+// reference/target count is a real docutils error too, but a different
+// one (position bookkeeping, not a missing name), deliberately left as
+// this project's existing "just stays unresolved" simplification rather
+// than folded into the same mechanism.
+func linkReferences(parent *doctree.Element, targets map[string]string, anonTargets []string, anonIndex *int, messages *[]*doctree.Element, msgCount *int) {
+	for i, c := range parent.Children {
+		el, ok := c.(*doctree.Element)
+		if !ok {
+			continue
+		}
+		if el.Tag == doctree.TagReference {
+			switch {
+			case el.Attr("anonymous") == "true":
+				if *anonIndex < len(anonTargets) {
+					if uri := anonTargets[*anonIndex]; uri != "" {
+						el.SetAttr("refuri", uri)
+					}
+					*anonIndex++
 				}
-				*anonIndex++
-			}
-		case el.Attr("refname") != "":
-			if uri, found := targets[normalizeName(el.Attr("refname"))]; found {
-				el.SetAttr("refuri", uri)
+			case el.Attr("refname") != "":
+				if uri, found := targets[normalizeName(el.Attr("refname"))]; found {
+					el.SetAttr("refuri", uri)
+				} else {
+					parent.Children[i] = problematicReference(el, messages, msgCount)
+					continue // the replacement has no children of its own to recurse into
+				}
 			}
 		}
+		linkReferences(el, targets, anonTargets, anonIndex, messages, msgCount)
 	}
-	for _, c := range el.Children {
-		linkReferences(c, targets, anonTargets, anonIndex)
+}
+
+// problematicReference builds the <problematic>/<system_message> pair for
+// one dangling named reference, cross-linked by id/refid/backref the same
+// way real docutils' pair is (see resolveTargets) — appends the message to
+// *messages for resolveTargets to collect into a trailing section, and
+// returns the <problematic> to replace the reference with in place.
+func problematicReference(ref *doctree.Element, messages *[]*doctree.Element, msgCount *int) *doctree.Element {
+	*msgCount++
+	n := strconv.Itoa(*msgCount)
+	prb := doctree.NewElement(doctree.TagProblematic, &doctree.Text{Data: doctree.AsText(ref)})
+	prb.SetAttr("id", "problematic-"+n)
+	prb.SetAttr("refid", "system-message-"+n)
+	msg := doctree.NewElement(doctree.TagSystemMessage,
+		doctree.NewElement(doctree.TagParagraph, &doctree.Text{Data: `Unknown target name: "` + ref.Attr("refname") + `".`}))
+	msg.SetAttr("id", "system-message-"+n)
+	msg.SetAttr("backref", "problematic-"+n)
+	*messages = append(*messages, msg)
+	return prb
+}
+
+// systemMessagesSection collects every dangling-reference message into one
+// trailing section, docutils' own Messages transform: "loose" system
+// messages not otherwise attached to the tree get a dedicated section of
+// their own, appended at the very end of the document.
+func systemMessagesSection(messages []*doctree.Element) *doctree.Element {
+	sec := doctree.NewElement(doctree.TagSection)
+	sec.SetAttr("class", "system-messages")
+	sec.Append(doctree.NewElement(doctree.TagTitle, &doctree.Text{Data: "Docutils System Messages"}))
+	for _, m := range messages {
+		sec.Append(m)
 	}
+	return sec
 }

@@ -75,9 +75,9 @@ func TestParse(t *testing.T) {
 			want:   "<document>\n    <paragraph>\n        Intro paragraph.\n    <comment>\n        This is a comment.\n        Second comment line.\n    <directive name=\"note\">\n        This is directive content.\n        Second line.\n    <paragraph>\n        See \n        <reference name=\"Example\" refname=\"example\" refuri=\"https://example.com\">\n            Example\n         for details.\n    <target name=\"example\" refuri=\"https://example.com\">\n    <paragraph>\n        Here is a code sample:\n    <literal_block>\n        def f():\n            return 1\n    <paragraph>\n        Done.\n",
 		},
 		{
-			name:   "unresolved reference, empty comment, plain comment, directive with no content",
+			name:   "unresolved reference (now problematic, plus a trailing system-messages section), empty comment, plain comment, directive with no content",
 			source: "An unresolved `Nowhere`_ reference.\n\n..\n\n.. plain comment no directive shape\n\n.. figure::\n",
-			want:   "<document>\n    <paragraph>\n        An unresolved \n        <reference name=\"Nowhere\" refname=\"nowhere\">\n            Nowhere\n         reference.\n    <comment>\n    <comment>\n        plain comment no directive shape\n    <directive name=\"figure\">\n",
+			want:   "<document>\n    <paragraph>\n        An unresolved \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            Nowhere\n         reference.\n    <comment>\n    <comment>\n        plain comment no directive shape\n    <directive name=\"figure\">\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Unknown target name: \"nowhere\".\n",
 		},
 		{
 			name:   "list item containing a comment and a literal block",

@@ -44,9 +44,9 @@ func TestRender(t *testing.T) {
 			`<p>See <a href="https://python.org">Python</a> now.</p>`,
 		},
 		{
-			"bare reference with no target resolves to plain text",
+			"bare reference with no target becomes problematic text plus a trailing system-messages section",
 			"See `nowhere`_ now.\n",
-			"<p>See nowhere now.</p>",
+			"<p>See nowhere now.</p><section><h1>Docutils System Messages</h1><p>Unknown target name: &quot;nowhere&quot;.</p></section>",
 		},
 		{
 			"inline internal target keeps its text and gets an id; a later reference resolves to a same-document anchor",
