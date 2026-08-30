@@ -79,6 +79,12 @@ const (
 	TagLineBlock          = "line_block"
 	TagLine               = "line"
 	TagDoctestBlock       = "doctest_block"
+	TagFootnote           = "footnote"
+	TagCitation           = "citation"
+	TagLabel              = "label"
+	TagFootnoteReference  = "footnote_reference"
+	TagCitationReference  = "citation_reference"
+	TagSubstitutionDef    = "substitution_definition"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

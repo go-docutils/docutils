@@ -8,24 +8,27 @@ import (
 )
 
 // Expected trees below were cross-checked against reference docutils
-// 0.23 (`publish_string(..., writer_name='pseudoxml',
-// settings_overrides={'doctitle_xform': False})`) for element shape;
-// this project's own doctree.Dump format is used for comparison since
+// 0.23 for element shape. For most cases this used
+// `publish_string(..., writer_name='pseudoxml', settings_overrides=
+// {'doctitle_xform': False})`; for footnotes/citations/substitutions,
+// which docutils resolves (numbering, substitution-value inlining) via
+// transforms that run AFTER parsing, comparison instead used a bare
+// `Parser().parse(src, document)` to see the raw pre-transform tree —
+// numbering/inlining are not implemented here, matching the same
+// "structural capture, not executed" scope as directives. This
+// project's own doctree.Dump format is used throughout since
 // ids/names/source attributes are not yet implemented (see the package
 // doc's SCOPE note). A field list at the very start of a document is
-// compared against docutils with `docinfo_xform: False` too — real
-// docutils otherwise promotes it to a typed `<docinfo>` node, a
-// transform this parser does not implement (same category of gap as
-// per-directive semantics). A line block with an indented sub-line is
-// compared against docutils' FLAT shape too: real docutils nests such a
-// line into a sub-`<line_block>` by relative indent
-// (nest_line_block_lines), not implemented here (see lineblock.go).
-// Two more known, documented divergences: a directive is captured
-// structurally (name/arguments/raw content) rather than dispatched to
-// semantics (`.. note::` does NOT become a real `<note>` admonition
-// here), and an unresolved reference stays a bare reference node instead
-// of being rewritten to `problematic` with an appended system-message
-// section.
+// compared with `docinfo_xform: False` too — real docutils otherwise
+// promotes it to a typed `<docinfo>` node, not implemented here. A line
+// block with an indented sub-line is compared against docutils' FLAT
+// shape too: real docutils nests such a line into a sub-`<line_block>`
+// by relative indent (nest_line_block_lines), not implemented here (see
+// lineblock.go). Two more known, documented divergences: a directive
+// (including a substitution definition's embedded `replace::`) is
+// captured structurally rather than dispatched to semantics, and an
+// unresolved reference stays a bare reference node instead of being
+// rewritten to `problematic` with an appended system-message section.
 func TestParse(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -92,6 +95,16 @@ func TestParse(t *testing.T) {
 			source: "- item with a line block\n\n  | verse one\n  | verse two\n\n- item with a doctest block\n\n  >>> x = 1\n  >>> x\n  1\n",
 			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a line block\n            <line_block>\n                <line>\n                    verse one\n                <line>\n                    verse two\n        <list_item>\n            <paragraph>\n                item with a doctest block\n            <doctest_block>\n                >>> x = 1\n                >>> x\n                1\n",
 		},
+		{
+			name:   "footnote, citation, and substitution references with their block definitions",
+			source: "See footnote [1]_, an auto footnote [#]_, an auto-symbol [*]_,\na named auto footnote [#note]_, and a citation [CIT2002]_.\n\n.. [1] A manually numbered footnote.\n\n.. [#] An auto-numbered footnote.\n\n.. [*] An auto-symbol footnote.\n\n.. [#note] A named auto-numbered footnote.\n\n.. [CIT2002] A citation body.\n\nReplace this |name| with something.\n\n.. |name| replace:: substituted text\n",
+			want:   "<document>\n    <paragraph>\n        See footnote \n        <footnote_reference refname=\"1\">\n            1\n        , an auto footnote \n        <footnote_reference auto=\"1\">\n        , an auto-symbol \n        <footnote_reference auto=\"*\">\n        ,\n        a named auto footnote \n        <footnote_reference auto=\"1\" refname=\"note\">\n        , and a citation \n        <citation_reference refname=\"cit2002\">\n            CIT2002\n        .\n    <footnote name=\"1\">\n        <label>\n            1\n        <paragraph>\n            A manually numbered footnote.\n    <footnote auto=\"1\">\n        <paragraph>\n            An auto-numbered footnote.\n    <footnote auto=\"*\">\n        <paragraph>\n            An auto-symbol footnote.\n    <footnote auto=\"1\" name=\"note\">\n        <paragraph>\n            A named auto-numbered footnote.\n    <citation name=\"cit2002\">\n        <label>\n            CIT2002\n        <paragraph>\n            A citation body.\n    <paragraph>\n        Replace this \n        <substitution_reference refname=\"name\">\n            name\n         with something.\n    <substitution_definition arguments=\"substituted text\" name=\"replace\" substitution=\"name\">\n",
+		},
+		{
+			name:   "footnote and substitution definition inside list items",
+			source: "- item with a footnote\n\n  .. [1] A footnote inside a list item.\n\n- item with a substitution definition\n\n  .. |x| replace:: y\n",
+			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a footnote\n            <footnote name=\"1\">\n                <label>\n                    1\n                <paragraph>\n                    A footnote inside a list item.\n        <list_item>\n            <paragraph>\n                item with a substitution definition\n            <substitution_definition arguments=\"y\" name=\"replace\" substitution=\"x\">\n",
+		},
 	}
 
 	for _, tc := range cases {
@@ -119,6 +132,12 @@ func TestInline(t *testing.T) {
 		{"backslash escape suppresses markup", "\\*not emphasis\\*", "*not emphasis*\n"},
 		{"anonymous reference", "see `some text`__ end", "see \n<reference anonymous=\"true\" refname=\"some text\">\n    some text\n end\n"},
 		{"unclosed marker falls back to plain text", "an *unclosed emphasis stays plain", "an *unclosed emphasis stays plain\n"},
+		{"substitution reference", "see |name| here", "see \n<substitution_reference refname=\"name\">\n    name\n here\n"},
+		{"manually numbered footnote reference", "see [1]_ here", "see \n<footnote_reference refname=\"1\">\n    1\n here\n"},
+		{"auto-numbered footnote reference", "see [#]_ here", "see \n<footnote_reference auto=\"1\">\n here\n"},
+		{"named auto-numbered footnote reference", "see [#note]_ here", "see \n<footnote_reference auto=\"1\" refname=\"note\">\n here\n"},
+		{"auto-symbol footnote reference", "see [*]_ here", "see \n<footnote_reference auto=\"*\">\n here\n"},
+		{"citation reference", "see [CIT2002]_ here", "see \n<citation_reference refname=\"cit2002\">\n    CIT2002\n here\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

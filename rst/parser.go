@@ -7,13 +7,14 @@
 // (flat, see lineblock.go for the un-implemented indent-nesting), doctest
 // blocks, block quotes, literal blocks, comments, directives (captured
 // structurally only, see explicit.go), hyperlink targets with reference
-// resolution, and the inline markup in inline.go. NOT yet ported: option
-// lists (see fieldlist.go for why they're deferred), tables,
-// footnotes/citations, substitution definitions, indirect/anonymous
-// hyperlink targets, per-directive semantics. Title-style consistency and
-// enumerator-sequence validation are not enforced (docutils errors on
-// inconsistent styles or skipped levels; this parser silently assigns a
-// level instead).
+// resolution, footnotes, citations, substitution definitions (see
+// explicit.go for all three — no numbering/symbol resolution, no
+// substitution-value inlining), and the inline markup in inline.go. NOT
+// yet ported: option lists (see fieldlist.go for why they're deferred),
+// tables, indirect/anonymous hyperlink targets, per-directive semantics.
+// Title-style consistency and enumerator-sequence validation are not
+// enforced (docutils errors on inconsistent styles or skipped levels;
+// this parser silently assigns a level instead).
 package rst
 
 import (
@@ -89,7 +90,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if isExplicitMarkupLine(lines[i]) {
-			node, next := parseExplicitMarkup(lines, i)
+			node, next := p.parseExplicitMarkup(lines, i)
 			current.Append(node)
 			i = next
 			continue
@@ -183,7 +184,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if isExplicitMarkupLine(lines[i]) {
-			node, next := parseExplicitMarkup(lines, i)
+			node, next := p.parseExplicitMarkup(lines, i)
 			parent.Append(node)
 			i = next
 			continue

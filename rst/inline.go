@@ -12,14 +12,16 @@ import (
 // Inliner.parse.
 //
 // SCOPE (v1): strong (**x**), emphasis (*x*), literal (two backticks
-// around x), simple
-// named reference (`x`_ and x_) and anonymous reference (x__), and
-// backslash escapes. NOT yet ported: interpreted text roles (`x`:role:),
-// substitution references, footnote/citation references, embedded URIs
-// in phrase references, standalone URI/email/PEP/RFC recognition, inline
-// internal targets. Content between markers is treated as plain text and
-// is not re-parsed for further inline markup, matching docutils' actual
-// (not merely documented) behavior: nested inline markup does not match.
+// around x), simple named reference (`x`_ and x_) and anonymous
+// reference (x__), substitution reference (|x|), footnote/citation
+// reference ([1]_ / [#]_ / [#name]_ / [*]_ / [name]_), and backslash
+// escapes. NOT yet ported: interpreted text roles (`x`:role:), embedded
+// URIs in phrase references, standalone URI/email/PEP/RFC recognition,
+// inline internal targets, a substitution reference used as a
+// hyperlink (|x|_ / |x|__). Content between markers is treated as plain
+// text and is not re-parsed for further inline markup, matching
+// docutils' actual (not merely documented) behavior: nested inline
+// markup does not match.
 func parseInline(text string) []doctree.Node {
 	runes := escapeBackslashes(text)
 	var out []doctree.Node
@@ -34,6 +36,12 @@ func parseInline(text string) []doctree.Node {
 	i := 0
 	n := len(runes)
 	for i < n {
+		if node, consumed, ok := tryFootnoteRef(runes, i); ok {
+			flush()
+			out = append(out, node)
+			i += consumed
+			continue
+		}
 		if node, consumed, ok := tryMarker(runes, i); ok {
 			flush()
 			out = append(out, node)
@@ -103,6 +111,7 @@ var markers = []marker{
 	{"``", doctree.TagLiteral},
 	{"*", doctree.TagEmphasis},
 	{"`", ""}, // interpreted/phrase reference, handled specially below
+	{"|", doctree.TagSubstitutionRef},
 }
 
 // tryMarker attempts to match an inline-markup construct starting at
@@ -132,6 +141,9 @@ func tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 			return el, total + extra, true
 		}
 		el := doctree.NewElement(m.tag, &doctree.Text{Data: content})
+		if m.tag == doctree.TagSubstitutionRef {
+			el.SetAttr("refname", normalizeWhitespace(content))
+		}
 		return el, total, true
 	}
 	return nil, 0, false
@@ -156,6 +168,57 @@ func referenceOrPhrase(content string, afterClose int, runes []rune) (*doctree.E
 	}
 	el.SetAttr("refname", content)
 	return el, extra
+}
+
+// tryFootnoteRef recognizes "[label]_" — a footnote reference ("[1]_",
+// "[#]_", "[#name]_", "[*]_") or citation reference ("[name]_"),
+// docutils' Inliner.footnote_reference. Unlike the phrase-reference
+// form, only a single trailing "_" is meaningful here (no "__" form).
+func tryFootnoteRef(runes []rune, i int) (doctree.Node, int, bool) {
+	if runes[i] != '[' || !validStartBoundary(runes, i, 1) {
+		return nil, 0, false
+	}
+	end := -1
+	for j := i + 1; j < len(runes); j++ {
+		if runes[j] == ']' {
+			end = j
+			break
+		}
+	}
+	if end < 0 || end+1 >= len(runes) || runes[end+1] != '_' {
+		return nil, 0, false
+	}
+	label := unescapeRunes(runes[i+1 : end])
+	if label == "" {
+		return nil, 0, false
+	}
+	total := end + 2 - i
+	if end+2 < len(runes) {
+		next := runes[end+2]
+		if !unicode.IsSpace(next) && !unicode.IsPunct(next) {
+			return nil, 0, false
+		}
+	}
+
+	var el *doctree.Element
+	switch {
+	case label == "*":
+		el = doctree.NewElement(doctree.TagFootnoteReference)
+		el.SetAttr("auto", "*")
+	case label[0] == '#':
+		el = doctree.NewElement(doctree.TagFootnoteReference)
+		el.SetAttr("auto", "1")
+		if name := label[1:]; name != "" {
+			el.SetAttr("refname", normalizeName(name))
+		}
+	case isAllDigits(label):
+		el = doctree.NewElement(doctree.TagFootnoteReference, &doctree.Text{Data: label})
+		el.SetAttr("refname", label)
+	default:
+		el = doctree.NewElement(doctree.TagCitationReference, &doctree.Text{Data: label})
+		el.SetAttr("refname", normalizeName(label))
+	}
+	return el, total, true
 }
 
 func hasPrefixAt(runes []rune, i int, s string) bool {
