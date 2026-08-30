@@ -299,25 +299,23 @@ func parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int
 
 // bareIndirectTargetName reports whether uri, taken as a WHOLE, is a bare
 // "othername_" reference (docutils' parse_target: the target's value ends
-// in "_" AND the entire value matches its own bare-reference grammar — a
-// real URI ending in "_", like ".../foo_", does NOT match, since it
-// contains characters (":", "/") a simplename can't). The backtick-quoted
-// phrase form ("`other name`_") is not implemented here: rare for a
-// target's own value, unlike a reference's.
+// in "_" AND the entire value matches the simplename grammar —
+// scanSimpleName in inline.go). A real URI ending in "_", like
+// ".../foo_", does NOT match, since "/" isn't a valid simplename
+// separator. The backtick-quoted phrase form ("`other name`_") is not
+// implemented here: rare for a target's own value, unlike a reference's.
 func bareIndirectTargetName(uri string) (string, bool) {
 	if len(uri) < 2 || uri[len(uri)-1] != '_' {
 		return "", false
 	}
-	body := uri[:len(uri)-1]
-	if body == "" {
+	runes := []rune(uri[:len(uri)-1])
+	if len(runes) == 0 {
 		return "", false
 	}
-	for _, r := range body {
-		if !isSimpleNameChar(r) {
-			return "", false
-		}
+	if scanSimpleName(runes, 0) != len(runes) {
+		return "", false
 	}
-	return body, true
+	return string(runes), true
 }
 
 // normalizeName mirrors docutils.nodes.fully_normalize_name: case- and

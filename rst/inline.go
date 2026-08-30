@@ -377,20 +377,16 @@ func roleElement(role, content string) *doctree.Element {
 
 // tryBareReference recognizes a reference with no backtick delimiters
 // at all: word_ / word__ (docutils' 'whole' construct: a `simplename`
-// immediately followed by one or two trailing underscores). Only
-// letters, digits, and hyphens make up the name here — an internal "_"
-// would itself look like the very suffix this is trying to detect, so
-// (like real reST) a name containing one isn't reachable through this
-// bare form; write it backtick-quoted instead.
+// immediately followed by one or two trailing underscores — see
+// scanSimpleName for exactly what a simplename allows, including an
+// internal single underscore, contrary to what an earlier version of this
+// comment claimed without checking).
 func tryBareReference(runes []rune, i int) (doctree.Node, int, bool) {
-	if !isSimpleNameChar(runes[i]) || !validStartBoundary(runes, i, 0) {
+	if !isAlphaNumRune(runes[i]) || !validStartBoundary(runes, i, 0) {
 		return nil, 0, false
 	}
-	j := i
-	for j < len(runes) && isSimpleNameChar(runes[j]) {
-		j++
-	}
-	if j >= len(runes) || runes[j] != '_' {
+	j := scanSimpleName(runes, i)
+	if j == i || j >= len(runes) || runes[j] != '_' {
 		return nil, 0, false
 	}
 	anonymous := false
@@ -443,8 +439,51 @@ func tryInlineTarget(runes []rune, i int) (doctree.Node, int, bool) {
 	return el, (closeAt + closeLen) - i, true
 }
 
-func isSimpleNameChar(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-'
+// scanSimpleName scans the longest match of docutils' own "simplename"
+// grammar (states.py: `(?:(?!_)\w)+(?:[-._+:](?:(?!_)\w)+)*`) starting at
+// i, returning the index right after it (or i itself for no match at
+// all): one or more ALPHANUMERIC runs, joined by exactly one separator
+// character (-, ., _, +, or :) between runs. This is the (previously
+// unverified — see tryBareReference's doc comment) reason a name CAN
+// legitimately contain an underscore ("real_target") without it being
+// mistaken for the trailing reference-suffix underscore: it's a single
+// separator between two alphanumeric runs, not a doubled, leading, or
+// trailing one, and neither hyphen nor any other separator can start a
+// name either — verified against real docutils for "real_target_"
+// (matches whole), "some--name_" (only "name" matches, the double hyphen
+// breaks it), "-foo_" (leading hyphen doesn't match, only "foo" does),
+// and "foo-bar_baz_" (the whole thing matches; the final lone "_" is
+// correctly left as the reference suffix, not consumed as a separator
+// with nothing after it).
+func scanSimpleName(runes []rune, i int) int {
+	j := scanAlphaNumRun(runes, i)
+	if j == i {
+		return i
+	}
+	for j < len(runes) && isNameSepRune(runes[j]) {
+		k := scanAlphaNumRun(runes, j+1)
+		if k == j+1 {
+			return j
+		}
+		j = k
+	}
+	return j
+}
+
+func scanAlphaNumRun(runes []rune, i int) int {
+	j := i
+	for j < len(runes) && isAlphaNumRune(runes[j]) {
+		j++
+	}
+	return j
+}
+
+func isAlphaNumRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func isNameSepRune(r rune) bool {
+	return r == '-' || r == '.' || r == '_' || r == '+' || r == ':'
 }
 
 // tryStandaloneURI recognizes a bare "scheme://..." URI or "user@host"
