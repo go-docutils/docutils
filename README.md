@@ -19,18 +19,24 @@ build or run time.
 **Implemented**: sections (over/underlined titles, arbitrary nesting
 depth via first-seen title-style ordering), paragraphs, transitions,
 bullet lists, enumerated lists (arabic + `.` suffix only), block quotes,
-and inline markup for `**strong**`, `*emphasis*`, `` ``literal`` ``,
-`` `named reference`_ `` / `` `anonymous`__ ``, and backslash escapes.
+literal blocks (`::`), comments, directives (captured structurally —
+name, arguments, raw content — never dispatched to per-directive
+semantics: there is no directive registry), hyperlink targets with
+reference resolution, and inline markup for `**strong**`, `*emphasis*`,
+`` ``literal`` ``, `` `named reference`_ `` / `` `anonymous`__ ``, and
+backslash escapes.
 
-**Not yet ported** (see the `rst` package doc comment for the exact
-list): field lists, option lists, definition lists, line blocks, tables,
-footnotes/citations, hyperlink targets, substitution definitions,
-directives, comments, literal/doctest blocks, interpreted-text roles,
-standalone URI/email/PEP/RFC recognition. Title-style consistency and
-enumerator-sequence validation are not enforced. Sphinx's `autodoc`
-extension (and `napoleon`, which sits downstream of it) is out of scope
-entirely: it works by importing and introspecting live Python code,
-which is not portable to pure Go.
+**Not yet ported** (see the `rst` and `explicit.go` doc comments for the
+exact list): field lists, option lists, definition lists, line blocks,
+tables, footnotes/citations, substitution definitions, doctest blocks,
+interpreted-text roles, standalone URI/email/PEP/RFC recognition,
+indirect/anonymous hyperlink targets. Title-style consistency and
+enumerator-sequence validation are not enforced. An unresolved reference
+stays a bare node instead of being rewritten to `problematic` with an
+error message, the way real docutils does. Sphinx's `autodoc` extension
+(and `napoleon`, which sits downstream of it) is out of scope entirely:
+it works by importing and introspecting live Python code, which is not
+portable to pure Go.
 
 ```go
 import (
@@ -47,4 +53,4 @@ fmt.Print(doctree.Dump(doc)) // this project's own pseudoxml-like debug format
 `go test ./...`. Fixtures in `rst/parser_test.go` were generated from
 this parser's own output, then eyeball-verified against the docutils
 foreign judge (see the package doc comment) before being frozen — not
-hand-transcribed. Coverage as of this writing: `doctree` 97%, `rst` 92%.
+hand-transcribed. Coverage as of this writing: `doctree` 97%, `rst` 93%.

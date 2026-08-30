@@ -61,10 +61,13 @@ const (
 	TagStrong          = "strong"
 	TagLiteral         = "literal"
 	TagReference       = "reference"
-	TagTargetInline    = "target"
+	TagTarget          = "target"
 	TagSubstitutionRef = "substitution_reference"
 	TagProblematic     = "problematic"
 	TagSystemMessage   = "system_message"
+	TagComment         = "comment"
+	TagDirective       = "directive"
+	TagLiteralBlock    = "literal_block"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

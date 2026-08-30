@@ -3,16 +3,22 @@
 //
 // SCOPE (v1 — see [[go-docutils-org]] for the plan): sections (over/under
 // lined titles), paragraphs, transitions, bullet lists, enumerated lists
-// (arabic + '.' suffix only), block quotes, and the inline markup in
-// inline.go. NOT yet ported: field lists, option lists, definition
-// lists, line blocks, tables, footnotes/citations, hyperlink targets,
-// substitution definitions, directives, comments, literal blocks,
-// doctest blocks. Title-style consistency and enumerator-sequence
-// validation are not enforced (docutils errors on inconsistent styles or
-// skipped levels; this parser silently assigns a level instead).
+// (arabic + '.' suffix only), block quotes, literal blocks, comments,
+// directives (captured structurally only, see explicit.go), hyperlink
+// targets with reference resolution, and the inline markup in inline.go.
+// NOT yet ported: field lists, option lists, definition lists, line
+// blocks, tables, footnotes/citations, substitution definitions, doctest
+// blocks, indirect/anonymous hyperlink targets, per-directive semantics.
+// Title-style consistency and enumerator-sequence validation are not
+// enforced (docutils errors on inconsistent styles or skipped levels;
+// this parser silently assigns a level instead).
 package rst
 
-import "github.com/go-docutils/docutils/doctree"
+import (
+	"strings"
+
+	"github.com/go-docutils/docutils/doctree"
+)
 
 type titleStyle struct {
 	char     rune
@@ -28,6 +34,7 @@ func Parse(source string) *doctree.Element {
 	p := &parser{}
 	doc := doctree.NewElement(doctree.TagDocument)
 	p.parseDocument(splitLines(source), doc)
+	resolveTargets(doc)
 	return doc
 }
 
@@ -61,6 +68,12 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
+		if isExplicitMarkupLine(lines[i]) {
+			node, next := parseExplicitMarkup(lines, i)
+			current.Append(node)
+			i = next
+			continue
+		}
 		if title, style, consumed, ok := matchTitle(lines, i); ok {
 			sec := doctree.NewElement(doctree.TagSection)
 			sec.Append(doctree.NewElement(doctree.TagTitle, parseInline(title)...))
@@ -83,9 +96,17 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i++
 			continue
 		}
-		para, next := consumeParagraph(lines, i)
-		current.Append(para)
+		para, next, literalNext := consumeParagraph(lines, i)
+		if para != nil {
+			current.Append(para)
+		}
 		i = next
+		if literalNext {
+			if lb, next2, ok := tryLiteralBlock(lines, i); ok {
+				current.Append(lb)
+				i = next2
+			}
+		}
 	}
 }
 
@@ -117,14 +138,28 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			i = next
 			continue
 		}
+		if isExplicitMarkupLine(lines[i]) {
+			node, next := parseExplicitMarkup(lines, i)
+			parent.Append(node)
+			i = next
+			continue
+		}
 		if isTransitionLine(lines[i]) {
 			parent.Append(doctree.NewElement(doctree.TagTransition))
 			i++
 			continue
 		}
-		para, next := consumeParagraph(lines, i)
-		parent.Append(para)
+		para, next, literalNext := consumeParagraph(lines, i)
+		if para != nil {
+			parent.Append(para)
+		}
 		i = next
+		if literalNext {
+			if lb, next2, ok := tryLiteralBlock(lines, i); ok {
+				parent.Append(lb)
+				i = next2
+			}
+		}
 	}
 }
 
@@ -205,7 +240,7 @@ func matchTitle(lines []string, i int) (title string, style titleStyle, consumed
 		}
 	}
 	if !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 &&
-		!isBulletLine(lines[i]) && !isEnumLine(lines[i]) {
+		!isBulletLine(lines[i]) && !isEnumLine(lines[i]) && !isExplicitMarkupLine(lines[i]) {
 		if i+1 < len(lines) {
 			if char, isLine := isUniformLine(lines[i+1]); isLine {
 				t := trimTrailingSpace(lines[i])
@@ -238,8 +273,14 @@ func trimTrailingSpace(s string) string {
 
 // consumeParagraph collects consecutive plain-text lines into a
 // paragraph, stopping at a blank line, an indentation change, or the
-// start of another recognized construct.
-func consumeParagraph(lines []string, i int) (*doctree.Element, int) {
+// start of another recognized construct. A paragraph ending in "::"
+// (docutils.states.RSTState.paragraph) marks the following indented
+// block as a literal block rather than a block quote: literalNext is
+// true, and the trailing "::" is either dropped (if preceded by
+// whitespace) or collapsed to a single ":" (if attached to a word). A
+// paragraph that is exactly "::" produces no paragraph node at all
+// (returns nil, matching docutils).
+func consumeParagraph(lines []string, i int) (para *doctree.Element, next int, literalNext bool) {
 	var text []string
 	j := i
 	for j < len(lines) {
@@ -250,7 +291,7 @@ func consumeParagraph(lines []string, i int) (*doctree.Element, int) {
 			break
 		}
 		if j > i {
-			if isBulletLine(lines[j]) || isEnumLine(lines[j]) {
+			if isBulletLine(lines[j]) || isEnumLine(lines[j]) || isExplicitMarkupLine(lines[j]) {
 				break
 			}
 			if _, isLine := isUniformLine(lines[j]); isLine {
@@ -260,13 +301,33 @@ func consumeParagraph(lines []string, i int) (*doctree.Element, int) {
 		text = append(text, lines[j])
 		j++
 	}
-	joined := ""
-	for k, l := range text {
-		if k > 0 {
-			joined += "\n"
-		}
-		joined += l
+	data := strings.Join(text, "\n")
+	if data == "::" {
+		return nil, j, true
 	}
-	para := doctree.NewElement(doctree.TagParagraph, parseInline(joined)...)
-	return para, j
+	if strings.HasSuffix(data, "::") {
+		literalNext = true
+		if len(data) >= 3 && (data[len(data)-3] == ' ' || data[len(data)-3] == '\n') {
+			data = strings.TrimRight(data[:len(data)-2], " ")
+		} else {
+			data = data[:len(data)-1]
+		}
+	}
+	para = doctree.NewElement(doctree.TagParagraph, parseInline(data)...)
+	return para, j, literalNext
+}
+
+// tryLiteralBlock consumes the indented block starting at lines[i] (if
+// any) as a literal block: raw text, not further parsed.
+func tryLiteralBlock(lines []string, i int) (*doctree.Element, int, bool) {
+	for i < len(lines) && isBlankStr(lines[i]) {
+		i++
+	}
+	if i >= len(lines) || leadingSpaces(lines[i]) == 0 {
+		return nil, i, false
+	}
+	indent := leadingSpaces(lines[i])
+	block, next := consumeIndentedBlock(lines, i, indent)
+	lb := doctree.NewElement(doctree.TagLiteralBlock, &doctree.Text{Data: strings.Join(block, "\n")})
+	return lb, next, true
 }

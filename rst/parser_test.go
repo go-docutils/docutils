@@ -12,7 +12,12 @@ import (
 // settings_overrides={'doctitle_xform': False})`) for element shape;
 // this project's own doctree.Dump format is used for comparison since
 // ids/names/source attributes are not yet implemented (see the package
-// doc's SCOPE note).
+// doc's SCOPE note). Two known, documented divergences from real
+// docutils: a directive is captured structurally (name/arguments/raw
+// content) rather than dispatched to semantics (`.. note::` does NOT
+// become a real `<note>` admonition here), and an unresolved reference
+// stays a bare reference node instead of being rewritten to
+// `problematic` with an appended system-message section.
 func TestParse(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -43,6 +48,21 @@ func TestParse(t *testing.T) {
 			name:   "list item with two paragraphs and a nested enumerated list",
 			source: "1. outer item\n\n   Second paragraph of outer item.\n\n   1. nested enumerated a\n   2. nested enumerated b\n",
 			want:   "<document>\n    <enumerated_list>\n        <list_item>\n            <paragraph>\n                outer item\n            <paragraph>\n                Second paragraph of outer item.\n            <enumerated_list>\n                <list_item>\n                    <paragraph>\n                        nested enumerated a\n                <list_item>\n                    <paragraph>\n                        nested enumerated b\n",
+		},
+		{
+			name:   "comment, directive, hyperlink target with reference resolution, literal block",
+			source: "Intro paragraph.\n\n.. This is a comment.\n   Second comment line.\n\n.. note::\n\n   This is directive content.\n   Second line.\n\nSee `Example`_ for details.\n\n.. _Example: https://example.com\n\nHere is a code sample::\n\n    def f():\n        return 1\n\nDone.\n",
+			want:   "<document>\n    <paragraph>\n        Intro paragraph.\n    <comment>\n        This is a comment.\n        Second comment line.\n    <directive name=\"note\">\n        This is directive content.\n        Second line.\n    <paragraph>\n        See \n        <reference refname=\"Example\" refuri=\"https://example.com\">\n            Example\n         for details.\n    <target name=\"example\" refuri=\"https://example.com\">\n    <paragraph>\n        Here is a code sample:\n    <literal_block>\n        def f():\n            return 1\n    <paragraph>\n        Done.\n",
+		},
+		{
+			name:   "unresolved reference, empty comment, plain comment, directive with no content",
+			source: "An unresolved `Nowhere`_ reference.\n\n..\n\n.. plain comment no directive shape\n\n.. figure::\n",
+			want:   "<document>\n    <paragraph>\n        An unresolved \n        <reference refname=\"Nowhere\">\n            Nowhere\n         reference.\n    <comment>\n    <comment>\n        plain comment no directive shape\n    <directive name=\"figure\">\n",
+		},
+		{
+			name:   "list item containing a comment and a literal block",
+			source: "- item one\n\n  .. a comment inside a list item\n\n  a literal sample::\n\n      x = 1\n\n- item two\n",
+			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item one\n            <comment>\n                a comment inside a list item\n            <paragraph>\n                a literal sample:\n            <literal_block>\n                x = 1\n        <list_item>\n            <paragraph>\n                item two\n",
 		},
 	}
 
