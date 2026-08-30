@@ -21,9 +21,13 @@ import (
 // attribute. Directive/comment/footnote/citation/substitution body
 // indentation is assumed to be exactly 3 columns (the ".. " prefix
 // width), which covers the overwhelming convention in real-world reST
-// but not an arbitrarily-indented body. Hyperlink targets are direct
-// (name → URI) only; indirect targets (name → another reference) and
-// anonymous targets (`.. __: uri` / `__ uri`) are not recognized. An
+// but not an arbitrarily-indented body. A hyperlink target may be named
+// (a direct URI, or chased through however many INDIRECT hops — see
+// bareIndirectTargetName), an INLINE target inside a paragraph (see
+// inline.go's tryInlineTarget), or ANONYMOUS (`.. __: uri`, resolved by
+// document-order position rather than by name — see resolveTargets); an
+// indirect anonymous target (`.. __: othername_`) is not implemented, a
+// rare compound of two already-rare constructs. An
 // unresolved reference (no matching target) is left as a bare
 // `reference` node with no `refuri` attribute; real docutils instead
 // runs an error transform that rewrites it to a `problematic` node and
@@ -64,6 +68,9 @@ func (p *parser) parseExplicitMarkup(lines []string, i int) (doctree.Node, int) 
 
 	if label, labelRest, ok := matchBracketLabel(rest); ok {
 		return p.parseFootnoteOrCitation(lines, i, label, labelRest)
+	}
+	if strings.HasPrefix(rest, "__:") {
+		return parseAnonymousTarget(lines, i, rest[3:])
 	}
 	if len(rest) > 1 && rest[0] == '_' && rest[1] != ' ' {
 		return parseHyperlinkTarget(lines, i, rest[1:])
@@ -269,6 +276,27 @@ func parseHyperlinkTarget(lines []string, i int, rest string) (doctree.Node, int
 	return el, next
 }
 
+// parseAnonymousTarget recognizes ".. __: uri" — a target with no name at
+// all. Unlike a named target, it resolves by DOCUMENT-ORDER POSITION: the
+// Nth anonymous reference (bare "x__", or "`x`__" — see tryBareReference/
+// referenceOrPhrase) matches the Nth anonymous target, textual order,
+// regardless of any text either one carries (verified against real
+// docutils: this holds whether the targets appear before or after their
+// references). resolveTargets implements the matching; indirect chasing
+// ("__" pointing at a named reference rather than a URI) is not
+// implemented here — a rare compound of two already-rare constructs.
+func parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int) {
+	body, next := gatherExplicitBody(lines, i)
+	uri := strings.TrimSpace(rest)
+	for _, l := range body {
+		uri += strings.TrimSpace(l)
+	}
+	el := doctree.NewElement(doctree.TagTarget)
+	el.SetAttr("anonymous", "true")
+	el.SetAttr("refuri", uri)
+	return el, next
+}
+
 // bareIndirectTargetName reports whether uri, taken as a WHOLE, is a bare
 // "othername_" reference (docutils' parse_target: the target's value ends
 // in "_" AND the entire value matches its own bare-reference grammar — a
@@ -298,18 +326,21 @@ func normalizeName(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
 
-// resolveTargets walks the tree once to collect every hyperlink target by
-// normalized name — split into "direct" (has its own refuri, or is an
-// inline internal target with none, resolved to a same-document anchor)
-// and "indirect" (an indirect target: its value is itself another target's
-// name, chased through resolveIndirect until a direct one is reached) — then
-// walks it again setting refuri on every reference whose refname matches.
-// docutils' target resolution transform, drastically simplified (no
-// duplicate/ambiguous-name diagnostics, no anonymous targets).
+// resolveTargets walks the tree once to collect every hyperlink target —
+// named ones by normalized name, split into "direct" (has its own refuri,
+// or is an inline internal target with none, resolved to a same-document
+// anchor) and "indirect" (its value is itself another target's name,
+// chased through resolveIndirect until a direct one is reached), and
+// anonymous ones (".. __: uri") into a separate document-order list — then
+// walks it again setting refuri on every reference: by name for a named
+// one, or by consuming the next unused anonymous target in document order
+// for an anonymous one. docutils' target resolution transform, drastically
+// simplified (no duplicate/ambiguous-name diagnostics).
 func resolveTargets(doc *doctree.Element) {
 	direct := map[string]string{}
 	indirect := map[string]string{}
-	collectTargets(doc, direct, indirect)
+	var anonTargets []string
+	collectTargets(doc, direct, indirect, &anonTargets)
 	targets := map[string]string{}
 	for name := range direct {
 		targets[name] = direct[name]
@@ -319,16 +350,21 @@ func resolveTargets(doc *doctree.Element) {
 			targets[name] = uri
 		}
 	}
-	linkReferences(doc, targets)
+	anonIndex := 0
+	linkReferences(doc, targets, anonTargets, &anonIndex)
 }
 
-func collectTargets(n doctree.Node, direct, indirect map[string]string) {
+func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTargets *[]string) {
 	el, ok := n.(*doctree.Element)
 	if !ok {
 		return
 	}
 	if el.Tag == doctree.TagTarget {
-		if name := el.Attr("name"); name != "" {
+		switch {
+		case el.Attr("anonymous") == "true":
+			*anonTargets = append(*anonTargets, el.Attr("refuri"))
+		case el.Attr("name") != "":
+			name := el.Attr("name")
 			switch {
 			case el.Attr("refuri") != "":
 				direct[name] = el.Attr("refuri")
@@ -343,7 +379,7 @@ func collectTargets(n doctree.Node, direct, indirect map[string]string) {
 		}
 	}
 	for _, c := range el.Children {
-		collectTargets(c, direct, indirect)
+		collectTargets(c, direct, indirect, anonTargets)
 	}
 }
 
@@ -365,19 +401,25 @@ func resolveIndirect(name string, direct, indirect map[string]string, depth int)
 	return "", false
 }
 
-func linkReferences(n doctree.Node, targets map[string]string) {
+func linkReferences(n doctree.Node, targets map[string]string, anonTargets []string, anonIndex *int) {
 	el, ok := n.(*doctree.Element)
 	if !ok {
 		return
 	}
 	if el.Tag == doctree.TagReference {
-		if ref := el.Attr("refname"); ref != "" {
-			if uri, found := targets[normalizeName(ref)]; found {
+		switch {
+		case el.Attr("anonymous") == "true":
+			if *anonIndex < len(anonTargets) {
+				el.SetAttr("refuri", anonTargets[*anonIndex])
+				*anonIndex++
+			}
+		case el.Attr("refname") != "":
+			if uri, found := targets[normalizeName(el.Attr("refname"))]; found {
 				el.SetAttr("refuri", uri)
 			}
 		}
 	}
 	for _, c := range el.Children {
-		linkReferences(c, targets)
+		linkReferences(c, targets, anonTargets, anonIndex)
 	}
 }

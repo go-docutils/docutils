@@ -29,7 +29,12 @@ per-directive semantics: there is no directive registry), hyperlink
 targets with reference resolution — including INDIRECT targets
 (`.. _a: b_`, whose value is itself another target's name, chased
 through however many hops until a real URI is reached; a cycle is left
-unresolved rather than looping forever) — footnotes (`[1]_`/`[#]_`/`[#name]_`/
+unresolved rather than looping forever) and ANONYMOUS targets/references
+(`.. __: uri` / `` x__ `` / `` `x`__ ``, matched by DOCUMENT-ORDER
+POSITION — the Nth anonymous reference to the Nth anonymous target,
+textual order, regardless of which comes first — rather than by name at
+all, a genuinely different mechanism from every other target/reference
+pair above) — footnotes (`[1]_`/`[#]_`/`[#name]_`/
 `[*]_`), citations (`[CITE2002]_`), substitution definitions/references
 (`|name|`, its content likewise captured structurally rather than
 executed — a substitution definition is a directive invocation, most
@@ -92,11 +97,10 @@ built-in roles, `pep-reference`/`rfc-reference` (checked against
 implementing them unconditionally would diverge from upstream's own
 default rather than fill a real gap) and `raw` (arbitrary raw
 passthrough by format, a real security consideration for untrusted
-input this parser has never had to reason about), ANONYMOUS hyperlink
-targets and references (`.. __: uri` / `` x__ `` — resolved by
-document-order position rather than by name, a different mechanism
-from the named-target resolution above, including its INDIRECT
-chasing), and a substitution reference used as a hyperlink. Title-style
+input this parser has never had to reason about), an indirect
+ANONYMOUS target (`.. __: othername_`, a rare compound of two
+already-rare constructs on its own), and a substitution reference used
+as a hyperlink. Title-style
 consistency and enumerator-sequence validation are not
 enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
