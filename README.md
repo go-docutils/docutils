@@ -35,7 +35,13 @@ POSITION — the Nth anonymous reference to the Nth anonymous target,
 textual order, regardless of which comes first — rather than by name at
 all, a genuinely different mechanism from every other target/reference
 pair above) — footnotes (`[1]_`/`[#]_`/`[#name]_`/
-`[*]_`), citations (`[CITE2002]_`), substitution definitions/references
+`[*]_`, with real auto-NUMBERING (`[#]_`/`[#name]_` sharing one
+sequence, an explicit `[1]_` elsewhere making the sequence skip that
+number) and auto-SYMBOL assignment (`[*]_`, docutils' own fixed
+ten-symbol sequence, doubling/tripling/... once it wraps: `**`, `††`,
+...) — both matched to their references by document-order position
+when unnamed, same mechanism as anonymous targets above), citations
+(`[CITE2002]_`, never auto-numbered), substitution definitions/references
 (`|name|`, its content likewise captured structurally rather than
 executed — a substitution definition is a directive invocation, most
 often `replace::`), and inline markup for `**strong**`, `*emphasis*`,
@@ -109,8 +115,7 @@ interpreted-text role stays a plain node instead of being rewritten to
 `problematic` with an error message, a leading field list isn't
 promoted to a typed `<docinfo>` node, a line block with a
 deeper-indented sub-line stays FLAT instead of being nested into a
-sub-`<line_block>`, footnotes/citations get no auto-numbering or
-auto-symbol resolution, a resolved embedded-link reference doesn't get
+sub-`<line_block>`, a resolved embedded-link reference doesn't get
 the extra `<target>` sibling node docutils emits alongside it (this
 parser sets `refuri`/`refname` directly on the `<reference>` instead;
 resolution still works the same way since it's all done by matching

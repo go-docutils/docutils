@@ -120,9 +120,9 @@ func TestRender(t *testing.T) {
 			"<p>A sub here.</p>",
 		},
 		{
-			"auto-numbered footnote reference has no href or label (no number assigned, see explicit.go)",
+			"auto-numbered footnote reference gets a real assigned number and a working link (see footnotenum.go)",
 			"An auto footnote [#]_.\n\n.. [#] Text.\n",
-			`<p>An auto footnote .</p><div class="footnote"><p>Text.</p></div>`,
+			`<p>An auto footnote <a href="#footnote-1">1</a>.</p><div class="footnote" id="footnote-1"><span class="label">1</span><p>Text.</p></div>`,
 		},
 		{
 			"grid table column span renders as colspan",

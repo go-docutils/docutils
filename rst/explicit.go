@@ -33,10 +33,10 @@ import (
 // runs an error transform that rewrites it to a `problematic` node and
 // appends a system-message section to the document — not implemented
 // here. Footnote/citation numbering and symbol assignment (docutils'
-// note_autofootnote/note_symbol_footnote bookkeeping, resolved at the
-// end of parsing) are not implemented: an auto-numbered footnote's
-// `auto` attribute is set but no number is ever assigned to it or to
-// its references.
+// note_autofootnote/note_symbol_footnote bookkeeping) IS implemented —
+// see footnotenum.go's resolveFootnoteNumbers, run at the end of Parse
+// alongside resolveTargets. Citations are never auto-numbered (see
+// parseFootnoteOrCitation above), so this applies only to footnotes.
 
 func isExplicitMarkupLine(s string) bool {
 	if len(s) < 2 || s[0] != '.' || s[1] != '.' {

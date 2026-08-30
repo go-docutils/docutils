@@ -40,6 +40,7 @@ func Parse(source string) *doctree.Element {
 	doc := doctree.NewElement(doctree.TagDocument)
 	p.parseDocument(splitLines(source), doc)
 	resolveTargets(doc)
+	resolveFootnoteNumbers(doc)
 	return doc
 }
 
