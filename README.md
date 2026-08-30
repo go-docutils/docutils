@@ -5,7 +5,7 @@ and [Sphinx](https://www.sphinx-doc.org/) build on, not a port of Sphinx
 itself. See the [org capability map](https://github.com/go-docutils) and
 the project memory for the full rationale behind this scope.
 
-## Status: early v1, core grammar only
+## Status: early v1, core grammar + a first writer
 
 This is a from-scratch parser modeled on the reference implementation
 ([`docutils.parsers.rst`](https://docutils.sourceforge.io/), Python,
@@ -91,6 +91,36 @@ doc := rst.Parse(source)
 fmt.Print(doctree.Dump(doc)) // this project's own pseudoxml-like debug format
 ```
 
+## Writers
+
+**`html`**: `html.Render(doc) string` renders a doctree to an HTML
+**fragment** — body content only, no `<!DOCTYPE>`/`<html>`/`<head>`, no
+stylesheet, no CSS classes or ids beyond the few this parser can
+actually populate (a footnote/citation's own id, a role's name as a
+`class`). This is a deliberate, bounded v1: docutils' own HTML writer
+(`writers/_html_base.py` + `html5_polyglot/__init__.py`, ~2300 lines)
+embeds a full default CSS stylesheet and a CSS-class vocabulary Sphinx
+themes build on — replicating that byte-for-byte would be roughly
+another parser's worth of work, for a stylesheet Sphinx doesn't even
+use (it has its own Jinja2 templates). Tag choices follow
+html5_polyglot where there's an obvious correspondence
+(section/h1-h6/p/ul/ol/li/blockquote/table/thead/tbody/tr/td/th,
+em/strong/code/cite/sub/sup/abbr); a directive (including a
+substitution definition's embedded `replace::`) renders as
+`<pre class="directive" data-directive="name">` rather than being
+silently dropped, since there's no semantic dispatch to render it
+properly; an unresolved reference/substitution-reference falls back to
+plain text since there's nothing to link to or substitute. Verified
+structurally against docutils' `--writer=html5` output on representative
+documents (not byte-for-byte, given the scope above) plus a tag-balance
+check over a document exercising every implemented construct together.
+
+```go
+import "github.com/go-docutils/docutils/html"
+
+fmt.Println(html.Render(doc)) // e.g. "<p>Hello <em>world</em>.</p>"
+```
+
 ## Testing
 
 `go test ./...`. Fixtures in `rst/parser_test.go` were generated from
@@ -100,4 +130,5 @@ hand-transcribed (for footnotes/citations/substitutions, "docutils
 foreign judge" means `Parser().parse(src, document)` directly rather
 than `publish_string`, to see the tree before docutils' own transforms
 run — see the `rst` package doc comment). Coverage as of this writing:
-`doctree` 97%, `rst` 93%. `go vet ./...` and `gofmt -l .` clean.
+`doctree` 97%, `rst` 93%, `html` 87%. `go vet ./...` and `gofmt -l .`
+clean.
