@@ -28,11 +28,14 @@ import (
 // indirect name-alias target (`text <https://example.com>`_, `text
 // <alias_>`_), substitution reference (|x|), footnote/citation
 // reference ([1]_ / [#]_ / [#name]_ / [*]_ / [name]_), and backslash
-// escapes. NOT yet ported: docutils' non-generic built-in roles (code,
-// math, pep-reference, rfc-reference, raw — each has real, non-generic
-// behavior this doesn't replicate), standalone URI/email/PEP/RFC
-// recognition, inline internal targets, a substitution reference used
-// as a hyperlink (|x|_ / |x|__), the extra <target> sibling docutils
+// escapes; and standalone URI (scheme://...) and email (user@host)
+// recognition — no backtick quoting or trailing `_` needed at all,
+// matching docutils' implicit_inline fallback. NOT yet ported: docutils'
+// non-generic built-in roles (code, math, pep-reference, rfc-reference,
+// raw — each has real, non-generic behavior this doesn't replicate),
+// standalone PEP/RFC recognition (pep-123, RFC 123), inline internal
+// targets, a substitution reference used as a hyperlink (|x|_ / |x|__),
+// the extra <target> sibling docutils
 // emits next to a resolved embedded-link reference (this parser sets
 // refuri/refname directly on the <reference> instead — reference
 // resolution still works the same way since resolveTargets matches by
@@ -73,6 +76,12 @@ func parseInline(text string) []doctree.Node {
 			continue
 		}
 		if node, consumed, ok := tryMarker(runes, i); ok {
+			flush()
+			out = append(out, node)
+			i += consumed
+			continue
+		}
+		if node, consumed, ok := tryStandaloneURI(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
@@ -382,6 +391,105 @@ func tryBareReference(runes []rune, i int) (doctree.Node, int, bool) {
 
 func isSimpleNameChar(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-'
+}
+
+// tryStandaloneURI recognizes a bare "scheme://..." URI or "user@host"
+// email address with no reST markup at all — docutils'
+// Inliner.standalone_uri, tried only as a fallback once nothing else
+// matches (implicit_dispatch). No refname/"name" attribute is set here,
+// matching docutils: a standalone URI reference carries only refuri.
+func tryStandaloneURI(runes []rune, i int) (doctree.Node, int, bool) {
+	if !validStartBoundary(runes, i, 0) {
+		return nil, 0, false
+	}
+	if node, n, ok := tryURIScheme(runes, i); ok {
+		return node, n, true
+	}
+	return tryEmail(runes, i)
+}
+
+func tryURIScheme(runes []rune, i int) (doctree.Node, int, bool) {
+	if !unicode.IsLetter(runes[i]) {
+		return nil, 0, false
+	}
+	j := i + 1
+	for j < len(runes) && (unicode.IsLetter(runes[j]) || unicode.IsDigit(runes[j]) ||
+		runes[j] == '+' || runes[j] == '-' || runes[j] == '.') {
+		j++
+	}
+	if !hasPrefixAt(runes, j, "://") {
+		return nil, 0, false
+	}
+	start := j + 3
+	k := start
+	for k < len(runes) && !unicode.IsSpace(runes[k]) {
+		k++
+	}
+	end := trimTrailingURIPunct(runes, start, k)
+	if end <= start {
+		return nil, 0, false
+	}
+	if end < len(runes) {
+		next := runes[end]
+		if !unicode.IsSpace(next) && !unicode.IsPunct(next) {
+			return nil, 0, false
+		}
+	}
+	text := string(runes[i:end])
+	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
+	el.SetAttr("refuri", text)
+	return el, end - i, true
+}
+
+func tryEmail(runes []rune, i int) (doctree.Node, int, bool) {
+	j := i
+	for j < len(runes) && isEmailLocalChar(runes[j]) {
+		j++
+	}
+	if j == i || j >= len(runes) || runes[j] != '@' {
+		return nil, 0, false
+	}
+	j++
+	domainStart := j
+	for j < len(runes) && isEmailDomainChar(runes[j]) {
+		j++
+	}
+	if !strings.Contains(string(runes[domainStart:j]), ".") {
+		return nil, 0, false
+	}
+	end := trimTrailingURIPunct(runes, i, j)
+	if end <= domainStart {
+		return nil, 0, false
+	}
+	if end < len(runes) {
+		next := runes[end]
+		if !unicode.IsSpace(next) && !unicode.IsPunct(next) {
+			return nil, 0, false
+		}
+	}
+	text := string(runes[i:end])
+	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
+	el.SetAttr("refuri", "mailto:"+text)
+	return el, end - i, true
+}
+
+func isEmailLocalChar(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune(".+_%-", r)
+}
+
+func isEmailDomainChar(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '-'
+}
+
+// trimTrailingURIPunct drops trailing punctuation unlikely to be part
+// of the URI itself (matching docutils' uri_end character class in
+// spirit, not exactly): a URL followed by ", " or "." at a sentence's
+// end shouldn't swallow that punctuation into the link.
+func trimTrailingURIPunct(runes []rune, start, end int) int {
+	for end > start && strings.ContainsRune(`.,;:!?)]}'"`, runes[end-1]) {
+		end--
+	}
+	return end
 }
 
 // tryFootnoteRef recognizes "[label]_" — a footnote reference ("[1]_",

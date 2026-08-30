@@ -43,10 +43,14 @@ GENERIC roles (`emphasis`, `strong`, `literal`, `subscript`/`sub`,
 `abbreviation`/`ab`, `acronym`/`ac`) — any other role name (there is no
 `.. role::` registry, same philosophy as directives) falls back to a
 generic `<inline role="name">` rather than docutils' error, and
-backslash escapes; and SIMPLE tables (`=====`-bordered, with an
-optional `-----`-underlined column-span row and a multi-line/nested-list
-cell content — docutils' own SimpleTableParser docstring example is
-this parser's own test fixture, verbatim).
+backslash escapes; standalone URI (`scheme://...`) and email
+(`user@host`) recognition — no backtick quoting or trailing `_` needed
+at all, e.g. plain `https://example.com` in running text becomes a
+reference on its own, trailing sentence punctuation (`, and .`)
+correctly excluded from the link; and SIMPLE tables (`=====`-bordered,
+with an optional `-----`-underlined column-span row and a
+multi-line/nested-list cell content — docutils' own SimpleTableParser
+docstring example is this parser's own test fixture, verbatim).
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
 `lineblock.go`/`inline.go`/`table.go` doc comments for the exact list
@@ -55,9 +59,10 @@ man-page-style CLI docs), GRID tables (`+---+---+`-bordered — a real 2D
 cell-boundary scan in 4 directions, meaningfully more work than simple
 tables, which were done first), docutils' non-generic built-in roles
 (`code`, `math`, `pep-reference`, `rfc-reference`, `raw`), standalone
-URI/email/PEP/RFC recognition, indirect/anonymous hyperlink *targets*
-(as opposed to *references*, which — see above — are supported),
-inline internal targets, a substitution reference used as a hyperlink.
+PEP/RFC recognition (`pep-123`, `RFC 123`), indirect/anonymous
+hyperlink *targets* (as opposed to *references*, which — see above —
+are supported), inline internal targets, a substitution reference used
+as a hyperlink.
 Title-style consistency and enumerator-sequence validation are not
 enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real

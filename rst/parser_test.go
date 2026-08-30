@@ -146,6 +146,16 @@ func TestParse(t *testing.T) {
 			source: "- item with a table\n\n  =====  =====\n  a      b\n  =====  =====\n  1      2\n  =====  =====\n\n- item two\n",
 			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a table\n            <table>\n                <thead>\n                    <row>\n                        <entry>\n                            <paragraph>\n                                a\n                        <entry>\n                            <paragraph>\n                                b\n                <tbody>\n                    <row>\n                        <entry>\n                            <paragraph>\n                                1\n                        <entry>\n                            <paragraph>\n                                2\n        <list_item>\n            <paragraph>\n                item two\n",
 		},
+		{
+			name:   "standalone URI, email, and trailing punctuation",
+			source: "Visit https://example.com/path?q=1 or email me at jane@example.com now. Trailing punctuation: https://x.org, and https://y.org.\n",
+			want:   "<document>\n    <paragraph>\n        Visit \n        <reference refuri=\"https://example.com/path?q=1\">\n            https://example.com/path?q=1\n         or email me at \n        <reference refuri=\"mailto:jane@example.com\">\n            jane@example.com\n         now. Trailing punctuation: \n        <reference refuri=\"https://x.org\">\n            https://x.org\n        , and \n        <reference refuri=\"https://y.org\">\n            https://y.org\n        .\n",
+		},
+		{
+			name:   "standalone URI inside a list item and email in another",
+			source: "- see https://example.com here\n- and jane@example.org too\n\nA URL at end of line: https://example.com/end\n",
+			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                see \n                <reference refuri=\"https://example.com\">\n                    https://example.com\n                 here\n        <list_item>\n            <paragraph>\n                and \n                <reference refuri=\"mailto:jane@example.org\">\n                    jane@example.org\n                 too\n    <paragraph>\n        A URL at end of line: \n        <reference refuri=\"https://example.com/end\">\n            https://example.com/end\n",
+		},
 	}
 
 	for _, tc := range cases {
@@ -188,6 +198,9 @@ func TestInline(t *testing.T) {
 		{"suffix role", "see `bold text`:strong: here", "see \n<strong>\n    bold text\n here\n"},
 		{"role alias sub/sup", "see :sub:`x` and :sup:`y` here", "see \n<subscript>\n    x\n and \n<superscript>\n    y\n here\n"},
 		{"unknown role falls back to generic inline", "see :custom:`x` here", "see \n<inline role=\"custom\">\n    x\n here\n"},
+		{"standalone URI", "Visit https://example.com now.", "Visit \n<reference refuri=\"https://example.com\">\n    https://example.com\n now.\n"},
+		{"standalone email", "Contact jane@example.com now.", "Contact \n<reference refuri=\"mailto:jane@example.com\">\n    jane@example.com\n now.\n"},
+		{"standalone URI with trailing punctuation stripped", "See https://x.org, and https://y.org.", "See \n<reference refuri=\"https://x.org\">\n    https://x.org\n, and \n<reference refuri=\"https://y.org\">\n    https://y.org\n.\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
