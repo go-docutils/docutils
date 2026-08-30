@@ -3,12 +3,13 @@
 //
 // SCOPE (v1 — see [[go-docutils-org]] for the plan): sections (over/under
 // lined titles), paragraphs, transitions, bullet lists, enumerated lists
-// (arabic + '.' suffix only), block quotes, literal blocks, comments,
-// directives (captured structurally only, see explicit.go), hyperlink
-// targets with reference resolution, and the inline markup in inline.go.
-// NOT yet ported: field lists, option lists, definition lists, line
-// blocks, tables, footnotes/citations, substitution definitions, doctest
-// blocks, indirect/anonymous hyperlink targets, per-directive semantics.
+// (arabic + '.' suffix only), field lists, definition lists, block
+// quotes, literal blocks, comments, directives (captured structurally
+// only, see explicit.go), hyperlink targets with reference resolution,
+// and the inline markup in inline.go. NOT yet ported: option lists (see
+// fieldlist.go for why they're deferred), line blocks, tables,
+// footnotes/citations, substitution definitions, doctest blocks,
+// indirect/anonymous hyperlink targets, per-directive semantics.
 // Title-style consistency and enumerator-sequence validation are not
 // enforced (docutils errors on inconsistent styles or skipped levels;
 // this parser silently assigns a level instead).
@@ -68,6 +69,12 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
+		if _, _, ok := matchFieldMarker(lines[i]); ok {
+			fl, next := p.parseFieldList(lines, i)
+			current.Append(fl)
+			i = next
+			continue
+		}
 		if isExplicitMarkupLine(lines[i]) {
 			node, next := parseExplicitMarkup(lines, i)
 			current.Append(node)
@@ -94,6 +101,12 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 		if isTransitionLine(lines[i]) {
 			current.Append(doctree.NewElement(doctree.TagTransition))
 			i++
+			continue
+		}
+		if isDefinitionTermLine(lines, i) {
+			dl, next := p.parseDefinitionList(lines, i)
+			current.Append(dl)
+			i = next
 			continue
 		}
 		para, next, literalNext := consumeParagraph(lines, i)
@@ -138,6 +151,12 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			i = next
 			continue
 		}
+		if _, _, ok := matchFieldMarker(lines[i]); ok {
+			fl, next := p.parseFieldList(lines, i)
+			parent.Append(fl)
+			i = next
+			continue
+		}
 		if isExplicitMarkupLine(lines[i]) {
 			node, next := parseExplicitMarkup(lines, i)
 			parent.Append(node)
@@ -147,6 +166,12 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 		if isTransitionLine(lines[i]) {
 			parent.Append(doctree.NewElement(doctree.TagTransition))
 			i++
+			continue
+		}
+		if isDefinitionTermLine(lines, i) {
+			dl, next := p.parseDefinitionList(lines, i)
+			parent.Append(dl)
+			i = next
 			continue
 		}
 		para, next, literalNext := consumeParagraph(lines, i)
@@ -239,8 +264,8 @@ func matchTitle(lines []string, i int) (title string, style titleStyle, consumed
 			}
 		}
 	}
-	if !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 &&
-		!isBulletLine(lines[i]) && !isEnumLine(lines[i]) && !isExplicitMarkupLine(lines[i]) {
+	if _, _, isField := matchFieldMarker(lines[i]); !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 &&
+		!isBulletLine(lines[i]) && !isEnumLine(lines[i]) && !isExplicitMarkupLine(lines[i]) && !isField {
 		if i+1 < len(lines) {
 			if char, isLine := isUniformLine(lines[i+1]); isLine {
 				t := trimTrailingSpace(lines[i])
@@ -292,6 +317,9 @@ func consumeParagraph(lines []string, i int) (para *doctree.Element, next int, l
 		}
 		if j > i {
 			if isBulletLine(lines[j]) || isEnumLine(lines[j]) || isExplicitMarkupLine(lines[j]) {
+				break
+			}
+			if _, _, isField := matchFieldMarker(lines[j]); isField {
 				break
 			}
 			if _, isLine := isUniformLine(lines[j]); isLine {

@@ -12,12 +12,16 @@ import (
 // settings_overrides={'doctitle_xform': False})`) for element shape;
 // this project's own doctree.Dump format is used for comparison since
 // ids/names/source attributes are not yet implemented (see the package
-// doc's SCOPE note). Two known, documented divergences from real
-// docutils: a directive is captured structurally (name/arguments/raw
-// content) rather than dispatched to semantics (`.. note::` does NOT
-// become a real `<note>` admonition here), and an unresolved reference
-// stays a bare reference node instead of being rewritten to
-// `problematic` with an appended system-message section.
+// doc's SCOPE note). A field list at the very start of a document is
+// compared against docutils with `docinfo_xform: False` too — real
+// docutils otherwise promotes it to a typed `<docinfo>` node, a
+// transform this parser does not implement (same category of gap as
+// per-directive semantics). Two more known, documented divergences: a
+// directive is captured structurally (name/arguments/raw content)
+// rather than dispatched to semantics (`.. note::` does NOT become a
+// real `<note>` admonition here), and an unresolved reference stays a
+// bare reference node instead of being rewritten to `problematic` with
+// an appended system-message section.
 func TestParse(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -63,6 +67,16 @@ func TestParse(t *testing.T) {
 			name:   "list item containing a comment and a literal block",
 			source: "- item one\n\n  .. a comment inside a list item\n\n  a literal sample::\n\n      x = 1\n\n- item two\n",
 			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item one\n            <comment>\n                a comment inside a list item\n            <paragraph>\n                a literal sample:\n            <literal_block>\n                x = 1\n        <list_item>\n            <paragraph>\n                item two\n",
+		},
+		{
+			name:   "field list with a continuation line indented less than the marker column, definition list",
+			source: ":author: Jane Doe\n:version: 1.0\n:date: 2026-08-30\n  continuation line for date\n\nTerm one\n    Definition of term one.\n\nTerm two\n    First paragraph of definition two.\n\n    Second paragraph of definition two.\n\n    - a nested bullet inside the definition\n",
+			want:   "<document>\n    <field_list>\n        <field>\n            <field_name>\n                author\n            <field_body>\n                <paragraph>\n                    Jane Doe\n        <field>\n            <field_name>\n                version\n            <field_body>\n                <paragraph>\n                    1.0\n        <field>\n            <field_name>\n                date\n            <field_body>\n                <paragraph>\n                    2026-08-30\n                    continuation line for date\n    <definition_list>\n        <definition_list_item>\n            <term>\n                Term one\n            <definition>\n                <paragraph>\n                    Definition of term one.\n        <definition_list_item>\n            <term>\n                Term two\n            <definition>\n                <paragraph>\n                    First paragraph of definition two.\n                <paragraph>\n                    Second paragraph of definition two.\n                <bullet_list bullet=\"-\">\n                    <list_item>\n                        <paragraph>\n                            a nested bullet inside the definition\n",
+		},
+		{
+			name:   "a blank line after a would-be term prevents definition-list detection",
+			source: "Not a term because next line is blank.\n\nTerm with no definition body next line\n\nA regular paragraph that follows.\n",
+			want:   "<document>\n    <paragraph>\n        Not a term because next line is blank.\n    <paragraph>\n        Term with no definition body next line\n    <paragraph>\n        A regular paragraph that follows.\n",
 		},
 	}
 

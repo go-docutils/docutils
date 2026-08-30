@@ -86,12 +86,32 @@ func enumContentColumn(line string) int {
 	return j
 }
 
-// gatherListItemLines collects the lines belonging to one list item
-// (bullet or enumerated), starting with firstLine (the marker line's
-// remainder) and pulling in subsequent lines indented at least
-// contentCol, dedented to that column. Returns the item's lines (local
-// coordinate system) and the index of the first line past the item.
-func gatherListItemLines(lines []string, i, contentCol int, firstLine string) ([]string, int) {
+// gatherListItemLines collects the lines belonging to one list item or
+// field body, starting with firstLine (the marker line's remainder).
+// markerCol is where the marker line's own content starts (e.g. after
+// "- " or ":name: "). The body's actual indent, though, is taken from
+// the FIRST continuation line when that is indented less than
+// markerCol — a common, valid style for field lists in particular
+// (":date: 2026-08-30\n  continuation" indents the continuation by 2,
+// not by len(":date: ")=7) — mirroring docutils' get_first_known_indented,
+// which detects the block's indent dynamically rather than assuming it
+// matches the marker column. A continuation indented AT LEAST markerCol
+// keeps markerCol as the dedent baseline, so deeper indentation still
+// surfaces as nested content (e.g. a block quote) inside the item.
+// Returns the item's lines (local coordinate system) and the index of
+// the first line past the item.
+func gatherListItemLines(lines []string, i, markerCol int, firstLine string) ([]string, int) {
+	contentCol := markerCol
+	for k := i + 1; k < len(lines); k++ {
+		if isBlankStr(lines[k]) {
+			continue
+		}
+		if indent := leadingSpaces(lines[k]); indent > 0 && indent < markerCol {
+			contentCol = indent
+		}
+		break
+	}
+
 	itemLines := []string{firstLine}
 	j := i + 1
 	for j < len(lines) {

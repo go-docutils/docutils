@@ -18,25 +18,30 @@ build or run time.
 
 **Implemented**: sections (over/underlined titles, arbitrary nesting
 depth via first-seen title-style ordering), paragraphs, transitions,
-bullet lists, enumerated lists (arabic + `.` suffix only), block quotes,
-literal blocks (`::`), comments, directives (captured structurally —
-name, arguments, raw content — never dispatched to per-directive
-semantics: there is no directive registry), hyperlink targets with
-reference resolution, and inline markup for `**strong**`, `*emphasis*`,
+bullet lists, enumerated lists (arabic + `.` suffix only), field lists
+(including a docutils-shaped body-indent quirk: a continuation line
+indented less than the marker column, e.g. under `:date: 2026-08-30`,
+still belongs to the field), definition lists, block quotes, literal
+blocks (`::`), comments, directives (captured structurally — name,
+arguments, raw content — never dispatched to per-directive semantics:
+there is no directive registry), hyperlink targets with reference
+resolution, and inline markup for `**strong**`, `*emphasis*`,
 `` ``literal`` ``, `` `named reference`_ `` / `` `anonymous`__ ``, and
 backslash escapes.
 
-**Not yet ported** (see the `rst` and `explicit.go` doc comments for the
-exact list): field lists, option lists, definition lists, line blocks,
+**Not yet ported** (see the `rst` and `explicit.go`/`fieldlist.go` doc
+comments for the exact list and why): option lists (deferred — complex
+marker grammar, rare outside man-page-style CLI docs), line blocks,
 tables, footnotes/citations, substitution definitions, doctest blocks,
 interpreted-text roles, standalone URI/email/PEP/RFC recognition,
 indirect/anonymous hyperlink targets. Title-style consistency and
 enumerator-sequence validation are not enforced. An unresolved reference
 stays a bare node instead of being rewritten to `problematic` with an
-error message, the way real docutils does. Sphinx's `autodoc` extension
-(and `napoleon`, which sits downstream of it) is out of scope entirely:
-it works by importing and introspecting live Python code, which is not
-portable to pure Go.
+error message, and a leading field list isn't promoted to a typed
+`<docinfo>` node — both transforms real docutils applies after parsing.
+Sphinx's `autodoc` extension (and `napoleon`, downstream of it) is out
+of scope entirely: it works by importing and introspecting live Python
+code, which is not portable to pure Go.
 
 ```go
 import (
@@ -53,4 +58,4 @@ fmt.Print(doctree.Dump(doc)) // this project's own pseudoxml-like debug format
 `go test ./...`. Fixtures in `rst/parser_test.go` were generated from
 this parser's own output, then eyeball-verified against the docutils
 foreign judge (see the package doc comment) before being frozen — not
-hand-transcribed. Coverage as of this writing: `doctree` 97%, `rst` 93%.
+hand-transcribed. Coverage as of this writing: `doctree` 97%, `rst` 92%.
