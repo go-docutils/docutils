@@ -27,11 +27,7 @@ import (
 // since ids/source attributes are not yet implemented (see the package
 // doc's SCOPE note). A field list at the very start of a document is
 // compared with `docinfo_xform: False` too — real docutils otherwise
-// promotes it to a typed `<docinfo>` node, not implemented here. A
-// line block with an indented sub-line is compared against docutils'
-// FLAT shape too: real docutils nests such a line into a
-// sub-`<line_block>` by relative indent (nest_line_block_lines), not
-// implemented here (see lineblock.go). An unknown interpreted-text role
+// promotes it to a typed `<docinfo>` node, not implemented here. An unknown interpreted-text role
 // is compared against docutils' error shape too (a problematic node
 // plus a system-message section): this parser has no role registry, so
 // it falls back to a generic <inline role="..."> instead of erroring
@@ -101,9 +97,9 @@ func TestParse(t *testing.T) {
 			want:   "<document>\n    <paragraph>\n        Not a term because next line is blank.\n    <paragraph>\n        Term with no definition body next line\n    <paragraph>\n        A regular paragraph that follows.\n",
 		},
 		{
-			name:   "line block (flat) and doctest block",
+			name:   "line block with a nested indented sub-line, and doctest block",
 			source: "Intro paragraph.\n\n| Line one of the poem\n| Line two of the poem\n|     Indented line three\n\nA regular paragraph.\n\n>>> 1 + 1\n2\n>>> print(\"done\")\ndone\n\nFinal paragraph.\n",
-			want:   "<document>\n    <paragraph>\n        Intro paragraph.\n    <line_block>\n        <line>\n            Line one of the poem\n        <line>\n            Line two of the poem\n        <line>\n            Indented line three\n    <paragraph>\n        A regular paragraph.\n    <doctest_block>\n        >>> 1 + 1\n        2\n        >>> print(\"done\")\n        done\n    <paragraph>\n        Final paragraph.\n",
+			want:   "<document>\n    <paragraph>\n        Intro paragraph.\n    <line_block>\n        <line>\n            Line one of the poem\n        <line>\n            Line two of the poem\n        <line_block>\n            <line>\n                Indented line three\n    <paragraph>\n        A regular paragraph.\n    <doctest_block>\n        >>> 1 + 1\n        2\n        >>> print(\"done\")\n        done\n    <paragraph>\n        Final paragraph.\n",
 		},
 		{
 			name:   "list item containing a line block and a doctest block",

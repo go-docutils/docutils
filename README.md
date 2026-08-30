@@ -21,8 +21,9 @@ depth via first-seen title-style ordering), paragraphs, transitions,
 bullet lists, enumerated lists (arabic + `.` suffix only), field lists
 (including a docutils-shaped body-indent quirk: a continuation line
 indented less than the marker column, e.g. under `:date: 2026-08-30`,
-still belongs to the field), definition lists, line blocks (flat — see
-below), doctest blocks (kept verbatim, ">>>" prompts included), block
+still belongs to the field), definition lists, line blocks (nested by
+relative indentation, matching docutils' own sub-stanza grouping),
+doctest blocks (kept verbatim, ">>>" prompts included), block
 quotes, literal blocks (`::`), comments, directives (captured
 structurally — name, arguments, raw content — never dispatched to
 per-directive semantics: there is no directive registry), hyperlink
@@ -114,10 +115,9 @@ enforced, and a table's column-margin violations are never detected
 content relies on it). An unresolved reference or an unknown
 interpreted-text role stays a plain node instead of being rewritten to
 `problematic` with an error message, a leading field list isn't
-promoted to a typed `<docinfo>` node, a line block with a
-deeper-indented sub-line stays FLAT instead of being nested into a
-sub-`<line_block>`, and a resolved embedded-link reference doesn't get
-the extra `<target>` sibling node docutils emits alongside it (this
+promoted to a typed `<docinfo>` node, and a resolved embedded-link
+reference doesn't get the extra `<target>` sibling node docutils emits
+alongside it (this
 parser sets `refuri`/`refname` directly on the `<reference>` instead;
 resolution still works the same way since it's all done by matching
 names, just without that second node) — all transforms/emissions

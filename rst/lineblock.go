@@ -11,14 +11,14 @@ import (
 // modeled on docutils' Body.line_block/line_block_line and Body.doctest
 // (states.py).
 //
-// SCOPE (v1): a line block is captured as a FLAT sequence of `line`
-// children — docutils additionally groups consecutive lines into nested
-// `line_block` wrappers by their relative indentation after the "| "
-// marker (nest_line_block_lines/nest_line_block_segment), used for
-// indented sub-stanzas; that nesting is not implemented, so every line
-// ends up a direct child regardless of how far it's indented past the
-// marker. A doctest block's content is kept verbatim (including the
-// ">>>" prompts), same as docutils.
+// A line block groups consecutive lines into nested `line_block` wrappers
+// by their relative indentation after the "| " marker
+// (nest_line_block_lines/nest_line_block_segment), used for indented
+// sub-stanzas — ported faithfully in nestLineBlockSegment below, verified
+// against real docutils for a flat block, a single nested segment
+// (docutils' own line_block.txt example), and a doubly-nested one. A
+// doctest block's content is kept verbatim (including the ">>>"
+// prompts), same as docutils.
 
 func isLineBlockLine(s string) bool {
 	if s == "" || s[0] != '|' {
@@ -27,14 +27,79 @@ func isLineBlockLine(s string) bool {
 	return len(s) == 1 || s[1] == ' '
 }
 
+// lbLine is one line-block line before nesting: its content already
+// parsed, its indent depth (docutils' own convention — the number of
+// spaces after the mandatory one following "|"; -1 for an empty "|" line,
+// whose indent isn't known until it inherits the previous line's).
+type lbLine struct {
+	el     *doctree.Element
+	indent int
+}
+
 func (p *parser) parseLineBlock(lines []string, i int) (*doctree.Element, int) {
 	lb := doctree.NewElement(doctree.TagLineBlock)
+	var items []lbLine
 	for i < len(lines) && isLineBlockLine(lines[i]) {
-		content := strings.TrimLeft(lines[i][1:], " ")
-		lb.Append(doctree.NewElement(doctree.TagLine, parseInline(content)...))
+		rest := lines[i][1:]
+		indent := -1
+		content := ""
+		if strings.TrimRight(rest, " ") != "" {
+			n := 0
+			for n < len(rest) && rest[n] == ' ' {
+				n++
+			}
+			indent = n - 1
+			content = rest[n:]
+		}
+		items = append(items, lbLine{doctree.NewElement(doctree.TagLine, parseInline(content)...), indent})
 		i++
 	}
+	if len(items) > 0 && items[0].indent < 0 {
+		items[0].indent = 0
+	}
+	for k := 1; k < len(items); k++ {
+		if items[k].indent < 0 {
+			items[k].indent = items[k-1].indent
+		}
+	}
+	nestLineBlockSegment(lb, items)
 	return lb, i
+}
+
+// nestLineBlockSegment is docutils' nest_line_block_segment: within one
+// segment, find the shallowest indent present; every line at that depth
+// stays a direct child, and every run of deeper lines between two such
+// lines becomes its own nested <line_block>, recursively segmented the
+// same way.
+func nestLineBlockSegment(parent *doctree.Element, items []lbLine) {
+	if len(items) == 0 {
+		return
+	}
+	least := items[0].indent
+	for _, it := range items[1:] {
+		if it.indent < least {
+			least = it.indent
+		}
+	}
+	var group []lbLine
+	flush := func() {
+		if len(group) == 0 {
+			return
+		}
+		nested := doctree.NewElement(doctree.TagLineBlock)
+		nestLineBlockSegment(nested, group)
+		parent.Append(nested)
+		group = nil
+	}
+	for _, it := range items {
+		if it.indent > least {
+			group = append(group, it)
+			continue
+		}
+		flush()
+		parent.Append(it.el)
+	}
+	flush()
 }
 
 func isDoctestLine(s string) bool {
