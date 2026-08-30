@@ -138,6 +138,11 @@ func TestRenderContains(t *testing.T) {
 			"-f, --file=FILE  Grouped short+long.\n-ovalue       Embedded.\n",
 			[]string{`\begin{description}`, `\item[{-f, --file=FILE}] Grouped short+long.`, `\item[{-ovalue}] Embedded.`, `\end{description}`},
 		},
+		{
+			"a raw latex block passes through unescaped, surrounded by newlines so it can't swallow following text",
+			".. raw:: latex\n\n   \\bfseries\n\nAfter.\n",
+			[]string{"\n\\bfseries\nAfter.\n"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -148,6 +153,16 @@ func TestRenderContains(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRawHTMLBlockSkippedByLatexWriter guards the OTHER half of raw's
+// per-writer format matching: a block targeting a different writer
+// entirely must not leak through as literal, unescaped text.
+func TestRawHTMLBlockSkippedByLatexWriter(t *testing.T) {
+	got := Render(rst.Parse(".. raw:: html\n\n   <b>bold</b>\n"))
+	if strings.Contains(got, "<b>bold</b>") {
+		t.Errorf("an html-targeted raw block leaked into latex output:\n%s", got)
 	}
 }
 

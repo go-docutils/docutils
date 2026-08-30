@@ -123,6 +123,23 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		for _, line := range strings.Split(doctree.AsText(el), "\n") {
 			b.WriteString("% " + line + "\n")
 		}
+	case doctree.TagRaw:
+		// Verbatim, NOT escapeText: the whole point of "raw" is content
+		// that bypasses this writer's own escaping — see Options.RawEnabled
+		// in rst.Parse for how it gets here at all. Only emitted for a raw
+		// block actually targeting "latex" specifically (checked against
+		// real docutils' own latex2e writer's visit_raw: it tests for
+		// "latex", not "tex" — a format list can name several writers,
+		// ".. raw:: html latex", each writer only honors its own). The
+		// surrounding newlines matter, not just formatting: real docutils'
+		// own visit_raw/depart_raw add them for a block-level raw node too
+		// (verified against the foreign judge) — without one, a raw LaTeX
+		// command that ends in letters (`\bfseries`, say) would swallow
+		// whatever ordinary text immediately follows it as part of the
+		// same control sequence name and fail to compile.
+		if formatTargets(el.Attr("format"), "latex") {
+			b.WriteString("\n" + doctree.AsText(el) + "\n")
+		}
 	case doctree.TagFieldList, doctree.TagDefinitionList, doctree.TagOptionList, doctree.TagDocinfo:
 		wrapEnv(b, "description", func() { renderDescriptionItems(b, el, level) })
 	case doctree.TagOptionGroup:
@@ -446,6 +463,19 @@ func renderTableRows(b *strings.Builder, group *doctree.Element) {
 		}
 		b.WriteString(strings.Join(cells, " & ") + " \\\\\n")
 	}
+}
+
+// formatTargets reports whether a raw node's space-separated format list
+// (".. raw:: html latex" targets both) names target — real docutils' own
+// per-writer convention (see e.g. latex2e's visit_raw: `if 'latex' not in
+// node['format'].split()`).
+func formatTargets(formats, target string) bool {
+	for _, f := range strings.Fields(formats) {
+		if f == target {
+			return true
+		}
+	}
+	return false
 }
 
 func escapeText(s string) string {

@@ -34,7 +34,11 @@ relative indentation, matching docutils' own sub-stanza grouping),
 doctest blocks (kept verbatim, ">>>" prompts included), block
 quotes, literal blocks (`::`), comments, directives (captured
 structurally — name, arguments, raw content — never dispatched to
-per-directive semantics: there is no directive registry), hyperlink
+per-directive semantics: there is no directive registry, with one
+exception — `raw`, `.. raw:: FORMAT`, whose content passes through
+completely unprocessed, tagged with its target format; see
+`Options.RawEnabled`, on by default matching real docutils' own
+default despite its confusingly-named `--no-raw` flag), hyperlink
 targets with reference resolution — including INDIRECT targets
 (`.. _a: b_`, whose value is itself another target's name, chased
 through however many hops until a real URI is reached; a cycle is left
@@ -109,15 +113,20 @@ escaping would corrupt hyperref's own `#`-marker convention).
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
 `lineblock.go`/`inline.go`/`table.go`/`gridtable.go` doc comments for
-the exact list and why): docutils' two remaining non-generic
-built-in roles, `pep-reference`/`rfc-reference` (checked against
-`Parser().parse()` with default settings — docutils' own
-`pep_references`/`rfc_references` settings default to **off**, so
-implementing them unconditionally would diverge from upstream's own
-default rather than fill a real gap) and `raw` (arbitrary raw
-passthrough by format, a real security consideration for untrusted
-input this parser has never had to reason about). Title-style
-consistency and enumerator-sequence validation are not
+the exact list and why): docutils' `pep-reference`/`rfc-reference`
+built-in roles (checked against `Parser().parse()` with default
+settings — docutils' own `pep_references`/`rfc_references` settings
+default to **off**, so implementing them unconditionally would diverge
+from upstream's own default rather than fill a real gap), the `raw`
+ROLE specifically (`` :name:`text` `` where `name` was itself defined
+via `.. role:: name(raw)` — this parser has no role registry at all to
+resolve that indirection through; the far more common `raw` DIRECTIVE,
+`.. raw:: FORMAT`, IS implemented — see `Options.RawEnabled`), and an
+unknown interpreted-text role's rewrite to `problematic` (would need
+that same role registry first — without one, every custom role a real
+document defines already looks "unknown" to this parser, so rewriting
+on that basis would produce false positives rather than fill a real
+gap). Title-style consistency and enumerator-sequence validation are not
 enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
 content relies on it). A dangling NAMED reference (bare, backtick-quoted,

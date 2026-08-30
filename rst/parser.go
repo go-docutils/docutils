@@ -4,19 +4,17 @@
 // SCOPE (v1 — see [[go-docutils-org]] for the plan): sections (over/under
 // lined titles), paragraphs, transitions, bullet lists, enumerated lists
 // (arabic + '.' suffix only), field lists, definition lists, line blocks
-// (flat, see lineblock.go for the un-implemented indent-nesting), doctest
-// blocks, block quotes, literal blocks, comments, directives (captured
-// structurally only, see explicit.go), hyperlink targets with reference
-// resolution, footnotes, citations, substitution definitions (see
-// explicit.go for all three — no numbering/symbol resolution, no
-// substitution-value inlining), simple tables and GRID tables (see
-// table.go and gridtable.go), and the inline markup in inline.go. NOT
-// yet ported: option lists (see fieldlist.go for why they're deferred),
-// indirect/anonymous hyperlink targets, per-directive semantics. Title-
-// style consistency and enumerator-sequence validation are not enforced
-// (docutils errors on inconsistent styles or skipped
-// levels;
-// this parser silently assigns a level instead).
+// (nested by relative indentation, see lineblock.go), doctest blocks,
+// block quotes, literal blocks, comments, directives (captured
+// structurally only, except "raw", see Options — there is still no
+// per-directive registry beyond that one case), hyperlink targets with
+// reference resolution (named, indirect, and anonymous — see explicit.go),
+// footnotes, citations, substitution definitions, docinfo promotion,
+// simple tables and GRID tables (see table.go and gridtable.go), and the
+// inline markup in inline.go. Title-style consistency and
+// enumerator-sequence validation are not enforced (docutils errors on
+// inconsistent styles or skipped levels; this parser silently assigns a
+// level instead).
 package rst
 
 import (
@@ -30,13 +28,44 @@ type titleStyle struct {
 	overline bool
 }
 
-type parser struct {
-	titleStyles []titleStyle
+// Options configures Parse's behavior. The zero value is NOT what Parse
+// itself uses — see DefaultOptions — so a caller building one by hand
+// should start from DefaultOptions and override specific fields, not
+// construct Options{} directly (its RawEnabled would silently come out
+// false, the opposite of what Parse/DefaultOptions actually do).
+type Options struct {
+	// RawEnabled allows the "raw" directive (`.. raw:: FORMAT`) to pass
+	// its content through completely unprocessed, tagged with the target
+	// format it's meant for — real docutils' own real security surface
+	// for untrusted input, since the content is never parsed as reST at
+	// all. Real docutils defaults this true (its own --no-raw flag's
+	// help text: "Enable the raw directive. (default)"), matched here;
+	// disabled, the directive falls back to this project's existing
+	// structural capture, the same as any other unimplemented directive.
+	RawEnabled bool
 }
 
-// Parse parses reStructuredText source into a document tree.
+// DefaultOptions returns the Options Parse itself uses, matching real
+// docutils' own defaults.
+func DefaultOptions() Options {
+	return Options{RawEnabled: true}
+}
+
+type parser struct {
+	titleStyles []titleStyle
+	opts        Options
+}
+
+// Parse parses reStructuredText source into a document tree, using
+// DefaultOptions.
 func Parse(source string) *doctree.Element {
-	p := &parser{}
+	return ParseWithOptions(source, DefaultOptions())
+}
+
+// ParseWithOptions is Parse with explicit control over the behaviors
+// Options exposes.
+func ParseWithOptions(source string, opts Options) *doctree.Element {
+	p := &parser{opts: opts}
 	doc := doctree.NewElement(doctree.TagDocument)
 	p.parseDocument(splitLines(source), doc)
 	resolveTargets(doc)

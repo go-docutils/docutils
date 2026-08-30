@@ -147,6 +147,11 @@ func TestRender(t *testing.T) {
 			`<dl><dt>-f, --file=FILE</dt><dd><p>Grouped short+long.</p></dd>` +
 				`<dt>-ovalue</dt><dd><p>Embedded.</p></dd></dl>`,
 		},
+		{
+			"a raw html block passes through unescaped; a raw latex block is skipped entirely",
+			".. raw:: html\n\n   <b>bold</b>\n\n.. raw:: latex\n\n   \\bfseries\n",
+			"<b>bold</b>",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

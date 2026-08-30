@@ -93,6 +93,16 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		b.WriteString("<!-- ")
 		b.WriteString(strings.ReplaceAll(doctree.AsText(el), "--", "- -"))
 		b.WriteString(" -->")
+	case doctree.TagRaw:
+		// Verbatim, NOT escapeText: the whole point of "raw" is content
+		// that bypasses this writer's own escaping — see Options.RawEnabled
+		// in rst.Parse for how it gets here at all. Only emitted for a raw
+		// block actually targeting "html" (docutils' own per-writer
+		// convention: a format list can name several writers,
+		// ".. raw:: html latex", each writer only honors its own).
+		if formatTargets(el.Attr("format"), "html") {
+			b.WriteString(doctree.AsText(el))
+		}
 	case doctree.TagFieldList, doctree.TagDefinitionList, doctree.TagOptionList, doctree.TagDocinfo:
 		writeTag(b, "dl", "", el, headingLevel)
 	case doctree.TagField:
@@ -333,6 +343,19 @@ func renderRow(b *strings.Builder, cellTag string, row *doctree.Element, heading
 		writeTag(b, cellTag, attrs, entry, headingLevel)
 	}
 	b.WriteString("</tr>")
+}
+
+// formatTargets reports whether a raw node's space-separated format list
+// (".. raw:: html latex" targets both) names target — real docutils' own
+// per-writer convention (see e.g. latex2e's visit_raw: `if 'latex' not in
+// node['format'].split()`).
+func formatTargets(formats, target string) bool {
+	for _, f := range strings.Fields(formats) {
+		if f == target {
+			return true
+		}
+	}
+	return false
 }
 
 func escapeText(s string) string {

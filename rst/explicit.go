@@ -86,7 +86,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i int) (doctree.Node, int) 
 		// construct (explicit_construct's final `return self.comment(...)`).
 	}
 	if name, args, ok := matchDirectiveName(rest); ok {
-		return parseDirective(lines, i, name, args)
+		return p.parseDirective(lines, i, name, args)
 	}
 	return parseComment(lines, i, rest)
 }
@@ -184,7 +184,7 @@ func (p *parser) parseSubstitutionDef(lines []string, i int, name, directiveRest
 	if !ok {
 		return nil, 0, false
 	}
-	node, next := parseDirective(lines, i, dirName, args)
+	node, next := p.parseDirective(lines, i, dirName, args)
 	el := node.(*doctree.Element)
 	el.Tag = doctree.TagSubstitutionDef
 	el.SetAttr("substitution", normalizeWhitespace(name))
@@ -221,8 +221,26 @@ func matchDirectiveName(rest string) (name, args string, ok bool) {
 	return rest[:j], strings.TrimSpace(rest[k+2:]), true
 }
 
-func parseDirective(lines []string, i int, name, args string) (doctree.Node, int) {
+// parseDirective captures a directive structurally — except "raw"
+// (`.. raw:: FORMAT`, optionally several space-separated formats, e.g.
+// `.. raw:: html latex`), the one directive this parser gives real
+// semantics: when p.opts.RawEnabled (see Options), its body passes
+// through completely unprocessed as a <raw format="..."> node instead,
+// content never touched by parseInline/parseBlockLines at all — the
+// entire point of "raw". Disabled (or given no format argument, which
+// real docutils treats as a directive-level error this parser doesn't
+// generally validate for anyway), it falls back to the same structural
+// capture any other unimplemented directive gets.
+func (p *parser) parseDirective(lines []string, i int, name, args string) (doctree.Node, int) {
 	body, next := gatherExplicitBody(lines, i)
+	if name == "raw" && p.opts.RawEnabled && args != "" {
+		el := doctree.NewElement(doctree.TagRaw)
+		el.SetAttr("format", strings.ToLower(strings.Join(strings.Fields(args), " ")))
+		if len(body) > 0 {
+			el.Append(&doctree.Text{Data: strings.Join(body, "\n")})
+		}
+		return el, next
+	}
 	el := doctree.NewElement(doctree.TagDirective)
 	el.SetAttr("name", name)
 	if args != "" {

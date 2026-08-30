@@ -67,6 +67,7 @@ const (
 	TagSystemMessage      = "system_message"
 	TagComment            = "comment"
 	TagDirective          = "directive"
+	TagRaw                = "raw"
 	TagLiteralBlock       = "literal_block"
 	TagFieldList          = "field_list"
 	TagField              = "field"
