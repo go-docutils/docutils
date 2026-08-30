@@ -43,29 +43,38 @@ GENERIC roles (`emphasis`, `strong`, `literal`, `subscript`/`sub`,
 `abbreviation`/`ab`, `acronym`/`ac`) — any other role name (there is no
 `.. role::` registry, same philosophy as directives) falls back to a
 generic `<inline role="name">` rather than docutils' error, and
-backslash escapes.
+backslash escapes; and SIMPLE tables (`=====`-bordered, with an
+optional `-----`-underlined column-span row and a multi-line/nested-list
+cell content — docutils' own SimpleTableParser docstring example is
+this parser's own test fixture, verbatim).
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
-`lineblock.go`/`inline.go` doc comments for the exact list and why):
-option lists (deferred — complex marker grammar, rare outside
-man-page-style CLI docs), tables, docutils' non-generic built-in roles
+`lineblock.go`/`inline.go`/`table.go` doc comments for the exact list
+and why): option lists (deferred — complex marker grammar, rare outside
+man-page-style CLI docs), GRID tables (`+---+---+`-bordered — a real 2D
+cell-boundary scan in 4 directions, meaningfully more work than simple
+tables, which were done first), docutils' non-generic built-in roles
 (`code`, `math`, `pep-reference`, `rfc-reference`, `raw`), standalone
 URI/email/PEP/RFC recognition, indirect/anonymous hyperlink *targets*
 (as opposed to *references*, which — see above — are supported),
 inline internal targets, a substitution reference used as a hyperlink.
 Title-style consistency and enumerator-sequence validation are not
-enforced. An unresolved reference or an unknown interpreted-text role
-stays a plain node instead of being rewritten to `problematic` with an
-error message, a leading field list isn't promoted to a typed
-`<docinfo>` node, a line block with a deeper-indented sub-line stays
-FLAT instead of being nested into a sub-`<line_block>`,
-footnotes/citations get no auto-numbering or auto-symbol resolution,
-and a resolved embedded-link reference doesn't get the extra `<target>`
-sibling node docutils emits alongside it (this parser sets
-`refuri`/`refname` directly on the `<reference>` instead; resolution
-still works the same way since it's all done by matching names, just
-without that second node) — all transforms/emissions real docutils
-applies after the initial parse (verified by comparing against
+enforced, and a table's column-margin violations are never detected
+(only the "last column overflows its width" case is handled, since real
+content relies on it). An unresolved reference or an unknown
+interpreted-text role stays a plain node instead of being rewritten to
+`problematic` with an error message, a leading field list isn't
+promoted to a typed `<docinfo>` node, a line block with a
+deeper-indented sub-line stays FLAT instead of being nested into a
+sub-`<line_block>`, footnotes/citations get no auto-numbering or
+auto-symbol resolution, a resolved embedded-link reference doesn't get
+the extra `<target>` sibling node docutils emits alongside it (this
+parser sets `refuri`/`refname` directly on the `<reference>` instead;
+resolution still works the same way since it's all done by matching
+names, just without that second node), and a table gets no
+`<tgroup>`/`<colspec>` column-width wrapper — all transforms/emissions
+real docutils applies after (or, for tgroup/colspec, as writer-facing
+metadata alongside) the initial parse (verified by comparing against
 `Parser().parse(src, document)` directly, before docutils' own
 transform pipeline runs, not `publish_string`'s fully-transformed
 output). Sphinx's `autodoc` extension (and `napoleon`, downstream of
@@ -91,4 +100,4 @@ hand-transcribed (for footnotes/citations/substitutions, "docutils
 foreign judge" means `Parser().parse(src, document)` directly rather
 than `publish_string`, to see the tree before docutils' own transforms
 run — see the `rst` package doc comment). Coverage as of this writing:
-`doctree` 97%, `rst` 93%.
+`doctree` 97%, `rst` 93%. `go vet ./...` and `gofmt -l .` clean.

@@ -9,11 +9,13 @@
 // structurally only, see explicit.go), hyperlink targets with reference
 // resolution, footnotes, citations, substitution definitions (see
 // explicit.go for all three — no numbering/symbol resolution, no
-// substitution-value inlining), and the inline markup in inline.go. NOT
+// substitution-value inlining), simple tables (see table.go; GRID
+// tables are NOT implemented), and the inline markup in inline.go. NOT
 // yet ported: option lists (see fieldlist.go for why they're deferred),
-// tables, indirect/anonymous hyperlink targets, per-directive semantics.
-// Title-style consistency and enumerator-sequence validation are not
-// enforced (docutils errors on inconsistent styles or skipped levels;
+// grid tables, indirect/anonymous hyperlink targets, per-directive
+// semantics. Title-style consistency and enumerator-sequence validation
+// are not enforced (docutils errors on inconsistent styles or skipped
+// levels;
 // this parser silently assigns a level instead).
 package rst
 
@@ -86,6 +88,11 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 		if isLineBlockLine(lines[i]) {
 			lb, next := p.parseLineBlock(lines, i)
 			current.Append(lb)
+			i = next
+			continue
+		}
+		if table, next, ok := p.tryParseSimpleTable(lines, i); ok {
+			current.Append(table)
 			i = next
 			continue
 		}
@@ -180,6 +187,11 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 		if isLineBlockLine(lines[i]) {
 			lb, next := p.parseLineBlock(lines, i)
 			parent.Append(lb)
+			i = next
+			continue
+		}
+		if table, next, ok := p.tryParseSimpleTable(lines, i); ok {
+			parent.Append(table)
 			i = next
 			continue
 		}
@@ -352,6 +364,9 @@ func consumeParagraph(lines []string, i int) (para *doctree.Element, next int, l
 			if isDoctestLine(lines[j]) || isLineBlockLine(lines[j]) {
 				break
 			}
+			if isSimpleTableTopLine(lines[j]) {
+				break
+			}
 			if _, isLine := isUniformLine(lines[j]); isLine {
 				break
 			}
@@ -359,7 +374,7 @@ func consumeParagraph(lines []string, i int) (para *doctree.Element, next int, l
 		text = append(text, lines[j])
 		j++
 	}
-	data := strings.Join(text, "\n")
+	data := strings.TrimRight(strings.Join(text, "\n"), " ")
 	if data == "::" {
 		return nil, j, true
 	}

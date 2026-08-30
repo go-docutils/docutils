@@ -10,17 +10,19 @@ import (
 // Expected trees below were cross-checked against reference docutils
 // 0.23 for element shape. For most cases this used
 // `publish_string(..., writer_name='pseudoxml', settings_overrides=
-// {'doctitle_xform': False})`; for footnotes/citations/substitutions and
-// for reference-resolution attributes, which docutils assigns via
-// transforms that run AFTER parsing (numbering, substitution-value
-// inlining, indirect-target/embedded-link resolution into a sibling
-// <target> node), comparison instead used a bare
-// `Parser().parse(src, document)` to see the raw pre-transform tree.
-// This parser's OWN reference-resolution pass (resolveTargets, see
-// explicit.go) runs at the end of Parse, so a refuri some fixtures below
-// show already filled in is this parser resolving it eagerly, matching
-// docutils' post-transform behavior even though the comparison target
-// was pre-transform for the rest of the shape. This project's own
+// {'doctitle_xform': False})`; for footnotes/citations/substitutions,
+// reference-resolution attributes, and simple tables, comparison instead
+// used a bare `Parser().parse(src, document)` to see the raw
+// pre-transform tree — some of these node shapes (numbering,
+// substitution-value inlining, indirect-target/embedded-link resolution
+// into a sibling <target>, and a table's <tgroup>/<colspec> column-width
+// metadata) are produced by transforms or writer-side code that run
+// AFTER parsing, not by the parser itself. This parser's OWN
+// reference-resolution pass (resolveTargets, see explicit.go) runs at
+// the end of Parse, so a refuri some fixtures below show already filled
+// in is this parser resolving it eagerly, matching docutils'
+// post-transform behavior even though the comparison target was
+// pre-transform for the rest of the shape. This project's own
 // doctree.Dump format is used throughout since ids/source attributes
 // are not yet implemented (see the package doc's SCOPE note). A field
 // list at the very start of a document is compared with
@@ -32,12 +34,17 @@ import (
 // lineblock.go). An unknown interpreted-text role is compared against
 // docutils' error shape too (a problematic node plus a system-message
 // section): this parser has no role registry, so it falls back to a
-// generic <inline role="..."> instead of erroring (see inline.go).
-// Two more known, documented divergences: a directive (including a
-// substitution definition's embedded `replace::`) is captured
-// structurally rather than dispatched to semantics, and an unresolved
-// reference stays a bare reference node instead of being rewritten to
-// `problematic` with an appended system-message section.
+// generic <inline role="..."> instead of erroring (see inline.go). The
+// simple-table fixtures are docutils' OWN SimpleTableParser docstring
+// example, verbatim — including its header, multi-line cell, nested
+// bullet list, and column-span row — plus this parser's own no-header
+// and inside-a-list-item cases; only the tgroup/colspec wrapper is
+// missing from the comparison, documented in table.go. Two more known,
+// documented divergences: a directive (including a substitution
+// definition's embedded `replace::`) is captured structurally rather
+// than dispatched to semantics, and an unresolved reference stays a
+// bare reference node instead of being rewritten to `problematic` with
+// an appended system-message section.
 func TestParse(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -123,6 +130,21 @@ func TestParse(t *testing.T) {
 			name:   "interpreted text roles: prefix, suffix, aliases, unknown role, literal unaffected",
 			source: "plain `text` here, a suffix role `role text`:emphasis: and a prefix role :strong:`prefix role`.\nAlso :sub:`subscript`, :sup:`superscript`, :title:`a title`, :ab:`WHO`, :acronym:`NASA`.\nAn unknown role :custom:`text` becomes generic, and so does `other`:unknown-role:.\nA literal ``code()`` still works fine next to it.\n",
 			want:   "<document>\n    <paragraph>\n        plain \n        <title_reference>\n            text\n         here, a suffix role \n        <emphasis>\n            role text\n         and a prefix role \n        <strong>\n            prefix role\n        .\n        Also \n        <subscript>\n            subscript\n        , \n        <superscript>\n            superscript\n        , \n        <title_reference>\n            a title\n        , \n        <abbreviation>\n            WHO\n        , \n        <acronym>\n            NASA\n        .\n        An unknown role \n        <inline role=\"custom\">\n            text\n         becomes generic, and so does \n        <inline role=\"unknown-role\">\n            other\n        .\n        A literal \n        <literal>\n            code()\n         still works fine next to it.\n",
+		},
+		{
+			name:   "simple table with header, multi-line cell, nested list, and a colspan",
+			source: "=====  =====\ncol 1  col 2\n=====  =====\n1      Second column of row 1.\n2      Second column of row 2.\n       Second line of paragraph.\n3      - Second column of row 3.\n\n       - Second item in bullet\n         list (row 3, column 2).\n4 is a span\n------------\n5\n=====  =====\n",
+			want:   "<document>\n    <table>\n        <thead>\n            <row>\n                <entry>\n                    <paragraph>\n                        col 1\n                <entry>\n                    <paragraph>\n                        col 2\n        <tbody>\n            <row>\n                <entry>\n                    <paragraph>\n                        1\n                <entry>\n                    <paragraph>\n                        Second column of row 1.\n            <row>\n                <entry>\n                    <paragraph>\n                        2\n                <entry>\n                    <paragraph>\n                        Second column of row 2.\n                        Second line of paragraph.\n            <row>\n                <entry>\n                    <paragraph>\n                        3\n                <entry>\n                    <bullet_list bullet=\"-\">\n                        <list_item>\n                            <paragraph>\n                                Second column of row 3.\n                        <list_item>\n                            <paragraph>\n                                Second item in bullet\n                                list (row 3, column 2).\n            <row>\n                <entry morecols=\"1\">\n                    <paragraph>\n                        4 is a span\n            <row>\n                <entry>\n                    <paragraph>\n                        5\n                <entry>\n",
+		},
+		{
+			name:   "simple table with no header",
+			source: "=====  =====\n1      one\n2      two\n=====  =====\n",
+			want:   "<document>\n    <table>\n        <tbody>\n            <row>\n                <entry>\n                    <paragraph>\n                        1\n                <entry>\n                    <paragraph>\n                        one\n            <row>\n                <entry>\n                    <paragraph>\n                        2\n                <entry>\n                    <paragraph>\n                        two\n",
+		},
+		{
+			name:   "list item containing a simple table",
+			source: "- item with a table\n\n  =====  =====\n  a      b\n  =====  =====\n  1      2\n  =====  =====\n\n- item two\n",
+			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a table\n            <table>\n                <thead>\n                    <row>\n                        <entry>\n                            <paragraph>\n                                a\n                        <entry>\n                            <paragraph>\n                                b\n                <tbody>\n                    <row>\n                        <entry>\n                            <paragraph>\n                                1\n                        <entry>\n                            <paragraph>\n                                2\n        <list_item>\n            <paragraph>\n                item two\n",
 		},
 	}
 

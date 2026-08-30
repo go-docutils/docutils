@@ -91,6 +91,11 @@ const (
 	TagAbbreviation       = "abbreviation"
 	TagAcronym            = "acronym"
 	TagInline             = "inline"
+	TagTable              = "table"
+	TagThead              = "thead"
+	TagTbody              = "tbody"
+	TagRow                = "row"
+	TagEntry              = "entry"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils
