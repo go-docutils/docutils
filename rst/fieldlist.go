@@ -77,6 +77,9 @@ func isDefinitionTermLine(lines []string, i int) bool {
 	if _, _, ok := matchFieldMarker(lines[i]); ok {
 		return false
 	}
+	if isDoctestLine(lines[i]) || isLineBlockLine(lines[i]) {
+		return false
+	}
 	if _, isLine := isUniformLine(lines[i]); isLine {
 		return false
 	}

@@ -3,16 +3,17 @@
 //
 // SCOPE (v1 — see [[go-docutils-org]] for the plan): sections (over/under
 // lined titles), paragraphs, transitions, bullet lists, enumerated lists
-// (arabic + '.' suffix only), field lists, definition lists, block
-// quotes, literal blocks, comments, directives (captured structurally
-// only, see explicit.go), hyperlink targets with reference resolution,
-// and the inline markup in inline.go. NOT yet ported: option lists (see
-// fieldlist.go for why they're deferred), line blocks, tables,
-// footnotes/citations, substitution definitions, doctest blocks,
-// indirect/anonymous hyperlink targets, per-directive semantics.
-// Title-style consistency and enumerator-sequence validation are not
-// enforced (docutils errors on inconsistent styles or skipped levels;
-// this parser silently assigns a level instead).
+// (arabic + '.' suffix only), field lists, definition lists, line blocks
+// (flat, see lineblock.go for the un-implemented indent-nesting), doctest
+// blocks, block quotes, literal blocks, comments, directives (captured
+// structurally only, see explicit.go), hyperlink targets with reference
+// resolution, and the inline markup in inline.go. NOT yet ported: option
+// lists (see fieldlist.go for why they're deferred), tables,
+// footnotes/citations, substitution definitions, indirect/anonymous
+// hyperlink targets, per-directive semantics. Title-style consistency and
+// enumerator-sequence validation are not enforced (docutils errors on
+// inconsistent styles or skipped levels; this parser silently assigns a
+// level instead).
 package rst
 
 import (
@@ -72,6 +73,18 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 		if _, _, ok := matchFieldMarker(lines[i]); ok {
 			fl, next := p.parseFieldList(lines, i)
 			current.Append(fl)
+			i = next
+			continue
+		}
+		if isDoctestLine(lines[i]) {
+			db, next := parseDoctestBlock(lines, i)
+			current.Append(db)
+			i = next
+			continue
+		}
+		if isLineBlockLine(lines[i]) {
+			lb, next := p.parseLineBlock(lines, i)
+			current.Append(lb)
 			i = next
 			continue
 		}
@@ -154,6 +167,18 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 		if _, _, ok := matchFieldMarker(lines[i]); ok {
 			fl, next := p.parseFieldList(lines, i)
 			parent.Append(fl)
+			i = next
+			continue
+		}
+		if isDoctestLine(lines[i]) {
+			db, next := parseDoctestBlock(lines, i)
+			parent.Append(db)
+			i = next
+			continue
+		}
+		if isLineBlockLine(lines[i]) {
+			lb, next := p.parseLineBlock(lines, i)
+			parent.Append(lb)
 			i = next
 			continue
 		}
@@ -265,7 +290,8 @@ func matchTitle(lines []string, i int) (title string, style titleStyle, consumed
 		}
 	}
 	if _, _, isField := matchFieldMarker(lines[i]); !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 &&
-		!isBulletLine(lines[i]) && !isEnumLine(lines[i]) && !isExplicitMarkupLine(lines[i]) && !isField {
+		!isBulletLine(lines[i]) && !isEnumLine(lines[i]) && !isExplicitMarkupLine(lines[i]) && !isField &&
+		!isDoctestLine(lines[i]) && !isLineBlockLine(lines[i]) {
 		if i+1 < len(lines) {
 			if char, isLine := isUniformLine(lines[i+1]); isLine {
 				t := trimTrailingSpace(lines[i])
@@ -320,6 +346,9 @@ func consumeParagraph(lines []string, i int) (para *doctree.Element, next int, l
 				break
 			}
 			if _, _, isField := matchFieldMarker(lines[j]); isField {
+				break
+			}
+			if isDoctestLine(lines[j]) || isLineBlockLine(lines[j]) {
 				break
 			}
 			if _, isLine := isUniformLine(lines[j]); isLine {

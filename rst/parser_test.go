@@ -16,12 +16,16 @@ import (
 // compared against docutils with `docinfo_xform: False` too — real
 // docutils otherwise promotes it to a typed `<docinfo>` node, a
 // transform this parser does not implement (same category of gap as
-// per-directive semantics). Two more known, documented divergences: a
-// directive is captured structurally (name/arguments/raw content)
-// rather than dispatched to semantics (`.. note::` does NOT become a
-// real `<note>` admonition here), and an unresolved reference stays a
-// bare reference node instead of being rewritten to `problematic` with
-// an appended system-message section.
+// per-directive semantics). A line block with an indented sub-line is
+// compared against docutils' FLAT shape too: real docutils nests such a
+// line into a sub-`<line_block>` by relative indent
+// (nest_line_block_lines), not implemented here (see lineblock.go).
+// Two more known, documented divergences: a directive is captured
+// structurally (name/arguments/raw content) rather than dispatched to
+// semantics (`.. note::` does NOT become a real `<note>` admonition
+// here), and an unresolved reference stays a bare reference node instead
+// of being rewritten to `problematic` with an appended system-message
+// section.
 func TestParse(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -77,6 +81,16 @@ func TestParse(t *testing.T) {
 			name:   "a blank line after a would-be term prevents definition-list detection",
 			source: "Not a term because next line is blank.\n\nTerm with no definition body next line\n\nA regular paragraph that follows.\n",
 			want:   "<document>\n    <paragraph>\n        Not a term because next line is blank.\n    <paragraph>\n        Term with no definition body next line\n    <paragraph>\n        A regular paragraph that follows.\n",
+		},
+		{
+			name:   "line block (flat) and doctest block",
+			source: "Intro paragraph.\n\n| Line one of the poem\n| Line two of the poem\n|     Indented line three\n\nA regular paragraph.\n\n>>> 1 + 1\n2\n>>> print(\"done\")\ndone\n\nFinal paragraph.\n",
+			want:   "<document>\n    <paragraph>\n        Intro paragraph.\n    <line_block>\n        <line>\n            Line one of the poem\n        <line>\n            Line two of the poem\n        <line>\n            Indented line three\n    <paragraph>\n        A regular paragraph.\n    <doctest_block>\n        >>> 1 + 1\n        2\n        >>> print(\"done\")\n        done\n    <paragraph>\n        Final paragraph.\n",
+		},
+		{
+			name:   "list item containing a line block and a doctest block",
+			source: "- item with a line block\n\n  | verse one\n  | verse two\n\n- item with a doctest block\n\n  >>> x = 1\n  >>> x\n  1\n",
+			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a line block\n            <line_block>\n                <line>\n                    verse one\n                <line>\n                    verse two\n        <list_item>\n            <paragraph>\n                item with a doctest block\n            <doctest_block>\n                >>> x = 1\n                >>> x\n                1\n",
 		},
 	}
 

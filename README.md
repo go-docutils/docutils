@@ -21,27 +21,30 @@ depth via first-seen title-style ordering), paragraphs, transitions,
 bullet lists, enumerated lists (arabic + `.` suffix only), field lists
 (including a docutils-shaped body-indent quirk: a continuation line
 indented less than the marker column, e.g. under `:date: 2026-08-30`,
-still belongs to the field), definition lists, block quotes, literal
-blocks (`::`), comments, directives (captured structurally — name,
-arguments, raw content — never dispatched to per-directive semantics:
-there is no directive registry), hyperlink targets with reference
-resolution, and inline markup for `**strong**`, `*emphasis*`,
-`` ``literal`` ``, `` `named reference`_ `` / `` `anonymous`__ ``, and
-backslash escapes.
+still belongs to the field), definition lists, line blocks (flat — see
+below), doctest blocks (kept verbatim, ">>>" prompts included), block
+quotes, literal blocks (`::`), comments, directives (captured
+structurally — name, arguments, raw content — never dispatched to
+per-directive semantics: there is no directive registry), hyperlink
+targets with reference resolution, and inline markup for `**strong**`,
+`*emphasis*`, `` ``literal`` ``, `` `named reference`_ `` /
+`` `anonymous`__ ``, and backslash escapes.
 
-**Not yet ported** (see the `rst` and `explicit.go`/`fieldlist.go` doc
-comments for the exact list and why): option lists (deferred — complex
-marker grammar, rare outside man-page-style CLI docs), line blocks,
-tables, footnotes/citations, substitution definitions, doctest blocks,
+**Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
+`lineblock.go` doc comments for the exact list and why): option lists
+(deferred — complex marker grammar, rare outside man-page-style CLI
+docs), tables, footnotes/citations, substitution definitions,
 interpreted-text roles, standalone URI/email/PEP/RFC recognition,
 indirect/anonymous hyperlink targets. Title-style consistency and
 enumerator-sequence validation are not enforced. An unresolved reference
 stays a bare node instead of being rewritten to `problematic` with an
-error message, and a leading field list isn't promoted to a typed
-`<docinfo>` node — both transforms real docutils applies after parsing.
-Sphinx's `autodoc` extension (and `napoleon`, downstream of it) is out
-of scope entirely: it works by importing and introspecting live Python
-code, which is not portable to pure Go.
+error message, a leading field list isn't promoted to a typed
+`<docinfo>` node, and a line block with a deeper-indented sub-line stays
+FLAT instead of being nested into a sub-`<line_block>` — all three are
+transforms/grouping passes real docutils applies after the initial
+parse. Sphinx's `autodoc` extension (and `napoleon`, downstream of it)
+is out of scope entirely: it works by importing and introspecting live
+Python code, which is not portable to pure Go.
 
 ```go
 import (
@@ -58,4 +61,4 @@ fmt.Print(doctree.Dump(doc)) // this project's own pseudoxml-like debug format
 `go test ./...`. Fixtures in `rst/parser_test.go` were generated from
 this parser's own output, then eyeball-verified against the docutils
 foreign judge (see the package doc comment) before being frozen — not
-hand-transcribed. Coverage as of this writing: `doctree` 97%, `rst` 92%.
+hand-transcribed. Coverage as of this writing: `doctree` 97%, `rst` 93%.

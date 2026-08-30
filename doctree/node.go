@@ -76,6 +76,9 @@ const (
 	TagDefinitionListItem = "definition_list_item"
 	TagTerm               = "term"
 	TagDefinition         = "definition"
+	TagLineBlock          = "line_block"
+	TagLine               = "line"
+	TagDoctestBlock       = "doctest_block"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils
