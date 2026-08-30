@@ -48,7 +48,7 @@ func (p *parser) parseFieldList(lines []string, i int) (*doctree.Element, int) {
 		}
 		bodyLines, next := gatherListItemLines(lines, i, col, first)
 		field := doctree.NewElement(doctree.TagField)
-		field.Append(doctree.NewElement(doctree.TagFieldName, parseInline(name)...))
+		field.Append(doctree.NewElement(doctree.TagFieldName, p.parseInline(name)...))
 		body := doctree.NewElement(doctree.TagFieldBody)
 		p.parseBlockLines(bodyLines, body)
 		field.Append(body)
@@ -93,7 +93,7 @@ func (p *parser) parseDefinitionList(lines []string, i int) (*doctree.Element, i
 		indent := leadingSpaces(lines[i+1])
 		block, next := consumeIndentedBlock(lines, i+1, indent)
 		item := doctree.NewElement(doctree.TagDefinitionListItem)
-		item.Append(doctree.NewElement(doctree.TagTerm, parseInline(term)...))
+		item.Append(doctree.NewElement(doctree.TagTerm, p.parseInline(term)...))
 		def := doctree.NewElement(doctree.TagDefinition)
 		p.parseBlockLines(block, def)
 		item.Append(def)

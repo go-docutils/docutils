@@ -16,24 +16,30 @@ import (
 // suffix (`x`:role:) — for the small fixed set of docutils' built-in
 // GENERIC roles (emphasis, strong, literal, subscript/sub,
 // superscript/sup, title-reference/title/t, abbreviation/ab,
-// acronym/ac; see roleTags) plus a bare `x` with no role at all
-// (docutils' DEFAULT role, title_reference); any OTHER role name falls
-// back to a generic <inline role="name"> instead of docutils' `.. role
-// ::`-registry dispatch (there is no role registry here, same
-// no-registry philosophy as directives) — real docutils also ERRORS on
-// a role it cannot find at all (rewriting it to `problematic`), which
-// this parser does not replicate, so an unknown role never fails, it
-// just becomes generic. Named/anonymous reference both bare (x_, x__)
-// and backtick-quoted (`x`_, `x`__) including an embedded URI or
-// indirect name-alias target (`text <https://example.com>`_, `text
+// acronym/ac, code, math; see roleTags) plus a bare `x` with no role at
+// all (docutils' DEFAULT role, title_reference), plus (docutils/rst
+// v0.16.0+, see role.go) a ".. role::"-registered custom role, aliasing
+// a roleTags entry or — its base is "raw" — this parser's one inline raw
+// construct (Options.RawEnabled gates it exactly like the block-level
+// "raw" directive does). Any OTHER role name — including one real
+// docutils would recognize (pep-reference, rfc-reference — see below)
+// or reject outright — still falls back to a generic
+// <inline role="name"> rather than docutils' own error-and-rewrite-to-
+// `problematic` behavior for a role it truly cannot resolve, deliberately
+// not replicated: this parser's role registry exists to serve `raw`
+// correctly, not to police every role name a document might use for an
+// extension (Sphinx and friends) this parser has never heard of and
+// isn't trying to validate against. Named/anonymous reference both bare
+// (x_, x__) and backtick-quoted (`x`_, `x`__) including an embedded URI
+// or indirect name-alias target (`text <https://example.com>`_, `text
 // <alias_>`_), substitution reference (|x|), footnote/citation
 // reference ([1]_ / [#]_ / [#name]_ / [*]_ / [name]_), and backslash
 // escapes; and standalone URI (scheme://...) and email (user@host)
 // recognition — no backtick quoting or trailing `_` needed at all,
 // matching docutils' implicit_inline fallback. NOT yet ported: docutils'
-// non-generic built-in roles (code, math, pep-reference, rfc-reference,
-// raw — each has real, non-generic behavior this doesn't replicate).
-// Standalone PEP/RFC recognition (pep-123, RFC 123) is deliberately NOT
+// pep-reference/rfc-reference built-in roles (real, non-generic behavior
+// this doesn't replicate; also deliberately out of scope regardless, see
+// below). Standalone PEP/RFC recognition (pep-123, RFC 123) is deliberately NOT
 // implemented, and not merely deferred: docutils' own pep_references/
 // rfc_references settings default to None (off) — verified against
 // Parser().parse() on "pep-8, PEP 257, RFC 2822" with default settings,
@@ -48,7 +54,7 @@ import (
 // markers is treated as plain text and is not re-parsed for further
 // inline markup, matching docutils' actual (not merely documented)
 // behavior: nested inline markup does not match.
-func parseInline(text string) []doctree.Node {
+func (p *parser) parseInline(text string) []doctree.Node {
 	runes := escapeBackslashes(text)
 	var out []doctree.Node
 	var buf strings.Builder
@@ -80,7 +86,7 @@ func parseInline(text string) []doctree.Node {
 			i += consumed
 			continue
 		}
-		if node, consumed, ok := tryInterpretedOrPhraseRef(runes, i); ok {
+		if node, consumed, ok := p.tryInterpretedOrPhraseRef(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
@@ -129,6 +135,25 @@ func unescapeRunes(rs []rune) string {
 	var b strings.Builder
 	for _, r := range rs {
 		b.WriteRune(unescapeRune(r))
+	}
+	return b.String()
+}
+
+// restoreEscapes reverses escapeBackslashes exactly — an escaped rune
+// becomes "\" plus its literal character again, instead of unescapeRunes'
+// bare-character-only reduction. For content this parser never treats as
+// reST at all (an inline raw role's content — see roleElement), the
+// backslash itself is part of the real payload, not reST escape syntax to
+// strip.
+func restoreEscapes(rs []rune) string {
+	var b strings.Builder
+	for _, r := range rs {
+		if isEscapedRune(r) {
+			b.WriteByte('\\')
+			b.WriteRune(unescapeRune(r))
+		} else {
+			b.WriteRune(r)
+		}
 	}
 	return b.String()
 }
@@ -281,7 +306,7 @@ func splitEmbeddedLink(content string) (display, target, kind string, ok bool) {
 // role-prefixed (:role:`x`), role-suffixed (`x`:role:), a plain phrase
 // reference or bare title_reference (referenceOrPhrase, no role at
 // all). docutils.parsers.rst.states.Inliner.interpreted_or_phrase_ref.
-func tryInterpretedOrPhraseRef(runes []rune, i int) (doctree.Node, int, bool) {
+func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) (doctree.Node, int, bool) {
 	backtickAt := i
 	prefixRole := ""
 	if runes[i] == ':' {
@@ -309,21 +334,21 @@ func tryInterpretedOrPhraseRef(runes []rune, i int) (doctree.Node, int, bool) {
 	if !ok {
 		return nil, 0, false
 	}
-	content := unescapeRunes(runes[backtickAt+1 : closeAt])
-	if content == "" {
+	contentRunes := runes[backtickAt+1 : closeAt]
+	if len(contentRunes) == 0 {
 		return nil, 0, false
 	}
 	afterClose := closeAt + closeLen
 
 	if prefixRole != "" {
-		return roleElement(prefixRole, content), afterClose - i, true
+		return p.roleElement(prefixRole, contentRunes), afterClose - i, true
 	}
 	if afterClose < len(runes) && runes[afterClose] == ':' {
 		if role, afterRole, ok := tryRoleName(runes, afterClose+1); ok {
-			return roleElement(role, content), afterRole - i, true
+			return p.roleElement(role, contentRunes), afterRole - i, true
 		}
 	}
-	el, extra := referenceOrPhrase(content, afterClose, runes)
+	el, extra := referenceOrPhrase(unescapeRunes(contentRunes), afterClose, runes)
 	return el, (afterClose - i) + extra, true
 }
 
@@ -380,12 +405,46 @@ var roleTags = map[string]string{
 	"math":            doctree.TagMath,
 }
 
-func roleElement(role, content string) *doctree.Element {
-	if tag, ok := roleTags[strings.ToLower(role)]; ok {
-		return doctree.NewElement(tag, &doctree.Text{Data: content})
+// roleElement dispatches one interpreted-text role invocation: a built-in
+// GENERIC role (roleTags) first, then — docutils/rst v0.16.0+ — a
+// ".. role::"-registered one (see role.go), which either aliases a
+// roleTags entry the same way a built-in does, or (its base is "raw") is
+// this parser's one INLINE raw construct, mirroring the block-level "raw"
+// directive: p.opts.RawEnabled gates it exactly the same way. Anything
+// else — genuinely unknown, whether or not it LOOKS like it could be a
+// real Sphinx/extension role this parser has just never heard of — still
+// falls back to a generic <inline role="name">, matching this parser's
+// existing lenient behavior; real docutils instead errors and rewrites to
+// `problematic` here, not replicated (see the package doc comment).
+//
+// contentRunes is the role's content BEFORE the usual backslash-unescape
+// pass (see escapeBackslashes/unescapeRunes) — needed here, not resolved
+// by the caller, because a raw-based role's content is never reST at all,
+// so a backslash in it is literal target-format syntax (`\textbf`), not a
+// reST escape sequence to strip: unescapeRunes would have silently eaten
+// it, confirmed against the foreign judge (`:mytex:`\textbf{bold}“ with
+// a "latex"-based custom role must keep the backslash; unescapeRunes
+// alone turned it into bare "textbf{bold}", breaking the LaTeX it was
+// supposed to be).
+func (p *parser) roleElement(role string, contentRunes []rune) *doctree.Element {
+	name := strings.ToLower(role)
+	if tag, ok := roleTags[name]; ok {
+		return doctree.NewElement(tag, &doctree.Text{Data: unescapeRunes(contentRunes)})
 	}
-	el := doctree.NewElement(doctree.TagInline, &doctree.Text{Data: content})
-	el.SetAttr("role", strings.ToLower(role))
+	if def, ok := p.roles[name]; ok {
+		switch {
+		case def.base == "raw" && p.opts.RawEnabled:
+			el := doctree.NewElement(doctree.TagRaw, &doctree.Text{Data: restoreEscapes(contentRunes)})
+			el.SetAttr("format", def.format)
+			return el
+		case def.base != "" && def.base != "raw":
+			if tag, ok := roleTags[def.base]; ok {
+				return doctree.NewElement(tag, &doctree.Text{Data: unescapeRunes(contentRunes)})
+			}
+		}
+	}
+	el := doctree.NewElement(doctree.TagInline, &doctree.Text{Data: unescapeRunes(contentRunes)})
+	el.SetAttr("role", name)
 	return el
 }
 

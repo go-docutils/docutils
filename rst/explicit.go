@@ -241,6 +241,14 @@ func (p *parser) parseDirective(lines []string, i int, name, args string) (doctr
 		}
 		return el, next
 	}
+	if name == "role" {
+		// Registers a custom interpreted-text role for the rest of the
+		// document (see role.go) — invisible bookkeeping, same as a
+		// hyperlink target: real docutils' own Role.run leaves nothing
+		// in the tree either (verified against the foreign judge).
+		p.registerRole(args, body)
+		return doctree.NewElement(doctree.TagComment), next
+	}
 	el := doctree.NewElement(doctree.TagDirective)
 	el.SetAttr("name", name)
 	if args != "" {

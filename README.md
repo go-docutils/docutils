@@ -76,9 +76,13 @@ roles, `code` (no syntax highlighting — this parser has no
 role-option syntax to carry a `:language:`, so it degrades to exactly
 the plain `<literal>` real docutils itself falls back to with no
 language set) and `math` (a dedicated `<math>` node holding the raw,
-unescaped TeX source, rendered by both writers below) — any other role name (there is no
-`.. role::` registry, same philosophy as directives) falls back to a
-generic `<inline role="name">` rather than docutils' error, and
+unescaped TeX source, rendered by both writers below), plus a
+`.. role:: NAME(BASE)`-registered custom role — aliasing a generic role
+by tag the same way a built-in does, or (`BASE` is `raw`, with a
+`:format:` option) this parser's one INLINE raw construct, mirroring the
+`raw` directive above — any other role name still falls back to a
+generic `<inline role="name">` rather than docutils' error (see "Not yet
+ported" below), and
 backslash escapes; standalone URI (`scheme://...`) and email
 (`user@host`) recognition — no backtick quoting or trailing `_` needed
 at all, e.g. plain `https://example.com` in running text becomes a
@@ -117,16 +121,16 @@ the exact list and why): docutils' `pep-reference`/`rfc-reference`
 built-in roles (checked against `Parser().parse()` with default
 settings — docutils' own `pep_references`/`rfc_references` settings
 default to **off**, so implementing them unconditionally would diverge
-from upstream's own default rather than fill a real gap), the `raw`
-ROLE specifically (`` :name:`text` `` where `name` was itself defined
-via `.. role:: name(raw)` — this parser has no role registry at all to
-resolve that indirection through; the far more common `raw` DIRECTIVE,
-`.. raw:: FORMAT`, IS implemented — see `Options.RawEnabled`), and an
-unknown interpreted-text role's rewrite to `problematic` (would need
-that same role registry first — without one, every custom role a real
-document defines already looks "unknown" to this parser, so rewriting
-on that basis would produce false positives rather than fill a real
-gap). Title-style consistency and enumerator-sequence validation are not
+from upstream's own default rather than fill a real gap), and an unknown
+interpreted-text role's rewrite to `problematic` — deliberately, not for
+lack of the machinery: this parser has a real role registry now (see
+`.. role::` below), which resolves exactly what it needs to (a custom
+role's own `raw` indirection), but this project chose not to also start
+rewriting every OTHER unrecognized name to `problematic`, since that
+would be a real leniency REGRESSION for any document using a role this
+parser has simply never heard of (a Sphinx/extension role, say) rather
+than a gap filled — real docutils always errors there, this parser
+still doesn't, on purpose. Title-style consistency and enumerator-sequence validation are not
 enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
 content relies on it). A dangling NAMED reference (bare, backtick-quoted,
@@ -142,12 +146,8 @@ docutils checks this as a single whole-document condition, not
 per-reference (`AnonymousHyperlinks.apply`, read directly): if the counts
 don't match EXACTLY, in either direction, every anonymous reference in the
 document becomes `<problematic>`, all sharing ONE message. An unknown
-interpreted-text role still stays a plain node instead — a real docutils
-error too, but this parser has no role registry at all (every unrecognized
-name already looks "unknown" to it, even a real custom role a document
-defines via `.. role::`), so rewriting on that basis would produce false
-positives rather than fill a real gap; a role registry would need to come
-first. A resolved
+interpreted-text role still stays a plain node instead — deliberately,
+see above. A resolved
 embedded-link reference doesn't get the extra `<target>` sibling node
 docutils emits alongside it (this parser sets `refuri`/`refname` directly
 on the `<reference>` instead; resolution still works the same way since

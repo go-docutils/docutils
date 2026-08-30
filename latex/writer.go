@@ -126,17 +126,25 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 	case doctree.TagRaw:
 		// Verbatim, NOT escapeText: the whole point of "raw" is content
 		// that bypasses this writer's own escaping — see Options.RawEnabled
-		// in rst.Parse for how it gets here at all. Only emitted for a raw
-		// block actually targeting "latex" specifically (checked against
-		// real docutils' own latex2e writer's visit_raw: it tests for
-		// "latex", not "tex" — a format list can name several writers,
-		// ".. raw:: html latex", each writer only honors its own). The
-		// surrounding newlines matter, not just formatting: real docutils'
-		// own visit_raw/depart_raw add them for a block-level raw node too
-		// (verified against the foreign judge) — without one, a raw LaTeX
-		// command that ends in letters (`\bfseries`, say) would swallow
-		// whatever ordinary text immediately follows it as part of the
-		// same control sequence name and fail to compile.
+		// in rst.Parse for how it gets here at all (the block ".. raw::"
+		// directive, or docutils/rst v0.16.0+'s inline ".. role::(raw)"
+		// form). Only emitted for a raw node actually targeting "latex"
+		// specifically (checked against real docutils' own latex2e
+		// writer's visit_raw: it tests for "latex", not "tex" — a format
+		// list can name several writers, ".. raw:: html latex", each
+		// writer only honors its own). The surrounding newlines matter,
+		// not just formatting: real docutils' own visit_raw/depart_raw
+		// add them for a block-level raw node too (verified against the
+		// foreign judge) — without one, a raw LaTeX command ending in
+		// letters (`\bfseries`, say) would swallow whatever ordinary text
+		// immediately follows it into the same control sequence name and
+		// fail to compile. This writer doesn't distinguish an inline
+		// occurrence from a block one here (both reach this same case),
+		// so the same newlines apply there too — cosmetic only for
+		// inline, not a correctness bug: LaTeX collapses a bare newline
+		// to a single space outside a blank line, confirmed by actually
+		// compiling an inline case through go-tex/engine and reading the
+		// resulting PDF's text back with pdftotext.
 		if formatTargets(el.Attr("format"), "latex") {
 			b.WriteString("\n" + doctree.AsText(el) + "\n")
 		}

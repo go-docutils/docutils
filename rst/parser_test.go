@@ -212,7 +212,7 @@ func TestInline(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			nodes := parseInline(tc.text)
+			nodes := (&parser{}).parseInline(tc.text)
 			var b strings.Builder
 			for _, n := range nodes {
 				b.WriteString(doctree.Dump(n))

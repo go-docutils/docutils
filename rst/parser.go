@@ -54,6 +54,26 @@ func DefaultOptions() Options {
 type parser struct {
 	titleStyles []titleStyle
 	opts        Options
+	// roles holds every ".. role:: name(base)" registered so far, keyed by
+	// normalized (lowercased) name — real docutils' own registration is
+	// process-GLOBAL mutable state (roles.register_local_role writes into
+	// the roles module itself), deliberately NOT replicated here: a
+	// per-document registry is both safer (no cross-document leakage
+	// between concurrent Parse calls) and more correct for a library, not
+	// a divergence this project needs to defend, just an improvement on a
+	// real wart in the reference implementation's own architecture.
+	roles map[string]roleDef
+}
+
+// roleDef is one ".. role::" registration: base names the role it derives
+// from (a roleTags entry, or "raw" — the only two bases this parser gives
+// distinct behavior; any OTHER base, or none at all, is docutils' own
+// generic_custom_role, which already behaves exactly like this parser's
+// existing "unknown role" fallback — see roleElement). format only means
+// something when base is "raw" (docutils' own :format: role option).
+type roleDef struct {
+	base   string
+	format string
 }
 
 // Parse parses reStructuredText source into a document tree, using
@@ -145,7 +165,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 		}
 		if title, style, consumed, ok := matchTitle(lines, i); ok {
 			sec := doctree.NewElement(doctree.TagSection)
-			sec.Append(doctree.NewElement(doctree.TagTitle, parseInline(title)...))
+			sec.Append(doctree.NewElement(doctree.TagTitle, p.parseInline(title)...))
 			level := p.levelForStyle(style)
 			for len(stack) >= level {
 				stack = stack[:len(stack)-1]
@@ -171,7 +191,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
-		para, next, literalNext := consumeParagraph(lines, i)
+		para, next, literalNext := p.consumeParagraph(lines, i)
 		if para != nil {
 			current.Append(para)
 		}
@@ -263,7 +283,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			i = next
 			continue
 		}
-		para, next, literalNext := consumeParagraph(lines, i)
+		para, next, literalNext := p.consumeParagraph(lines, i)
 		if para != nil {
 			parent.Append(para)
 		}
@@ -395,7 +415,7 @@ func trimTrailingSpace(s string) string {
 // whitespace) or collapsed to a single ":" (if attached to a word). A
 // paragraph that is exactly "::" produces no paragraph node at all
 // (returns nil, matching docutils).
-func consumeParagraph(lines []string, i int) (para *doctree.Element, next int, literalNext bool) {
+func (p *parser) consumeParagraph(lines []string, i int) (para *doctree.Element, next int, literalNext bool) {
 	var text []string
 	j := i
 	for j < len(lines) {
@@ -437,7 +457,7 @@ func consumeParagraph(lines []string, i int) (para *doctree.Element, next int, l
 			data = data[:len(data)-1]
 		}
 	}
-	para = doctree.NewElement(doctree.TagParagraph, parseInline(data)...)
+	para = doctree.NewElement(doctree.TagParagraph, p.parseInline(data)...)
 	return para, j, literalNext
 }
 

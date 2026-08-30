@@ -51,7 +51,7 @@ func (p *parser) parseLineBlock(lines []string, i int) (*doctree.Element, int) {
 			indent = n - 1
 			content = rest[n:]
 		}
-		items = append(items, lbLine{doctree.NewElement(doctree.TagLine, parseInline(content)...), indent})
+		items = append(items, lbLine{doctree.NewElement(doctree.TagLine, p.parseInline(content)...), indent})
 		i++
 	}
 	if len(items) > 0 && items[0].indent < 0 {
