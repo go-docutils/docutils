@@ -79,6 +79,11 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
+		if optlist, next, ok := p.parseOptionList(lines, i); ok {
+			current.Append(optlist)
+			i = next
+			continue
+		}
 		if isDoctestLine(lines[i]) {
 			db, next := parseDoctestBlock(lines, i)
 			current.Append(db)
@@ -180,6 +185,11 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 		if _, _, ok := matchFieldMarker(lines[i]); ok {
 			fl, next := p.parseFieldList(lines, i)
 			parent.Append(fl)
+			i = next
+			continue
+		}
+		if optlist, next, ok := p.parseOptionList(lines, i); ok {
+			parent.Append(optlist)
 			i = next
 			continue
 		}

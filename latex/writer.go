@@ -123,8 +123,12 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		for _, line := range strings.Split(doctree.AsText(el), "\n") {
 			b.WriteString("% " + line + "\n")
 		}
-	case doctree.TagFieldList, doctree.TagDefinitionList:
+	case doctree.TagFieldList, doctree.TagDefinitionList, doctree.TagOptionList:
 		wrapEnv(b, "description", func() { renderDescriptionItems(b, el, level) })
+	case doctree.TagOptionGroup:
+		renderOptionGroup(b, el)
+	case doctree.TagOption:
+		renderOption(b, el)
 	case doctree.TagLineBlock:
 		wrapEnv(b, "verse", func() { renderChildren(b, el, level) })
 	case doctree.TagLine:
@@ -220,8 +224,11 @@ func renderListItems(b *strings.Builder, list *doctree.Element, level int) {
 	}
 }
 
-// renderDescriptionItems renders a field_list/definition_list's
-// name-body pairs as \item[term] entries in a description environment.
+// renderDescriptionItems renders a field_list/definition_list/option_list's
+// name-body pairs as \item[term] entries in a description environment. An
+// option_list_item's "name" is its option_group, whose own ", "-joined
+// rendering (renderOptionGroup) is reached via renderNode -> renderElement's
+// TagOptionGroup case below (see the renderNode call further down).
 func renderDescriptionItems(b *strings.Builder, list *doctree.Element, level int) {
 	for _, c := range list.Children {
 		pair, ok := c.(*doctree.Element)
@@ -229,8 +236,11 @@ func renderDescriptionItems(b *strings.Builder, list *doctree.Element, level int
 			continue
 		}
 		nameTag, bodyTag := doctree.TagFieldName, doctree.TagFieldBody
-		if pair.Tag == doctree.TagDefinitionListItem {
+		switch pair.Tag {
+		case doctree.TagDefinitionListItem:
 			nameTag, bodyTag = doctree.TagTerm, doctree.TagDefinition
+		case doctree.TagOptionListItem:
+			nameTag, bodyTag = doctree.TagOptionGroup, doctree.TagDescription
 		}
 		for _, cc := range pair.Children {
 			ce, ok := cc.(*doctree.Element)
@@ -240,11 +250,53 @@ func renderDescriptionItems(b *strings.Builder, list *doctree.Element, level int
 			switch ce.Tag {
 			case nameTag:
 				b.WriteString("\\item[{")
-				renderChildren(b, ce, level)
+				// renderNode, not renderChildren: for TagOptionGroup this
+				// must reach renderElement's own case (the ", "-joined
+				// rendering), not iterate its option children directly.
+				// For TagFieldName/TagTerm it's equivalent, since neither
+				// has a dedicated renderElement case of its own.
+				renderNode(b, ce, level)
 				b.WriteString("}] ")
 			case bodyTag:
 				renderChildren(b, ce, level)
 			}
+		}
+	}
+}
+
+// renderOptionGroup renders an option_group's option children joined by
+// ", " (the man-page convention for a grouped short/long flag pair) — not
+// left to plain renderChildren, which has no way to insert a separator
+// between siblings.
+func renderOptionGroup(b *strings.Builder, group *doctree.Element) {
+	first := true
+	for _, c := range group.Children {
+		opt, ok := c.(*doctree.Element)
+		if !ok || opt.Tag != doctree.TagOption {
+			continue
+		}
+		if !first {
+			b.WriteString(", ")
+		}
+		first = false
+		renderOption(b, opt)
+	}
+}
+
+func renderOption(b *strings.Builder, opt *doctree.Element) {
+	for _, c := range opt.Children {
+		ce, ok := c.(*doctree.Element)
+		if !ok {
+			continue
+		}
+		switch ce.Tag {
+		case doctree.TagOptionString:
+			b.WriteString(escapeText(doctree.AsText(ce)))
+		case doctree.TagOptionArgument:
+			// delimiter is always explicitly set when this element exists
+			// (see rst's optionNode) — "" genuinely means no separator, the
+			// "-ovalue" embedded form, not a missing attribute.
+			b.WriteString(escapeText(ce.Attr("delimiter")) + escapeText(doctree.AsText(ce)))
 		}
 	}
 }

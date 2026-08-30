@@ -121,6 +121,12 @@ func TestRender(t *testing.T) {
 			`<table><tbody><tr><td><p>a</p></td><td rowspan="2"><p>tall</p></td></tr>` +
 				`<tr><td><p>b</p></td></tr></tbody></table>`,
 		},
+		{
+			"option list renders as a dl, grouped options joined by comma",
+			"-f, --file=FILE  Grouped short+long.\n-ovalue       Embedded.\n",
+			`<dl><dt>-f, --file=FILE</dt><dd><p>Grouped short+long.</p></dd>` +
+				`<dt>-ovalue</dt><dd><p>Embedded.</p></dd></dl>`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -134,7 +140,7 @@ func TestRender(t *testing.T) {
 }
 
 func TestRenderTagsAreBalanced(t *testing.T) {
-	source := "Top\n===\n\n- a\n\n  - nested\n\n1. b\n\n:field: value\n\nTerm\n    Def.\n\n=====  =====\na      b\n=====  =====\n1      2\n=====  =====\n\nSee [1]_.\n\n.. [1] Text.\n"
+	source := "Top\n===\n\n- a\n\n  - nested\n\n1. b\n\n:field: value\n\nTerm\n    Def.\n\n-f  Opt.\n\n=====  =====\na      b\n=====  =====\n1      2\n=====  =====\n\nSee [1]_.\n\n.. [1] Text.\n"
 	got := Render(rst.Parse(source))
 	var stack []string
 	i := 0

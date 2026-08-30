@@ -93,12 +93,14 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		b.WriteString("<!-- ")
 		b.WriteString(strings.ReplaceAll(doctree.AsText(el), "--", "- -"))
 		b.WriteString(" -->")
-	case doctree.TagFieldList, doctree.TagDefinitionList:
+	case doctree.TagFieldList, doctree.TagDefinitionList, doctree.TagOptionList:
 		writeTag(b, "dl", "", el, headingLevel)
 	case doctree.TagField:
 		renderDefinitionPair(b, el, doctree.TagFieldName, doctree.TagFieldBody, headingLevel)
 	case doctree.TagDefinitionListItem:
 		renderDefinitionPair(b, el, doctree.TagTerm, doctree.TagDefinition, headingLevel)
+	case doctree.TagOptionListItem:
+		renderOptionListItem(b, el, headingLevel)
 	case doctree.TagLineBlock:
 		writeTag(b, "div", ` class="line-block"`, el, headingLevel)
 	case doctree.TagLine:
@@ -204,6 +206,62 @@ func renderDefinitionPair(b *strings.Builder, el *doctree.Element, nameTag, body
 			writeTag(b, "dt", "", ce, headingLevel)
 		case bodyTag:
 			writeTag(b, "dd", "", ce, headingLevel)
+		}
+	}
+}
+
+// renderOptionListItem renders an option_list_item's option_group as a <dt>
+// (each of its options joined by ", ", the man-page convention for a
+// grouped short/long flag pair) and its description as a <dd> — not routed
+// through renderDefinitionPair like TagField/TagDefinitionListItem above,
+// since an option_group's own children need the ", " separator between
+// them, which plain child-by-child rendering has no way to insert.
+func renderOptionListItem(b *strings.Builder, el *doctree.Element, headingLevel int) {
+	for _, c := range el.Children {
+		ce, ok := c.(*doctree.Element)
+		if !ok {
+			continue
+		}
+		switch ce.Tag {
+		case doctree.TagOptionGroup:
+			b.WriteString("<dt>")
+			renderOptionGroup(b, ce)
+			b.WriteString("</dt>")
+		case doctree.TagDescription:
+			writeTag(b, "dd", "", ce, headingLevel)
+		}
+	}
+}
+
+func renderOptionGroup(b *strings.Builder, group *doctree.Element) {
+	first := true
+	for _, c := range group.Children {
+		opt, ok := c.(*doctree.Element)
+		if !ok || opt.Tag != doctree.TagOption {
+			continue
+		}
+		if !first {
+			b.WriteString(", ")
+		}
+		first = false
+		renderOption(b, opt)
+	}
+}
+
+func renderOption(b *strings.Builder, opt *doctree.Element) {
+	for _, c := range opt.Children {
+		ce, ok := c.(*doctree.Element)
+		if !ok {
+			continue
+		}
+		switch ce.Tag {
+		case doctree.TagOptionString:
+			b.WriteString(escapeText(doctree.AsText(ce)))
+		case doctree.TagOptionArgument:
+			// delimiter is always explicitly set when this element exists
+			// (see rst's optionNode) — "" genuinely means no separator, the
+			// "-ovalue" embedded form, not a missing attribute.
+			b.WriteString(escapeText(ce.Attr("delimiter")) + escapeText(doctree.AsText(ce)))
 		}
 	}
 }

@@ -57,12 +57,17 @@ as columns — likewise docutils' own GridTableParser docstring example,
 verbatim, traced with the same BFS cell-rectangle algorithm as
 upstream: a queue of corner candidates, scanning right/down/left/up
 around each cell to close its rectangle and discover the next cells'
-starting corners).
+starting corners); and OPTION lists (`-f, --file=ARG  Description.`,
+man-page-style, comma-separated short/long flag groups with an
+argument joined by a space/`=`/embedded delimiter, reusing the same
+marker+indented-continuation machinery as field lists — a marker with
+no following content at all, on its own line or indented beneath it,
+is not really an option list item and falls back to plain paragraph
+text, matching docutils' own TransitionCorrection).
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
 `lineblock.go`/`inline.go`/`table.go`/`gridtable.go` doc comments for
-the exact list and why): option lists (deferred — complex marker
-grammar, rare outside man-page-style CLI docs), docutils' non-generic
+the exact list and why): docutils' non-generic
 built-in roles (`code`, `math`, `pep-reference`, `rfc-reference`,
 `raw`), indirect/anonymous hyperlink *targets* (as opposed to
 *references*, which — see above — are supported), inline internal
@@ -116,7 +121,9 @@ html5_polyglot where there's an obvious correspondence
 (section/h1-h6/p/ul/ol/li/blockquote/table/thead/tbody/tr/td/th,
 em/strong/code/cite/sub/sup/abbr; a grid-table cell's column/row span
 becomes `colspan`/`rowspan`, HTML's own native primitives for exactly
-this); a directive (including a
+this; an option list becomes a `<dl>`, each item's comma-separated
+flags joined into one `<dt>`, e.g. `<dt>-f, --file=FILE</dt>`); a
+directive (including a
 substitution definition's embedded `replace::`) renders as
 `<pre class="directive" data-directive="name">` rather than being
 silently dropped, since there's no semantic dispatch to render it
@@ -146,7 +153,11 @@ footnote-definition/-reference nodes via custom preamble macros,
 docinfo-to-titlepage conversion). This uses only vanilla LaTeX
 constructs (`itemize`/`enumerate`/`quote`/`verbatim`/`description`/
 `verse`/`tabular`), so it always compiles without a custom macro
-package. A table's cell content is flattened to plain text — a nested
+package — a field list, a definition list, AND an option list (its
+comma-separated flags joined into one `\item[{...}]`) all share the
+same `description` environment, since none of the three has a native
+LaTeX construct of its own. A table's cell content is flattened to
+plain text — a nested
 list or multi-paragraph cell would need a `p{width}` column + minipage
 to stay valid LaTeX, not implemented here. A grid-table cell's column
 span renders as `\multicolumn` (plain LaTeX, no package); its ROW span

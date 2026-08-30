@@ -113,6 +113,11 @@ func TestRenderContains(t *testing.T) {
 			"+-----+-----+-----+\n| a   | b   | c   |\n+-----+-----+-----+\n| wide      | d   |\n+-----+-----+-----+\n",
 			[]string{`\begin{tabular}{lll}`, `a & b & c`, `\multicolumn{2}{l}{wide} & d`},
 		},
+		{
+			"option list as a description environment, grouped options joined by comma",
+			"-f, --file=FILE  Grouped short+long.\n-ovalue       Embedded.\n",
+			[]string{`\begin{description}`, `\item[{-f, --file=FILE}] Grouped short+long.`, `\item[{-ovalue}] Embedded.`, `\end{description}`},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -128,7 +133,7 @@ func TestRenderContains(t *testing.T) {
 
 func TestRenderBalancesEnvironments(t *testing.T) {
 	source := "Top\n===\n\n- a\n\n1. b\n\n:field: value\n\nTerm\n    Def.\n\n" +
-		"    Quoted.\n\n----\n\nCode::\n\n    x\n\n=====  =====\na      b\n=====  =====\n1      2\n=====  =====\n"
+		"    Quoted.\n\n----\n\nCode::\n\n    x\n\n=====  =====\na      b\n=====  =====\n1      2\n=====  =====\n\n-f  Opt.\n"
 	got := Render(rst.Parse(source))
 	var stack []string
 	i := 0

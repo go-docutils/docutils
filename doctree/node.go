@@ -96,6 +96,13 @@ const (
 	TagTbody              = "tbody"
 	TagRow                = "row"
 	TagEntry              = "entry"
+	TagOptionList         = "option_list"
+	TagOptionListItem     = "option_list_item"
+	TagOptionGroup        = "option_group"
+	TagOption             = "option"
+	TagOptionString       = "option_string"
+	TagOptionArgument     = "option_argument"
+	TagDescription        = "description"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

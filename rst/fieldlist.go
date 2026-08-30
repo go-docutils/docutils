@@ -5,13 +5,13 @@ import "github.com/go-docutils/docutils/doctree"
 // Field lists (":name: body", used pervasively for directive options and
 // docstring-style parameter docs), modeled on docutils'
 // Body.field_marker/field/parse_field_marker (states.py). Option lists
-// (docutils' Body.option_marker) are NOT implemented: their marker
-// grammar (comma-separated "-x ARG, --long=ARG" groups with a
-// deliberately fiddly delimiter/argument-joining algorithm) is complex
-// relative to how rarely option lists appear outside man-page-style CLI
-// docs, so they are deferred to a later increment in favor of field
-// lists and definition lists, which are far more common in real-world
-// reST and Sphinx documents.
+// (docutils' Body.option_marker, "-f, --file=ARG  Description.") were
+// deferred from here initially — their marker grammar (comma-separated
+// groups with a fiddly delimiter/argument-joining algorithm) is complex
+// relative to how rarely they appear outside man-page-style CLI docs — but
+// are now implemented in optionlist.go, once field/definition lists and
+// tables had proven out the shared marker+indented-continuation machinery
+// (gatherListItemLines) option lists reuse directly.
 
 // matchFieldMarker recognizes ":name: rest" at the start of a line,
 // docutils' field_marker pattern `:(?![: ])...(?<! ):( +|$)` simplified:
