@@ -167,7 +167,45 @@ the identical real-docutils mechanism (`inline_obj`) yet never actually
 produces this warning in practice — checked against the foreign judge for
 several inputs, not assumed from reading the source alone — so this parser
 matches that observed behavior rather than second-guessing it with a
-warning real docutils itself doesn't emit. An unknown
+warning real docutils itself doesn't emit.
+
+Whether a `*`/`**`/two-backtick/backquote/`|` counts as a genuine markup
+start- or end-string at all is docutils' own `start_string_prefix`/
+`end_string_suffix` rule, ported verbatim (`punctuation.go`) — not "any
+punctuation on either side", this parser's own earlier, simpler
+approximation via Go's `unicode.IsPunct`, which treated an opening and a
+closing bracket/quote identically. Real docutils distinguishes them: a
+start-string may be preceded only by whitespace, an OPENER, or a
+DELIMITER (`(*emphasis*)`, `-*emphasis*-`), never a CLOSER or a
+CLOSING-DELIMITER (`)*emphasis*(` is NOT markup at all); an end-string may
+be followed only by whitespace, a CLOSER, a DELIMITER, or a
+CLOSING-DELIMITER (`*emphasis*.`, `*emphasis*)`), never an OPENER
+(`*emphasis*(` is unclosed, not valid markup). A markup start-string
+immediately sandwiched between a real matching open/close pair with
+nothing else between (`(*)text`) is additionally rejected —
+`Inliner.quoted_start`, ported — even though the basic rule alone would
+accept it. The four character classes (openers/closers/delimiters/
+closing-delimiters) and the open/close quote-pairing table are
+`docutils.utils.punctuation_chars` verbatim, covering the full range of
+quotation-mark conventions real docutils itself supports (French, German,
+Polish, Hungarian, Greek, CJK, ...) — generated from a live Python
+reference and cross-checked against every Unicode code point, not
+hand-transcribed (a first attempt using literal glyphs silently
+substituted at least two visually-similar-but-distinct characters). A
+backslash-escaped space or newline immediately after an end-string is
+itself a valid boundary (docutils' own `\x00` escape-marker, which
+`end_string_suffix` explicitly allows) and is dropped from the resulting
+text entirely rather than rendered as a literal space — docutils' own
+`unescape()`, "backslash-escaped spaces are also removed" — a real bug
+this parser had for every kind of escaped whitespace, not just at a
+markup boundary, only exposed once markup started closing correctly for
+inputs that exercise it. The interpreted-text backquote and the
+substitution-reference `|` each allow an optional trailing `_`/`__` to be
+consumed by the SAME end-string-suffix check as part of resolving them as
+references (`` `text`_ ``, `|sub|__`) — a separate regex in real docutils
+from the generic emphasis/strong/literal one, ported as its own boundary
+check (`findCloseBackquote`/`findCloseSubstitution`) rather than folded
+into the shared one, since only these two constructs have it. An unknown
 interpreted-text role still stays a plain node instead — deliberately,
 see above. A resolved
 embedded-link reference doesn't get the extra `<target>` sibling node
