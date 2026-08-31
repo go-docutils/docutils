@@ -1,7 +1,6 @@
 package rst
 
 import (
-	"strconv"
 	"strings"
 )
 
@@ -68,16 +67,17 @@ func bulletContentColumn(line string) int {
 	return j
 }
 
+// isEnumLine reports whether s looks like SOME enumerator marker's shape
+// — any of docutils' five sequences (arabic, loweralpha, upperalpha,
+// lowerroman, upperroman) in any of its three formats ("N.", "(N)",
+// "N)"), or the auto-enumerator "#" — with no lookahead-based list-item
+// confirmation at all (see enum.go, isEnumeratedListItem/matchEnumStart
+// for that); used only as a cheap EXCLUSION check by callers deciding
+// whether a line could possibly be read as an enumerator, not as a
+// standalone list-start decision.
 func isEnumLine(s string) bool {
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	if i == 0 || i >= len(s) || s[i] != '.' {
-		return false
-	}
-	rest := s[i+1:]
-	return rest == "" || rest[0] == ' '
+	_, _, _, ok := matchEnumeratorMarker(s)
+	return ok
 }
 
 // isEnumListStart reports whether lines[i] both looks like an enumerator
@@ -89,49 +89,12 @@ func isEnumLine(s string) bool {
 // immediately-following sibling item with no blank line between, e.g. a
 // tightly nested "1. a\n2. b"). Anything else — most commonly a section-
 // title underline ("1. Numbered Title\n===...===") — makes the
-// enumerator-looking line "correct" back to plain text instead.
+// enumerator-looking line "correct" back to plain text instead. See
+// enum.go's matchEnumStart for the full (format, sequence, ordinal,
+// contentCol) this wraps — every caller here only needs the bool.
 func isEnumListStart(lines []string, i int) bool {
-	if !isEnumLine(lines[i]) {
-		return false
-	}
-	if i+1 >= len(lines) {
-		return true
-	}
-	next := lines[i+1]
-	if isBlankStr(next) || leadingSpaces(next) > 0 {
-		return true
-	}
-	ordinal, ok := enumOrdinal(lines[i])
-	if !ok {
-		return false
-	}
-	return strings.HasPrefix(next, strconv.Itoa(ordinal+1)+".")
-}
-
-// enumOrdinal extracts the leading arabic ordinal from an enumerator line
-// (this project only supports arabic + "." — see the package doc comment).
-func enumOrdinal(s string) (int, bool) {
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	if i == 0 {
-		return 0, false
-	}
-	n, err := strconv.Atoi(s[:i])
-	if err != nil {
-		return 0, false
-	}
-	return n, true
-}
-
-func enumContentColumn(line string) int {
-	i := strings.IndexByte(line, '.')
-	j := i + 1
-	for j < len(line) && line[j] == ' ' {
-		j++
-	}
-	return j
+	_, _, _, _, _, ok := matchEnumStart(lines, i)
+	return ok
 }
 
 // gatherListItemLines collects the lines belonging to one list item or
@@ -154,7 +117,20 @@ func gatherListItemLines(lines []string, i, markerCol int, firstLine string) ([]
 		if isBlankStr(lines[k]) {
 			continue
 		}
-		if indent := leadingSpaces(lines[k]); indent > 0 && indent < markerCol {
+		// A marker with content of its own on the SAME line (firstLine
+		// != "") fixes the content column at markerCol; the only
+		// adjustment needed is shrinking it for a shallower
+		// continuation. A BARE marker (no trailing content at all — "1."
+		// alone, nothing after) has no such anchor: real docutils takes
+		// the content column straight from wherever the first indented
+		// line actually starts, narrower OR wider than markerCol alike
+		// (states.py's own list_item, via get_indented) — without this,
+		// "1.\n   foo\n" (marker width 2, content indented 3) wrongly
+		// treated "foo" as a nested block quote inside the item instead
+		// of the item's own paragraph, caught by the corpus once
+		// alpha/roman enumerators made this shape common enough to
+		// surface (a bare "A.\n   text\n" reads identically).
+		if indent := leadingSpaces(lines[k]); indent > 0 && (indent < markerCol || (firstLine == "" && indent > markerCol)) {
 			contentCol = indent
 		}
 		break

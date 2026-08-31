@@ -18,7 +18,24 @@ build or run time.
 
 **Implemented**: sections (over/underlined titles, arbitrary nesting
 depth via first-seen title-style ordering), paragraphs, transitions,
-bullet lists, enumerated lists (arabic + `.` suffix only), field lists
+bullet lists, enumerated lists — all five of docutils' own sequences
+(arabic, `loweralpha`/`upperalpha`, `lowerroman`/`upperroman`) in all
+three formats (`N.`, `(N)`, `N)`), plus the auto-enumerator `#`, with
+docutils' own ambiguity-resolution rules (`Body.parse_enumerator`, read
+directly: a bare single roman-charset letter defaults to roman ONLY when
+no sequence is already established — "H." then "I." continues an
+established `upperalpha` list as ordinal 9, not a fresh `upperroman`
+one), a malformed roman numeral (`iiii`, no valid subtractive form)
+rejected outright rather than treated as a valid ordinal, `enumtype`/
+`prefix`/`suffix`/`start` attributes, and the "start value not
+ordinal-1" INFO + "ends without a blank line" WARNING diagnostics (both
+land as SIBLINGS of the `<enumerated_list>`, never nested inside it,
+matching `self.parent += msg` read directly) — enumerator-sequence
+validation WITHIN an already-started list (docutils errors on a
+non-consecutive ordinal mid-list; this parser's own continuation check
+already requires exact `+1`, so a gap just ends the list instead of
+producing that distinct diagnostic) is the one piece of this still not
+fully ported, see "Not yet ported" below — field lists
 (including a docutils-shaped body-indent quirk: a continuation line
 indented less than the marker column, e.g. under `:date: 2026-08-30`,
 still belongs to the field) — with a leading field list (the document's
@@ -160,7 +177,20 @@ title, invalid title-or-transition) ARE enforced — `matchTitle`/
 `match_titles=false` case (a title-looking construct somewhere titles
 aren't allowed, e.g. inside a block quote) and enumerator-sequence
 validation (docutils errors on a non-consecutive ordinal) are the two
-pieces still NOT ported. A table's column-margin violations are never detected
+pieces still NOT ported. A genuinely separate, deliberately NOT chased
+gap found alongside the enumerator work: once a line has fallen through
+every recognized block-construct check to become ordinary paragraph
+text, real docutils' own paragraph gathering (`Text.text`'s
+`get_text_block`, read directly) swallows every subsequent line
+unconditionally up to the next blank line or dedent — it never
+re-examines a LATER line to see whether it independently looks like a
+different construct. This parser's own paragraph-gathering
+(`consumeParagraph`) does the opposite: it still stops early whenever a
+later line matches a recognized marker shape, even mid-paragraph — a
+real, if narrow, architectural difference from real docutils that spans
+every block-construct check there (bullet/field/doctest/table/etc.), not
+just enumerators; fixing it properly is a bigger, separate undertaking
+than this round's own enumerator scope. A table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
 content relies on it). A block quote's own indent is discovered the same
 way real docutils' `StringList.get_indented` does: the MINIMUM across a

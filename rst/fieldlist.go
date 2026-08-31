@@ -99,7 +99,15 @@ func isDefinitionTermLine(lines []string, i int) bool {
 	if isBlankStr(lines[i]) || leadingSpaces(lines[i]) != 0 {
 		return false
 	}
-	if isBulletLine(lines[i]) || isEnumLine(lines[i]) || isExplicitMarkupLine(lines[i]) {
+	// isEnumListStart, not the bare shape check isEnumLine: a line that
+	// merely LOOKS enumerator-shaped but isn't a semantically valid one
+	// (a malformed roman numeral like "iiii.", roman-charset letters
+	// with no valid subtractive form) must still be free to open a
+	// definition list term — real docutils' own Body.enumerator would
+	// likewise fall through past it (is_enumerated_list_item requires a
+	// valid ordinal), letting the SAME line reach Text-state definition-
+	// list detection next.
+	if isBulletLine(lines[i]) || isEnumListStart(lines, i) || isExplicitMarkupLine(lines[i]) {
 		return false
 	}
 	if _, _, ok := matchFieldMarker(lines[i]); ok {

@@ -40,9 +40,15 @@ func TestSectionImplicitTarget(t *testing.T) {
 			"<document>\n    <section id=\"section-1\" name=\"1\">\n        <title>\n            1\n        <section id=\"section-2\" name=\"2\">\n            <title>\n                2\n",
 		},
 		{
+			// Content deliberately NOT "A."/"B." — those are valid
+			// loweralpha-enumerator shapes (states.py's own
+			// sequencepats, read directly) once alpha/roman enumerator
+			// support exists, which would entangle this test (about
+			// duplicate section id/name suffixing, nothing to do with
+			// enumerated lists) with unrelated enum-parsing behavior.
 			"duplicate section titles get distinct ids, second suffixed -1",
-			"Same\n====\n\nA.\n\nSame\n====\n\nB.\n",
-			"<document>\n    <section id=\"same\" name=\"same\">\n        <title>\n            Same\n        <paragraph>\n            A.\n    <section id=\"same-1\" name=\"same\">\n        <title>\n            Same\n        <paragraph>\n            B.\n",
+			"Same\n====\n\nFirst paragraph.\n\nSame\n====\n\nSecond paragraph.\n",
+			"<document>\n    <section id=\"same\" name=\"same\">\n        <title>\n            Same\n        <paragraph>\n            First paragraph.\n    <section id=\"same-1\" name=\"same\">\n        <title>\n            Same\n        <paragraph>\n            Second paragraph.\n",
 		},
 		{
 			"the trailing system-messages section is never given a name/id of its own",

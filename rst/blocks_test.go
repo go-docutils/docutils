@@ -51,7 +51,11 @@ func TestIsEnumLine(t *testing.T) {
 		{"1. item", true},
 		{"1.", true},
 		{"1.item", false},
-		{"a. item", false},
+		// "a." is a valid loweralpha enumerator shape (states.py's own
+		// sequencepats union, read directly) — an earlier version of
+		// this test predates alpha/roman enumerator support and wrongly
+		// expected false.
+		{"a. item", true},
 		{"", false},
 		{"12. item", true},
 	}
