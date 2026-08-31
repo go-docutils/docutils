@@ -34,6 +34,11 @@ func TestRender(t *testing.T) {
 			"<p>Para.</p><blockquote><p>Quoted.</p></blockquote><hr><p>After.</p>",
 		},
 		{
+			"block quote attribution gets the class and default em-dash prefix",
+			"Para.\n\n    Quoted.\n\n    -- Author\n",
+			`<p>Para.</p><blockquote><p>Quoted.</p><p class="attribution">—Author</p></blockquote>`,
+		},
+		{
 			"literal block",
 			"Sample::\n\n    code here\n",
 			"<p>Sample:</p><pre><code>code here</code></pre>",

@@ -49,6 +49,11 @@ func TestRenderContains(t *testing.T) {
 			[]string{`\begin{quote}`, `Quoted.`, `\end{quote}`, `\hrulefill`},
 		},
 		{
+			"block quote attribution right-aligns with the default em-dash prefix",
+			"Para.\n\n    Quoted.\n\n    -- Author\n",
+			[]string{`\begin{quote}`, `Quoted.`, `\raggedleft —Author`, `\end{quote}`},
+		},
+		{
 			"literal block as verbatim",
 			"Sample::\n\n    code here\n",
 			[]string{`\begin{verbatim}`, "code here", `\end{verbatim}`},
