@@ -17,37 +17,40 @@ import (
 // suffix (`x`:role:) — for the small fixed set of docutils' built-in
 // GENERIC roles (emphasis, strong, literal, subscript/sub,
 // superscript/sup, title-reference/title/t, abbreviation/ab,
-// acronym/ac, code, math; see roleTags) plus a bare `x` with no role at
-// all (docutils' DEFAULT role, title_reference), plus (docutils/rst
-// v0.16.0+, see role.go) a ".. role::"-registered custom role, aliasing
-// a roleTags entry or — its base is "raw" — this parser's one inline raw
-// construct (Options.RawEnabled gates it exactly like the block-level
-// "raw" directive does). Any OTHER role name — including one real
-// docutils would recognize (pep-reference, rfc-reference — see below)
-// or reject outright — still falls back to a generic
+// acronym/ac, math; see roleTags), plus docutils' three other
+// always-registered, non-generic roles — code (real class-list/
+// highlight-language logic, no Pygments equivalent — see
+// codeRoleClasses/codeRoleElement), pep-reference/pep and rfc-reference/
+// rfc (numeric validation + hyperlink generation — see pepRole/rfcRole)
+// — plus a bare `x` with no role at all (docutils' DEFAULT role,
+// title_reference), plus (docutils/rst v0.16.0+, see role.go) a
+// ".. role::"-registered custom role, aliasing a roleTags entry, "code"
+// (with its own :language:/:class: options), or — its base is "raw" —
+// this parser's one inline raw construct (Options.RawEnabled gates it
+// exactly like the block-level "raw" directive does). Any role name
+// docutils itself would NOT recognize still falls back to a generic
 // <inline role="name"> rather than docutils' own error-and-rewrite-to-
 // `problematic` behavior for a role it truly cannot resolve, deliberately
-// not replicated: this parser's role registry exists to serve `raw`
-// correctly, not to police every role name a document might use for an
-// extension (Sphinx and friends) this parser has never heard of and
-// isn't trying to validate against. Named/anonymous reference both bare
-// (x_, x__) and backtick-quoted (`x`_, `x`__) including an embedded URI
-// or indirect name-alias target (`text <https://example.com>`_, `text
-// <alias_>`_), substitution reference (|x|), footnote/citation
-// reference ([1]_ / [#]_ / [#name]_ / [*]_ / [name]_), and backslash
-// escapes; and standalone URI (scheme://...) and email (user@host)
-// recognition — no backtick quoting or trailing `_` needed at all,
-// matching docutils' implicit_inline fallback. NOT yet ported: docutils'
-// pep-reference/rfc-reference built-in roles (real, non-generic behavior
-// this doesn't replicate; also deliberately out of scope regardless, see
-// below). Standalone PEP/RFC recognition (pep-123, RFC 123) is deliberately NOT
-// implemented, and not merely deferred: docutils' own pep_references/
-// rfc_references settings default to None (off) — verified against
-// Parser().parse() on "pep-8, PEP 257, RFC 2822" with default settings,
-// which produced plain text, no references at all. Implementing this
-// unconditionally would make this parser MORE aggressive than
-// docutils' own default, a real divergence rather than a gap filled.
-// Also not implemented: the extra <target> sibling docutils
+// not replicated: unknown-role VALIDATION (as opposed to a role this
+// parser gives real behavior to, like the ones above) exists to serve
+// `raw` and the roles above correctly, not to police every role name a
+// document might use for an extension (Sphinx and friends) this parser
+// has never heard of and isn't trying to validate against. Named/
+// anonymous reference both bare (x_, x__) and backtick-quoted (`x`_,
+// `x`__) including an embedded URI or indirect name-alias target (`text
+// <https://example.com>`_, `text <alias_>`_), substitution reference
+// (|x|), footnote/citation reference ([1]_ / [#]_ / [#name]_ / [*]_ /
+// [name]_), and backslash escapes; and standalone URI (scheme://...) and
+// email (user@host) recognition — no backtick quoting or trailing `_`
+// needed at all, matching docutils' implicit_inline fallback. Standalone
+// PEP/RFC recognition (pep-123, RFC 123 as bare TEXT, no :PEP:/:RFC: role
+// markup at all) is deliberately NOT implemented, and not merely
+// deferred: docutils' own pep_references/rfc_references settings default
+// to None (off) — verified against Parser().parse() on "pep-8, PEP 257,
+// RFC 2822" with default settings, which produced plain text, no
+// references at all. Implementing this unconditionally would make this
+// parser MORE aggressive than docutils' own default, a real divergence
+// rather than a gap filled. Also not implemented: the extra <target> sibling docutils
 // emits next to a resolved embedded-link reference (this parser sets
 // refuri/refname directly on the <reference> instead — reference
 // resolution still works the same way since resolveTargets matches by
@@ -358,17 +361,30 @@ func (p *parser) tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 // p.currentLine is known (nonzero) — see parseInline's own doc comment on
 // why this project doesn't yet track it for every calling context.
 func (p *parser) markupProblematic(kind, marker string) *doctree.Element {
+	return p.problematicMessage("2", "WARNING", marker, "Inline "+kind+" start-string without end-string.")
+}
+
+// problematicMessage builds one <problematic>/<system_message> pair —
+// the id/refid/backref cross-linking shape every one of this parser's
+// inline-time diagnostics shares (docutils.parsers.rst.states.Inliner.
+// problematic + inliner.reporter.{warning,error}, read directly) — with
+// rawtext as the <problematic>'s own visible content and message as the
+// <system_message>'s text. level/msgType are the caller's own concern
+// (markupProblematic's start-string case is always a WARNING; a role's
+// own validation failure — see roleError, codeRoleElement — can be
+// either, per docutils' own choice for that specific role).
+func (p *parser) problematicMessage(level, msgType, rawtext, message string) *doctree.Element {
 	p.msgCount++
 	n := strconv.Itoa(p.msgCount)
-	prb := doctree.NewElement(doctree.TagProblematic, &doctree.Text{Data: marker})
+	prb := doctree.NewElement(doctree.TagProblematic, &doctree.Text{Data: rawtext})
 	prb.SetAttr("id", "problematic-"+n)
 	prb.SetAttr("refid", "system-message-"+n)
 	msg := doctree.NewElement(doctree.TagSystemMessage,
-		doctree.NewElement(doctree.TagParagraph, &doctree.Text{Data: "Inline " + kind + " start-string without end-string."}))
+		doctree.NewElement(doctree.TagParagraph, &doctree.Text{Data: message}))
 	msg.SetAttr("id", "system-message-"+n)
 	msg.SetAttr("backref", "problematic-"+n)
-	msg.SetAttr("level", "2")
-	msg.SetAttr("type", "WARNING")
+	msg.SetAttr("level", level)
+	msg.SetAttr("type", msgType)
 	if p.currentLine != 0 {
 		msg.SetAttr("line", strconv.Itoa(p.currentLine))
 	}
@@ -530,16 +546,14 @@ func isRoleNameChar(r rune) bool {
 // produce. A role not in this table falls back to a generic <inline>.
 //
 // Most entries here are the GENERIC roles (emphasis/strong/literal/...),
-// which really do just alias an existing markup tag. "code" and "math" are
-// docutils' two other always-registered roles (roles.py's code_role/
-// math_role) and are simplified the same way: real docutils.roles.code_role
-// supports Pygments syntax-highlight tokenization via a `:language:` role
-// option (this parser has no role-option/directive-option syntax at all,
-// see explicit.go), but with no language set — the common case, and the
-// only one reachable without that syntax — it degrades to exactly a plain
-// <literal>, which is what mapping "code" onto TagLiteral produces exactly.
-// math_role always produces a dedicated <math> node (never <inline>,
-// unlike every other role here) holding the raw, unparsed TeX source.
+// which really do just alias an existing markup tag. "math" is one of
+// docutils' other always-registered roles (roles.py's math_role) and is
+// simplified the same way, always producing a dedicated <math> node
+// (never <inline>, unlike every other role here) holding the raw,
+// unparsed TeX source. "code" (roles.py's code_role) and "pep"/"rfc"
+// (pep_reference_role/rfc_reference_role) are NOT simple tag aliases —
+// each has its own real validation/class-list logic — see roleElement's
+// own dispatch for those, codeRoleElement, pepRole, rfcRole.
 var roleTags = map[string]string{
 	"emphasis":        doctree.TagEmphasis,
 	"strong":          doctree.TagStrong,
@@ -555,7 +569,6 @@ var roleTags = map[string]string{
 	"ab":              doctree.TagAbbreviation,
 	"acronym":         doctree.TagAcronym,
 	"ac":              doctree.TagAcronym,
-	"code":            doctree.TagLiteral,
 	"math":            doctree.TagMath,
 }
 
@@ -582,6 +595,15 @@ var roleTags = map[string]string{
 // supposed to be).
 func (p *parser) roleElement(role string, contentRunes []rune) *doctree.Element {
 	name := strings.ToLower(role)
+	switch name {
+	case "pep", "pep-reference":
+		return p.pepRole(role, contentRunes)
+	case "rfc", "rfc-reference":
+		return p.rfcRole(role, contentRunes)
+	case "code":
+		classes, _ := codeRoleClasses("code", "", false, nil)
+		return p.codeRoleElement(role, classes, "", false, contentRunes)
+	}
 	if tag, ok := roleTags[name]; ok {
 		return doctree.NewElement(tag, &doctree.Text{Data: unescapeRunes(contentRunes)})
 	}
@@ -591,6 +613,9 @@ func (p *parser) roleElement(role string, contentRunes []rune) *doctree.Element 
 			el := doctree.NewElement(doctree.TagRaw, &doctree.Text{Data: restoreEscapes(contentRunes)})
 			el.SetAttr("format", def.format)
 			return el
+		case def.base == "code":
+			classes, lang := codeRoleClasses(name, def.language, def.hasLanguage, def.classes)
+			return p.codeRoleElement(role, classes, lang, def.hasLanguage, contentRunes)
 		case def.base != "" && def.base != "raw":
 			if tag, ok := roleTags[def.base]; ok {
 				return doctree.NewElement(tag, &doctree.Text{Data: unescapeRunes(contentRunes)})
@@ -600,6 +625,128 @@ func (p *parser) roleElement(role string, contentRunes []rune) *doctree.Element 
 	el := doctree.NewElement(doctree.TagInline, &doctree.Text{Data: unescapeRunes(contentRunes)})
 	el.SetAttr("role", name)
 	return el
+}
+
+// codeRoleClasses replicates docutils.parsers.rst.roles.code_role's own
+// class-list/highlight-language derivation (roles.py, read directly):
+// roleName supplies the DEFAULT highlight language for anything but the
+// literal built-in "code" role itself (a custom role's own local name,
+// e.g. "python" for ".. role:: python(code)"); an explicit ":language:"
+// option (hasLanguage) always overrides that default outright, including
+// to the empty string via the literal value "none" (case-insensitively),
+// which disables highlighting entirely. extraClasses is the role
+// definition's own (already-defaulted-to-its-own-name, see registerRole)
+// ":class:" option value.
+func codeRoleClasses(roleName, language string, hasLanguage bool, extraClasses []string) (classes []string, resolvedLanguage string) {
+	lang := ""
+	if roleName != "code" {
+		lang = roleName
+	}
+	if hasLanguage {
+		lang = language
+	}
+	if strings.EqualFold(lang, "none") {
+		lang = ""
+	}
+	classes = append([]string{"code"}, extraClasses...)
+	if lang != "" && !containsString(classes, lang) {
+		classes = append(classes, lang)
+	}
+	return classes, lang
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// codeRoleElement replicates docutils.parsers.rst.roles.code_role's own
+// content handling (roles.py, read directly): raw, backslash-PRESERVING
+// content (nodes.unescape(text, True) — the same restoreEscapes convention
+// this parser already uses for a raw-based role's content, since code
+// content is never reST either), wrapped in <literal class="...">. When a
+// non-empty highlight language is resolved, real docutils attempts
+// Pygments tokenization; this parser has no Pygments equivalent and never
+// will (pure Go, no external process), so it always takes docutils' own
+// LexerError path — which itself branches on whether ":language:" was
+// EXPLICITLY given (hasLanguage) rather than merely implied by the custom
+// role's own name: explicit means Pygments was actually asked for and
+// visibly failed (a WARNING + <problematic>, "Cannot analyze code.
+// Pygments package not found."); implicit means the language was only a
+// DEFAULT guess, so docutils itself falls back silently to the plain,
+// unclassified content — the same shape as the language=="" case.
+// Verified against the foreign judge's LIVE (Pygments-less) re-parse, not
+// the docutils testsuite's own baked-in fixture text (captured on a
+// machine that DOES have Pygments installed, showing real tokenization —
+// see the sweep tool's own ExpectedDefault field/doc comment for why that
+// field, not the baked-in one, is this project's actual ground truth).
+func (p *parser) codeRoleElement(role string, classes []string, language string, hasLanguage bool, contentRunes []rune) *doctree.Element {
+	rawtext := restoreEscapes(contentRunes)
+	if language != "" && hasLanguage {
+		return p.problematicMessage("2", "WARNING", ":"+role+":`"+rawtext+"`",
+			"Cannot analyze code. Pygments package not found.")
+	}
+	el := doctree.NewElement(doctree.TagLiteral, &doctree.Text{Data: rawtext})
+	el.SetAttr("class", strings.Join(classes, " "))
+	return el
+}
+
+// pepRole replicates docutils.parsers.rst.roles.pep_reference_role
+// (roles.py, read directly): the interpreted text must be an integer
+// 0-9999, producing a <reference> to the PEP's page on success or an
+// ERROR + <problematic> otherwise. Only the prefix form (":PEP:`n`") is
+// reconstructed into the <problematic>'s rawtext — no corpus case
+// currently exercises the suffix form ("`n`:PEP:") failing, which would
+// need the original delimiter order reconstructed differently.
+func (p *parser) pepRole(role string, contentRunes []rune) *doctree.Element {
+	text := unescapeRunes(contentRunes)
+	n, err := strconv.Atoi(text)
+	if err != nil || n < 0 || n > 9999 {
+		return p.problematicMessage("3", "ERROR", ":"+role+":`"+text+"`",
+			`PEP number must be a number from 0 to 9999; "`+text+`" is invalid.`)
+	}
+	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: "PEP " + text})
+	el.SetAttr("refuri", "https://peps.python.org/pep-"+pad4(n))
+	return el
+}
+
+// rfcRole replicates docutils.parsers.rst.roles.rfc_reference_role
+// (roles.py, read directly): text is an integer >= 1, optionally followed
+// by "#section"; same prefix-form-only <problematic> scope as pepRole.
+func (p *parser) rfcRole(role string, contentRunes []rune) *doctree.Element {
+	text := unescapeRunes(contentRunes)
+	numPart, section, hasSection := text, "", false
+	if idx := strings.IndexByte(text, '#'); idx >= 0 {
+		numPart, section = text[:idx], text[idx+1:]
+		hasSection = true
+	}
+	n, err := strconv.Atoi(numPart)
+	if err != nil || n < 1 {
+		return p.problematicMessage("3", "ERROR", ":"+role+":`"+text+"`",
+			`RFC number must be a number greater than or equal to 1; "`+text+`" is invalid.`)
+	}
+	refuri := "https://tools.ietf.org/html/rfc" + strconv.Itoa(n) + ".html"
+	if hasSection {
+		refuri += "#" + section
+	}
+	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: "RFC " + strconv.Itoa(n)})
+	el.SetAttr("refuri", refuri)
+	return el
+}
+
+// pad4 zero-pads n to at least 4 digits ("pep-%04d" % pepnum, states.py
+// read directly). Callers only ever pass an already-range-checked
+// 0-9999 value.
+func pad4(n int) string {
+	s := strconv.Itoa(n)
+	for len(s) < 4 {
+		s = "0" + s
+	}
+	return s
 }
 
 // tryBareReference recognizes a reference with no backtick delimiters

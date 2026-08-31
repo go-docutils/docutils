@@ -19,9 +19,13 @@ func TestMathAndCodeRoles(t *testing.T) {
 			"<document>\n    <paragraph>\n        A \n        <math>\n            x^2\n         term.\n",
 		},
 		{
-			"code role produces a plain literal, same as a backtick literal",
+			// real docutils' code_role ALWAYS starts classes=['code'], even
+			// with no language set -- verified against the foreign judge;
+			// this project's own earlier version of this test predates that
+			// finding and wrongly expected no class attribute at all.
+			"code role produces a literal with class=\"code\", same content as a backtick literal",
 			"A :code:`x = 1` snippet.\n",
-			"<document>\n    <paragraph>\n        A \n        <literal>\n            x = 1\n         snippet.\n",
+			"<document>\n    <paragraph>\n        A \n        <literal class=\"code\">\n            x = 1\n         snippet.\n",
 		},
 	}
 	for _, tc := range cases {
