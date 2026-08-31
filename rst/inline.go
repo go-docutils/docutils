@@ -577,12 +577,23 @@ var roleTags = map[string]string{
 // ".. role::"-registered one (see role.go), which either aliases a
 // roleTags entry the same way a built-in does, or (its base is "raw") is
 // this parser's one INLINE raw construct, mirroring the block-level "raw"
-// directive: p.opts.RawEnabled gates it exactly the same way. Anything
-// else — genuinely unknown, whether or not it LOOKS like it could be a
-// real Sphinx/extension role this parser has just never heard of — still
-// falls back to a generic <inline role="name">, matching this parser's
-// existing lenient behavior; real docutils instead errors and rewrites to
-// `problematic` here, not replicated (see the package doc comment).
+// directive: p.opts.RawEnabled gates it exactly the same way. Every one
+// of those custom-role shapes carries a "class" attribute (real docutils'
+// roles.py set_implicit_options: EVERY role function implicitly supports
+// a ":class:" option, defaulted by the "role" directive itself to the
+// role's own name — see registerRole/classOption, role.go), which this
+// function attaches wherever it produces a node for a role FOUND in
+// p.roles, whether or not it aliases a roleTags tag. A role name never
+// registered via ".. role::" at all — genuinely unknown, whether or not
+// it LOOKS like it could be a real Sphinx/extension role this parser has
+// just never heard of — still falls back to a generic
+// <inline role="name">, matching this parser's existing lenient
+// behavior; real docutils instead errors and rewrites to `problematic`
+// here, not replicated (see the package doc comment). That "role="
+// attribute is this parser's OWN invented shorthand for that one
+// unvalidated fallback case specifically — never confuse it with the
+// "class=" a REGISTERED custom role (even a bare one with no base at
+// all, docutils' generic_custom_role) always carries instead.
 //
 // contentRunes is the role's content BEFORE the usual backslash-unescape
 // pass (see escapeBackslashes/unescapeRunes) — needed here, not resolved
@@ -603,23 +614,58 @@ func (p *parser) roleElement(role string, contentRunes []rune) *doctree.Element 
 	case "code":
 		classes, _ := codeRoleClasses("code", "", false, nil)
 		return p.codeRoleElement(role, classes, "", false, contentRunes)
+	case "raw":
+		// The BUILT-IN "raw" role invoked directly (no ".. role::" at
+		// all, so no :format: option can ever reach it) always errors —
+		// roles.py's raw_role, read directly. When raw is DISABLED, real
+		// docutils errors here too ("raw (and derived) roles disabled"),
+		// but this parser's own established, deliberately-simplified
+		// convention for a disabled raw role is the generic <inline
+		// role="..."> fallback (see TestRawRoleDisabledFallsBackToGeneric)
+		// — kept consistent by only taking this path when enabled.
+		if p.opts.RawEnabled {
+			text := restoreEscapes(contentRunes)
+			return p.problematicMessage("3", "ERROR", ":"+role+":`"+text+"`",
+				"No format (Writer name) is associated with this role: \""+role+"\".\n"+
+					"The \"raw\" role cannot be used directly.\n"+
+					"Instead, use the \"role\" directive to create a new role with an associated format.")
+		}
 	}
 	if tag, ok := roleTags[name]; ok {
 		return doctree.NewElement(tag, &doctree.Text{Data: unescapeRunes(contentRunes)})
 	}
 	if def, ok := p.roles[name]; ok {
-		switch {
-		case def.base == "raw" && p.opts.RawEnabled:
+		if def.base == "raw" && !p.opts.RawEnabled {
+			// Same established simplification as the direct-"raw" case
+			// above: fall through to the generic role="name" shape at
+			// the bottom, not real docutils' own ERROR+problematic.
+		} else if def.base == "raw" {
 			el := doctree.NewElement(doctree.TagRaw, &doctree.Text{Data: restoreEscapes(contentRunes)})
 			el.SetAttr("format", def.format)
+			if len(def.classes) > 0 {
+				el.SetAttr("class", strings.Join(def.classes, " "))
+			}
 			return el
-		case def.base == "code":
+		} else if def.base == "code" {
 			classes, lang := codeRoleClasses(name, def.language, def.hasLanguage, def.classes)
 			return p.codeRoleElement(role, classes, lang, def.hasLanguage, contentRunes)
-		case def.base != "" && def.base != "raw":
+		} else if def.base != "" {
 			if tag, ok := roleTags[def.base]; ok {
-				return doctree.NewElement(tag, &doctree.Text{Data: unescapeRunes(contentRunes)})
+				el := doctree.NewElement(tag, &doctree.Text{Data: unescapeRunes(contentRunes)})
+				if len(def.classes) > 0 {
+					el.SetAttr("class", strings.Join(def.classes, " "))
+				}
+				return el
 			}
+		} else {
+			// A bare custom role — no base at all — is docutils' own
+			// generic_custom_role: <inline class="...">, never
+			// <inline role="...">.
+			el := doctree.NewElement(doctree.TagInline, &doctree.Text{Data: unescapeRunes(contentRunes)})
+			if len(def.classes) > 0 {
+				el.SetAttr("class", strings.Join(def.classes, " "))
+			}
+			return el
 		}
 	}
 	el := doctree.NewElement(doctree.TagInline, &doctree.Text{Data: unescapeRunes(contentRunes)})

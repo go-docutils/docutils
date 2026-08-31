@@ -87,13 +87,21 @@ as no language at all); and `pep`/`pep-reference` and `rfc`/`rfc-reference`
 with a `#section` suffix — producing a `<reference>` to the canonical
 page on success or an ERROR + `<problematic>` otherwise), plus a
 `.. role:: NAME(BASE)`-registered custom role — aliasing a generic role
-by tag the same way a built-in does, `code` (with its own `:language:`/
-`:class:` options, defaulting `:class:` to the role's own name exactly
-like real docutils' `Role` directive does), or (`BASE` is `raw`, with a
+by tag the same way a built-in does, `code` (with its own `:language:`
+option, see above), a bare definition with no `BASE` at all (docutils'
+`generic_custom_role`, a plain `<inline>`), or (`BASE` is `raw`, with a
 `:format:` option) this parser's one INLINE raw construct, mirroring the
-`raw` directive above — any other role name still falls back to a
-generic `<inline role="name">` rather than docutils' error (see "Not yet
-ported" below), and
+`raw` directive above (the BUILT-IN `raw` role used directly, with no
+`.. role::` registration at all and so no `:format:` reaching it, always
+errors instead, matching `roles.py`'s own `raw_role`) — EVERY one of
+these carries a `:class:` option (real docutils' `set_implicit_options`:
+every role function implicitly supports one), defaulting to the role's
+own name exactly like real docutils' `Role` directive does, rendered as
+a `class="..."` attribute on whatever element the role produces — a
+registered custom role's `<inline class="...">` is NOT the same shape as
+a totally unregistered role name, which still falls back to this
+parser's own invented `<inline role="name">` rather than docutils'
+error (see "Not yet ported" below), and
 backslash escapes; standalone URI (`scheme://...`) and email
 (`user@host`) recognition — no backtick quoting or trailing `_` needed
 at all, e.g. plain `https://example.com` in running text becomes a
