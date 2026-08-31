@@ -21,7 +21,22 @@ func dump(b *strings.Builder, n Node, depth int) {
 	indent := strings.Repeat("    ", depth)
 	switch v := n.(type) {
 	case *Text:
-		for _, line := range strings.Split(v.Data, "\n") {
+		// docutils' own Text.pformat (nodes.py, read directly) splits via
+		// Python's str.splitlines(), not str.split("\n") — for data ending
+		// in a literal newline (routine: a paragraph's own line-joining
+		// keeps embedded "\n" between source lines, and that newline can
+		// land as the LAST character of a buffered run right before an
+		// inline-markup construct that starts a new source line),
+		// splitlines() drops the trailing empty element that split("\n")
+		// keeps. Using split("\n") unconditionally printed a spurious
+		// blank line in exactly that position — found via test_interpreted
+		// .py's "basics" cases, not assumed from the general shape of the
+		// bug.
+		lines := strings.Split(v.Data, "\n")
+		if last := len(lines) - 1; last >= 0 && lines[last] == "" {
+			lines = lines[:last]
+		}
+		for _, line := range lines {
 			b.WriteString(indent)
 			b.WriteString(line)
 			b.WriteByte('\n')
