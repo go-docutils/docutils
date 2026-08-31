@@ -1,6 +1,9 @@
 package rst
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 func isBlankStr(s string) bool { return strings.TrimSpace(s) == "" }
 
@@ -75,6 +78,51 @@ func isEnumLine(s string) bool {
 	}
 	rest := s[i+1:]
 	return rest == "" || rest[0] == ' '
+}
+
+// isEnumListStart reports whether lines[i] both looks like an enumerator
+// AND its second line confirms it's a genuine list item — real docutils'
+// Body.enumerator calls is_enumerated_list_item to peek ahead before
+// committing to starting a list (states.py, read directly): valid when the
+// next line is blank, indented (the item's own continuation), absent
+// (EOF), or itself starts with the NEXT ordinal's own enumerator (an
+// immediately-following sibling item with no blank line between, e.g. a
+// tightly nested "1. a\n2. b"). Anything else — most commonly a section-
+// title underline ("1. Numbered Title\n===...===") — makes the
+// enumerator-looking line "correct" back to plain text instead.
+func isEnumListStart(lines []string, i int) bool {
+	if !isEnumLine(lines[i]) {
+		return false
+	}
+	if i+1 >= len(lines) {
+		return true
+	}
+	next := lines[i+1]
+	if isBlankStr(next) || leadingSpaces(next) > 0 {
+		return true
+	}
+	ordinal, ok := enumOrdinal(lines[i])
+	if !ok {
+		return false
+	}
+	return strings.HasPrefix(next, strconv.Itoa(ordinal+1)+".")
+}
+
+// enumOrdinal extracts the leading arabic ordinal from an enumerator line
+// (this project only supports arabic + "." — see the package doc comment).
+func enumOrdinal(s string) (int, bool) {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s[:i])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }
 
 func enumContentColumn(line string) int {

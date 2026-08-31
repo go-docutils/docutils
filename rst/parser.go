@@ -11,14 +11,26 @@
 // reference resolution (named, indirect, and anonymous — see explicit.go),
 // footnotes, citations, substitution definitions, docinfo promotion,
 // simple tables and GRID tables (see table.go and gridtable.go), and the
-// inline markup in inline.go. Title-style consistency and
-// enumerator-sequence validation are not enforced (docutils errors on
-// inconsistent styles or skipped levels; this parser silently assigns a
-// level instead).
+// inline markup in inline.go. Section titles (both overlined and
+// underline-only), their consistency-tracking (title_styles, real
+// docutils' check_subsection — a title style's LEVEL is fixed by the
+// order it's first seen in the whole document, and skipping more than one
+// level deeper than the current nesting is an error), and their various
+// diagnostics (too-short overline/underline, missing/mismatched underline,
+// incomplete title, invalid title-or-transition) are ported — see
+// matchTitle/titleDiagnostic/checkSubsectionLevel in parser.go. Not yet
+// ported: the match_titles=false diagnostics for a title-looking construct
+// found somewhere titles aren't allowed (inside a block quote or list
+// item — real docutils still errors there, "Unexpected section title[.
+// / or transition.]"; this parser currently treats it as plain text
+// silently), and enumerator-sequence validation (docutils errors on a
+// non-consecutive ordinal; this parser doesn't check).
 package rst
 
 import (
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/go-docutils/docutils/doctree"
 )
@@ -163,7 +175,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
-		if isEnumLine(lines[i]) {
+		if isEnumListStart(lines, i) {
 			list, next := p.parseEnumeratedList(lines, i)
 			current.Append(list)
 			i = next
@@ -211,8 +223,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
-		if title, style, consumed, ok := matchTitle(lines, i); ok {
-			sec := doctree.NewElement(doctree.TagSection)
+		if title, style, consumed, warning, ok := matchTitle(lines, i); ok {
 			// The title TEXT's own line, not the overline's — verified
 			// against the foreign judge for both styles (an overlined
 			// title's message reports the text line, one past the
@@ -221,16 +232,38 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			if style.overline {
 				titleLine = i + 2
 			}
+			oldlevel := len(stack)
+			newlevel := p.peekLevelForStyle(style)
+			var titleSrc []string
+			for k := 0; k < consumed; k++ {
+				titleSrc = append(titleSrc, trimTrailingSpace(lines[i+k]))
+			}
+			if errMsg, levelOK := checkSubsectionLevel(p.titleStyles, oldlevel, newlevel, titleLine, strings.Join(titleSrc, "\n")); !levelOK {
+				// Inconsistent title style (skipped a level): real
+				// docutils' check_subsection returns False and section()
+				// does nothing further — no section is created, the
+				// offending title's lines are still consumed, and parsing
+				// continues from whatever the CURRENT section already was.
+				current.Append(errMsg)
+				i += consumed
+				continue
+			}
+			p.commitStyleLevel(style, newlevel)
+			sec := doctree.NewElement(doctree.TagSection)
 			titleNodes, titleMsgs := p.parseInline(title, titleLine)
 			sec.Append(doctree.NewElement(doctree.TagTitle, titleNodes...))
-			// real docutils' new_subsection: "section_node += title_messages"
-			// — the title's own inline-markup messages become the SECTION's
-			// own further children, siblings of <title> (states.py, read
-			// directly), not a separate trailing section.
+			// real docutils' new_subsection: "section_node += messages;
+			// section_node += title_messages" — the too-short-underline/
+			// overline WARNING (if any) comes first, then the title's own
+			// inline-markup messages, both SECTION children, siblings of
+			// <title> (states.py, read directly), not a trailing section.
+			if warning != nil {
+				sec.Append(warning)
+			}
 			for _, m := range titleMsgs {
 				sec.Append(m)
 			}
-			level := p.levelForStyle(style)
+			level := newlevel
 			for len(stack) >= level {
 				stack = stack[:len(stack)-1]
 			}
@@ -243,6 +276,22 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			current = sec
 			i += consumed
 			continue
+		}
+		if msg, consumed, ok := titleDiagnostic(lines, i); ok {
+			current.Append(msg)
+			if consumed > 0 {
+				i += consumed
+				continue
+			}
+			// consumed == 0: an INFO-only "too short to be a title" notice —
+			// the line still needs ordinary dispatch (it may be plain text,
+			// a definition-list term, ...); fall through to the checks
+			// below in this SAME iteration rather than looping back to the
+			// top, which would just re-attempt (and re-reject) the same
+			// short line through matchTitle/titleDiagnostic again.
+		} else if msg, ok := underlineTooShortDiagnostic(lines, i); ok {
+			current.Append(msg)
+			// Same "fall through, don't loop back" reasoning as above.
 		}
 		if isTransitionLine(lines[i]) {
 			current.Append(doctree.NewElement(doctree.TagTransition))
@@ -303,7 +352,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			i = next
 			continue
 		}
-		if isEnumLine(lines[i]) {
+		if isEnumListStart(lines, i) {
 			list, next := p.parseEnumeratedList(lines, i)
 			parent.Append(list)
 			i = next
@@ -383,14 +432,59 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 	}
 }
 
-func (p *parser) levelForStyle(s titleStyle) int {
+// peekLevelForStyle reports the section level style s would get — its
+// existing position in p.titleStyles (first-seen order fixes each style's
+// level permanently, real docutils' own title_styles list, check_subsection,
+// read directly), or the next new level if s hasn't been seen yet — WITHOUT
+// registering a new style. Split from the old levelForStyle (which always
+// mutated immediately) so the caller can validate the level first
+// (checkSubsectionLevel) and only commit a genuinely new style once
+// accepted; registering one that turns out invalid would let two DIFFERENT
+// skipped-level titles at the same depth silently reuse it on a second
+// attempt instead of both erroring, matching real docutils exactly.
+func (p *parser) peekLevelForStyle(s titleStyle) int {
 	for idx, existing := range p.titleStyles {
 		if existing == s {
 			return idx + 1
 		}
 	}
-	p.titleStyles = append(p.titleStyles, s)
-	return len(p.titleStyles)
+	return len(p.titleStyles) + 1
+}
+
+func (p *parser) commitStyleLevel(s titleStyle, level int) {
+	if level > len(p.titleStyles) {
+		p.titleStyles = append(p.titleStyles, s)
+	}
+}
+
+// checkSubsectionLevel validates a title's level against the CURRENT
+// section nesting depth (oldlevel, i.e. len(stack) before this title is
+// processed) — real docutils' check_subsection (states.py, read directly):
+// a title may repeat an established style at any shallower-or-equal level
+// (returning to a sibling or ancestor section), or introduce one new level
+// at a time, but never SKIP more than one level deeper than the current
+// nesting. Returns an ERROR system_message and ok=false when it does; the
+// (rare) IndexError branch real docutils has for a level whose parent
+// section is unreachable isn't implemented — no corpus case reached this
+// project needs it.
+func checkSubsectionLevel(titleStyles []titleStyle, oldlevel, newlevel, line int, source string) (*doctree.Element, bool) {
+	if newlevel <= oldlevel+1 {
+		return nil, true
+	}
+	var styles []string
+	for _, st := range titleStyles {
+		if st.overline {
+			styles = append(styles, string(st.char)+"/"+string(st.char))
+		} else {
+			styles = append(styles, string(st.char))
+		}
+	}
+	text := "Inconsistent title style: skip from level " + strconv.Itoa(oldlevel) +
+		" to " + strconv.Itoa(newlevel) + "."
+	msg := sectionMessage("3", "ERROR", text, line, source)
+	msg.Append(doctree.NewElement(doctree.TagParagraph,
+		&doctree.Text{Data: "Established title styles: " + strings.Join(styles, " ")}))
+	return msg, false
 }
 
 func (p *parser) parseBulletList(lines []string, i int) (*doctree.Element, int) {
@@ -417,7 +511,7 @@ func (p *parser) parseBulletList(lines []string, i int) (*doctree.Element, int) 
 
 func (p *parser) parseEnumeratedList(lines []string, i int) (*doctree.Element, int) {
 	list := doctree.NewElement(doctree.TagEnumeratedList)
-	for i < len(lines) && isEnumLine(lines[i]) {
+	for i < len(lines) && isEnumListStart(lines, i) {
 		col := enumContentColumn(lines[i])
 		first := ""
 		if len(lines[i]) > col {
@@ -440,31 +534,217 @@ func (p *parser) parseEnumeratedList(lines []string, i int) (*doctree.Element, i
 // underlined-only form (text / uniform line, underline at least 4
 // columns or at least as long as the title — docutils.states.Text.
 // underline: a shorter underline is "corrected" back to plain text).
-func matchTitle(lines []string, i int) (title string, style titleStyle, consumed int, ok bool) {
-	if char, isLine := isUniformLine(lines[i]); isLine {
+// columnWidth is the display width docutils' own column_width uses for a
+// title-vs-underline length comparison: a rune count excluding Unicode
+// combining marks (docutils: unicodedata.combining(char) != 0 is excluded;
+// Go's stdlib unicode.Mn — nonspacing marks — is the closest built-in
+// equivalent and matches every combining-mark case actually checked
+// against the foreign judge so far; no x/text dependency needed).
+func columnWidth(s string) int {
+	n := 0
+	for _, r := range s {
+		if !unicode.Is(unicode.Mn, r) {
+			n++
+		}
+	}
+	return n
+}
+
+func matchTitle(lines []string, i int) (title string, style titleStyle, consumed int, warning *doctree.Element, ok bool) {
+	if char, isLine := isUniformLine(lines[i]); isLine && len([]rune(trimTrailingSpace(lines[i]))) >= 4 {
 		if i+2 < len(lines) {
 			text := lines[i+1]
-			if !isBlankStr(text) && leadingSpaces(text) == 0 {
-				if char2, isLine2 := isUniformLine(lines[i+2]); isLine2 && char2 == char {
-					return trimTrailingSpace(text), titleStyle{char: char, overline: true}, 3, true
+			// A title inset under its overline (leading whitespace on the
+			// title line) is tolerated, not rejected — real docutils'
+			// Line.text calls self.section(title.lstrip(), ...), stripping
+			// the inset rather than gating on its absence (states.py, read
+			// directly).
+			if !isBlankStr(text) {
+				overline := trimTrailingSpace(lines[i])
+				underline := trimTrailingSpace(lines[i+2])
+				// Real docutils compares the two rstripped LINES for exact
+				// equality (Line.text: "elif overline != underline"), not
+				// just the leading character — a same-character but
+				// different-length pair ("=======" over, "====" under) is
+				// still a mismatch, handled by titleDiagnostic, not a
+				// silent success here.
+				if char2, isLine2 := isUniformLine(lines[i+2]); isLine2 && char2 == char && underline == overline {
+					titleRaw := trimTrailingSpace(text)
+					st := titleStyle{char: char, overline: true}
+					// The width check runs on the title BEFORE its inset is
+					// stripped (Line.text: "title = title.rstrip()" happens
+					// first, the column_width(title) check reads THAT, and
+					// only the FINAL self.section(title.lstrip(), ...) call
+					// drops the leading space — states.py, read directly) —
+					// an inset title is effectively "underline_length minus
+					// the inset" narrower, and can trigger the warning on
+					// its own even when the stripped text alone would fit.
+					if columnWidth(titleRaw) > len([]rune(overline)) {
+						source := overline + "\n" + titleRaw + "\n" + underline
+						warning = sectionMessage("2", "WARNING", "Title overline too short.", i+1, source)
+					}
+					return strings.TrimLeft(titleRaw, " "), st, 3, warning, true
 				}
 			}
 		}
 	}
-	if _, _, isField := matchFieldMarker(lines[i]); !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 &&
-		!isBulletLine(lines[i]) && !isEnumLine(lines[i]) && !isExplicitMarkupLine(lines[i]) && !isField &&
-		!isDoctestLine(lines[i]) && !isLineBlockLine(lines[i]) {
-		if i+1 < len(lines) {
-			if char, isLine := isUniformLine(lines[i+1]); isLine {
-				t := trimTrailingSpace(lines[i])
-				u := trimTrailingSpace(lines[i+1])
-				if len([]rune(u)) >= 4 || len([]rune(u)) >= len([]rune(t)) {
-					return t, titleStyle{char: char, overline: false}, 2, true
+	// lines[i] itself must NOT be a uniform line — real docutils' Body
+	// state always tries the 'line' pattern before 'text' (matches
+	// mutually exclusively in state-machine dispatch order), so a uniform
+	// line is ALWAYS handled via the overline path above (success or
+	// titleDiagnostic's failure messages), never falls through to be
+	// treated as underline-style title TEXT even when a following line
+	// happens to look like a valid "underline" for it.
+	if _, isSelfLine := isUniformLine(lines[i]); !isSelfLine {
+		if _, _, isField := matchFieldMarker(lines[i]); !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 &&
+			!isBulletLine(lines[i]) && !isEnumListStart(lines, i) && !isExplicitMarkupLine(lines[i]) && !isField &&
+			!isDoctestLine(lines[i]) && !isLineBlockLine(lines[i]) {
+			if i+1 < len(lines) {
+				if char, isLine := isUniformLine(lines[i+1]); isLine {
+					t := trimTrailingSpace(lines[i])
+					u := trimTrailingSpace(lines[i+1])
+					if len([]rune(u)) >= 4 || len([]rune(u)) >= len([]rune(t)) {
+						if columnWidth(t) > len([]rune(u)) {
+							source := t + "\n" + u
+							warning = sectionMessage("2", "WARNING", "Title underline too short.", i+2, source)
+						}
+						return t, titleStyle{char: char, overline: false}, 2, warning, true
+					}
 				}
 			}
 		}
 	}
-	return "", titleStyle{}, 0, false
+	return "", titleStyle{}, 0, nil, false
+}
+
+// underlineTooShortDiagnostic covers the one matchTitle rejection its
+// sibling titleDiagnostic doesn't: an underline-only (no overline) title
+// candidate whose underline is too short to be valid by EITHER of
+// matchTitle's own two acceptance tests (>=4 chars, or >=title width) —
+// real docutils' Text.underline, its own "if column_width(title) >
+// len(underline): if len(underline) < 4:" branch (states.py, read
+// directly). Mirrors matchTitle's exact underline-branch gating so it only
+// fires where matchTitle itself would have looked, never on a line
+// matchTitle wouldn't have considered a candidate at all (a bullet/enum/
+// field/... line, or one where the next line isn't uniform).
+func underlineTooShortDiagnostic(lines []string, i int) (msg *doctree.Element, ok bool) {
+	if _, isSelfLine := isUniformLine(lines[i]); isSelfLine {
+		return nil, false
+	}
+	if _, _, isField := matchFieldMarker(lines[i]); isBlankStr(lines[i]) || leadingSpaces(lines[i]) != 0 ||
+		isBulletLine(lines[i]) || isEnumListStart(lines, i) || isExplicitMarkupLine(lines[i]) || isField ||
+		isDoctestLine(lines[i]) || isLineBlockLine(lines[i]) {
+		return nil, false
+	}
+	if i+1 >= len(lines) {
+		return nil, false
+	}
+	if _, isLine := isUniformLine(lines[i+1]); !isLine {
+		return nil, false
+	}
+	t := trimTrailingSpace(lines[i])
+	u := trimTrailingSpace(lines[i+1])
+	if len([]rune(u)) >= 4 || len([]rune(u)) >= len([]rune(t)) {
+		return nil, false // matchTitle already accepts this one
+	}
+	return sectionMessage("1", "INFO",
+		"Possible title underline, too short for the title.\nTreating it as ordinary text because it's so short.",
+		i+2, ""), true
+}
+
+// sectionMessage builds a standalone <system_message> diagnostic for a
+// section-title recognition failure or warning — level/msgType/line/text
+// match real docutils' own self.reporter.{info,warning,error}(...) calls in
+// states.py's Line/Text state handlers (read directly). Unlike the inline-
+// markup <problematic>/<system_message> pair (markupProblematic), these
+// carry no id/refid/backref: real docutils builds them with no linked
+// <problematic> counterpart, confirmed against the foreign judge — a plain
+// diagnostic, not a cross-referenced one. source, when non-empty, becomes a
+// <literal_block> sibling of the message <paragraph> holding the offending
+// line(s) verbatim.
+func sectionMessage(level, msgType, text string, line int, source string) *doctree.Element {
+	msg := doctree.NewElement(doctree.TagSystemMessage,
+		doctree.NewElement(doctree.TagParagraph, &doctree.Text{Data: text}))
+	if source != "" {
+		msg.Append(doctree.NewElement(doctree.TagLiteralBlock, &doctree.Text{Data: source}))
+	}
+	msg.SetAttr("level", level)
+	msg.SetAttr("type", msgType)
+	if line != 0 {
+		msg.SetAttr("line", strconv.Itoa(line))
+	}
+	return msg
+}
+
+// titleDiagnostic handles an ATTEMPTED section title (overlined form) at
+// lines[i] that matchTitle didn't accept — real docutils' own 'Line' state
+// (states.py, read directly): once a uniform line is found in a title-
+// eligible position, every outcome (too-short overline, missing/mismatched
+// underline, incomplete title, invalid title-or-transition) is handled
+// inside that state, not silently treated as an ordinary transition or
+// left unexplained. Returns ok=false when lines[i] isn't a title attempt at
+// all (short line with nothing to revert from, or a genuine transition —
+// overline immediately followed by blank/EOF, left to isTransitionLine),
+// so the caller falls through to its normal dispatch.
+func titleDiagnostic(lines []string, i int) (msg *doctree.Element, consumed int, ok bool) {
+	_, isLine := isUniformLine(lines[i])
+	if !isLine {
+		return nil, 0, false
+	}
+	overline := trimTrailingSpace(lines[i])
+	overlineLine := i + 1
+	if len([]rune(overline)) < 4 {
+		// Too short to be either an overline or a transition at all (real
+		// docutils' Line.short_overline, reached from every branch below at
+		// this same length threshold) — never consumed, just annotated
+		// before the line falls through to ordinary text handling.
+		return sectionMessage("1", "INFO",
+			"Possible incomplete section title.\nTreating the overline as ordinary text because it's so short.",
+			overlineLine, ""), 0, true
+	}
+	if i+1 >= len(lines) || isBlankStr(lines[i+1]) {
+		// Overline immediately followed by blank or EOF: a genuine
+		// transition, not a title attempt — isTransitionLine's concern.
+		return nil, 0, false
+	}
+	title := lines[i+1]
+	if _, isLine2 := isUniformLine(title); isLine2 {
+		// The "title" line is itself a uniform line: Line.underline, not
+		// Line.text — two overlines back to back with no title between.
+		source := overline + "\n" + trimTrailingSpace(title)
+		return sectionMessage("3", "ERROR", "Invalid section title or transition marker.", overlineLine, source), 2, true
+	}
+	titleTrimmed := trimTrailingSpace(title)
+	if i+2 >= len(lines) {
+		source := overline + "\n" + titleTrimmed
+		return sectionMessage("3", "ERROR", "Incomplete section title.", overlineLine, source), 2, true
+	}
+	// A third physical line exists, so real docutils' own next_line() reads
+	// it regardless of what it turns out to contain — it's consumed either
+	// way (3 lines), even when it doesn't validate as a matching underline;
+	// leaving it unconsumed would hand a still-uniform, still-long-enough
+	// line (like a "-------" mismatch candidate) back to the dispatch loop
+	// to be picked up a SECOND time as a spurious standalone transition.
+	underline := ""
+	if !isBlankStr(lines[i+2]) {
+		if _, isU := isUniformLine(lines[i+2]); isU {
+			underline = trimTrailingSpace(lines[i+2])
+		}
+	}
+	source := overline + "\n" + titleTrimmed
+	if underline != "" {
+		source += "\n" + underline
+	}
+	if underline == "" {
+		return sectionMessage("3", "ERROR", "Missing matching underline for section title overline.", overlineLine, source), 3, true
+	}
+	if underline != overline {
+		return sectionMessage("3", "ERROR", "Title overline & underline mismatch.", overlineLine, source), 3, true
+	}
+	// underline == overline: matchTitle should already have accepted this
+	// as a valid title (columnWidth is the only remaining reason it
+	// wouldn't have) — not this function's concern either way.
+	return nil, 0, false
 }
 
 func isTransitionLine(s string) bool {
@@ -525,7 +805,14 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 			if isSimpleTableTopLine(lines[j]) || isGridTableTopLine(lines[j]) {
 				break
 			}
-			if _, isLine := isUniformLine(lines[j]); isLine {
+			// Only a line of at least 4 repeated characters can possibly be
+			// a genuine transition or title marker (real docutils' own
+			// Body.line/Text.underline shortness rule, states.py, read
+			// directly) — a shorter uniform-looking run ("==", "--") is
+			// just ordinary text and must not split the paragraph; the
+			// caller's matchTitle applies the same >=4 threshold to the
+			// title-candidate case.
+			if _, isLine := isUniformLine(lines[j]); isLine && len([]rune(trimTrailingSpace(lines[j]))) >= 4 {
 				break
 			}
 		}

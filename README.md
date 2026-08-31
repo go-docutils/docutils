@@ -285,6 +285,40 @@ right before the sectioning command in LaTeX). Two sections sharing a
 title get distinct ids (`title`, `title-1`, ...) with no ambiguous-name
 diagnostic, the same "no duplicate/ambiguous-name diagnostics"
 simplification as dangling-reference rewriting above.
+
+Section-title recognition and its diagnostics are ported from real
+docutils' `Line`/`Text` states (`states.py`, read directly), not just
+the well-formed case: a title inset under its overline (leading
+whitespace on the title line) is stripped rather than rejected, but
+still counts toward the overline-width comparison exactly as docutils
+computes it (before the strip, not after — an inset title can trigger
+"Title overline too short." on its own even when the stripped text
+alone would fit); a too-short overline or underline (under 4 columns)
+that's ALSO narrower than the title reverts the whole attempt to plain
+text with an INFO notice, while one that's merely narrower (but still
+≥4, or ≥ the title's own width) is a WARNING and the section is still
+created; a missing, mismatched, or absent-at-EOF underline, and two
+overlines with no title text between, are each their own ERROR with no
+section created. Title-STYLE consistency is enforced too: a style's
+level is fixed by the order it's first seen in the whole document
+(`title_styles`, ported), reusing an established style returns to that
+level (closing any deeper-nested sections), and introducing more than
+one new level at once — skipping a level — is
+`"Inconsistent title style: skip from level X to Y."`, an ERROR with no
+section created. A numbered line ("`1. Numbered Title`") is
+disambiguated from a genuine enumerated-list item by peeking at the
+following line (`is_enumerated_list_item`, ported): blank, indented, or
+starting with the next ordinal's own marker confirms a real list item;
+anything else — most commonly a title underline — corrects the
+enumerator-looking line back to plain text, letting the title win.
+**Not yet ported**: the `match_titles=False` diagnostics for a title-
+looking construct found somewhere titles aren't allowed at all (inside
+a block quote or list item — real docutils still errors there,
+`"Unexpected section title."` or `"...or transition."`; this parser
+currently treats it as plain text with no diagnostic), and enumerator-
+sequence validation (docutils warns on a non-consecutive ordinal; this
+parser doesn't check).
+
 Sphinx's `autodoc` extension (and `napoleon`, downstream of
 it) is out of scope entirely: it works by importing and introspecting
 live Python code, which is not portable to pure Go.
