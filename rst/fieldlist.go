@@ -88,7 +88,13 @@ func isDefinitionTermLine(lines []string, i int) bool {
 	if isDoctestLine(lines[i]) || isLineBlockLine(lines[i]) {
 		return false
 	}
-	if _, isLine := isUniformLine(lines[i]); isLine {
+	// Only a line of at least 4 repeated characters is excluded as a
+	// potential transition/title marker instead — shorter ("==", "--") is
+	// ordinary text once too short to be either (see matchTitle/
+	// consumeParagraph's own >=4 threshold, states.py's Body.line "elif
+	// len(match.string.strip()) < 4" read directly), so it can still start
+	// a definition list term like any other text line.
+	if _, isLine := isUniformLine(lines[i]); isLine && len([]rune(trimTrailingSpace(lines[i]))) >= 4 {
 		return false
 	}
 	return i+1 < len(lines) && !isBlankStr(lines[i+1]) && leadingSpaces(lines[i+1]) > 0
