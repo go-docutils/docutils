@@ -390,7 +390,15 @@ func normalizeName(s string) string {
 // EVERY anonymous reference in the document becomes <problematic>,
 // regardless of which side has the surplus, all sharing ONE message
 // (docutils' own "Anonymous hyperlink mismatch" error).
-func resolveTargets(doc *doctree.Element) {
+// resolveTargets links every reference to its target's URI and rewrites
+// dangling/mismatched ones to <problematic>. initMessages/initMsgCount seed
+// the message list and id counter with whatever markupProblematic (inline.go)
+// already collected during parsing — real docutils' own Messages transform
+// merges document.parse_messages (ids assigned first, parsing finishes
+// before any transform runs) with document.transform_messages (this
+// function's own dangling-reference/anonymous-mismatch messages, assigned
+// next) into ONE continuous sequence, not two independently-numbered ones.
+func resolveTargets(doc *doctree.Element, initMessages []*doctree.Element, initMsgCount int) {
 	direct := map[string]string{}
 	indirect := map[string]string{}
 	var anonTargets []anonTarget
@@ -416,8 +424,8 @@ func resolveTargets(doc *doctree.Element) {
 		}
 	}
 	anonIndex := 0
-	var messages []*doctree.Element
-	msgCount := 0
+	messages := initMessages
+	msgCount := initMsgCount
 	var anonMismatch *doctree.Element
 	if n := countAnonymousReferences(doc); n != len(anonURIs) {
 		msgCount++

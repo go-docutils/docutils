@@ -63,6 +63,17 @@ type parser struct {
 	// a divergence this project needs to defend, just an improvement on a
 	// real wart in the reference implementation's own architecture.
 	roles map[string]roleDef
+	// messages accumulates every <system_message> a PARSE-time inline
+	// markup failure generates (see markupProblematic in inline.go) — real
+	// docutils' own Messages transform merges document.parse_messages
+	// (assigned ids first, since parsing finishes before any transform
+	// runs) with document.transform_messages (dangling references,
+	// anonymous mismatch — resolveTargets' own, assigned next) into ONE
+	// trailing section; msgCount is threaded into resolveTargets so both
+	// sources share one continuous "problematic-N"/"system-message-N"
+	// sequence instead of two colliding ones.
+	messages []*doctree.Element
+	msgCount int
 }
 
 // roleDef is one ".. role::" registration: base names the role it derives
@@ -89,7 +100,7 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	doc := doctree.NewElement(doctree.TagDocument)
 	p.parseDocument(splitLines(source), doc)
 	assignSectionTargets(doc)
-	resolveTargets(doc)
+	resolveTargets(doc, p.messages, p.msgCount)
 	resolveFootnoteNumbers(doc)
 	promoteDocInfo(doc)
 	return doc

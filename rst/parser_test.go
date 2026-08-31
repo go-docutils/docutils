@@ -190,7 +190,7 @@ func TestInline(t *testing.T) {
 		{"unmatched marker stays literal", "2 * 3 = 6", "2 * 3 = 6\n"},
 		{"backslash escape suppresses markup", "\\*not emphasis\\*", "*not emphasis*\n"},
 		{"anonymous reference", "see `some text`__ end", "see \n<reference anonymous=\"true\" name=\"some text\">\n    some text\n end\n"},
-		{"unclosed marker falls back to plain text", "an *unclosed emphasis stays plain", "an *unclosed emphasis stays plain\n"},
+		{"unclosed marker becomes problematic", "an *unclosed emphasis stays plain", "an \n<problematic id=\"problematic-1\" refid=\"system-message-1\">\n    *\nunclosed emphasis stays plain\n"},
 		{"substitution reference", "see |name| here", "see \n<substitution_reference refname=\"name\">\n    name\n here\n"},
 		{"manually numbered footnote reference", "see [1]_ here", "see \n<footnote_reference refname=\"1\">\n    1\n here\n"},
 		{"auto-numbered footnote reference", "see [#]_ here", "see \n<footnote_reference auto=\"1\">\n here\n"},

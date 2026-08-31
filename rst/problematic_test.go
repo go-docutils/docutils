@@ -48,6 +48,58 @@ func TestDanglingReferenceBecomesProblematic(t *testing.T) {
 	}
 }
 
+// TestUnclosedInlineMarkupBecomesProblematic covers real docutils'
+// Inliner.inline_obj — a SEPARATE <problematic> source from the two above,
+// fired during inline parsing itself (inline.go's tryMarker/
+// tryInterpretedOrPhraseRef), not a whole-document post-pass: an inline
+// markup start-string (single or double asterisk, two backticks, or a
+// backquote) with no matching end-string becomes a <problematic> wrapping
+// just the marker text, cross
+// linked to a message the same way, and — checked against the foreign
+// judge, not assumed — substitution_reference ("|") never actually warns
+// this way despite routing through the identical inline_obj machinery in
+// real docutils; a role-prefixed backquote (":role:`unclosed) still ends
+// up byte-identical to real docutils even though this parser never builds
+// it in one step, since parseInline's own per-rune fallback naturally
+// retries at the backquote's own position with no role prefix in front of
+// it by the time it gets there.
+func TestUnclosedInlineMarkupBecomesProblematic(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			"a resolved emphasis is unaffected, no trailing section at all",
+			"a resolved *emphasis* is unaffected, no trailing section at all.\n",
+			"<document>\n    <paragraph>\n        a resolved \n        <emphasis>\n            emphasis\n         is unaffected, no trailing section at all.\n",
+		},
+		{
+			"two independent unclosed markers collect two separate, correctly numbered messages",
+			"Two unclosed: *first and **second here.\n",
+			"<document>\n    <paragraph>\n        Two unclosed: \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            *\n        first and \n        <problematic id=\"problematic-2\" refid=\"system-message-2\">\n            **\n        second here.\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Inline emphasis start-string without end-string.\n        <system_message backref=\"problematic-2\" id=\"system-message-2\">\n            <paragraph>\n                Inline strong start-string without end-string.\n",
+		},
+		{
+			"an unclosed substitution reference stays plain text, no warning at all",
+			"unclosed |sub here\n",
+			"<document>\n    <paragraph>\n        unclosed |sub here\n",
+		},
+		{
+			"a role-prefixed unclosed backquote still ends up byte-identical to real docutils",
+			"see :role:`unclosed here\n",
+			"<document>\n    <paragraph>\n        see :role:\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            `\n        unclosed here\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Inline interpreted text or phrase reference start-string without end-string.\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
+				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestAnonymousMismatchBecomesProblematic covers docutils'
 // AnonymousHyperlinks.apply, read directly from transforms/references.py:
 // unlike a named reference, an anonymous reference/target mismatch is a

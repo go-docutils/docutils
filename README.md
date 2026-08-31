@@ -145,7 +145,18 @@ An ANONYMOUS reference/target count mismatch IS covered too — real
 docutils checks this as a single whole-document condition, not
 per-reference (`AnonymousHyperlinks.apply`, read directly): if the counts
 don't match EXACTLY, in either direction, every anonymous reference in the
-document becomes `<problematic>`, all sharing ONE message. An unknown
+document becomes `<problematic>`, all sharing ONE message. An unclosed
+inline-markup start-string (`*x`, `**x`, two backticks with no closing
+pair, a bare interpreted-text backquote) IS rewritten to `<problematic>`
+too — `Inliner.inline_obj`, ported — a genuinely SEPARATE source from the
+dangling-reference/anonymous-mismatch cases above: this one fires during
+inline PARSING itself (`inline.go`), not a whole-document post-pass over
+an already-built tree. A `substitution_reference` ("`|x`" with no closing "`|`") routes through
+the identical real-docutils mechanism (`inline_obj`) yet never actually
+produces this warning in practice — checked against the foreign judge for
+several inputs, not assumed from reading the source alone — so this parser
+matches that observed behavior rather than second-guessing it with a
+warning real docutils itself doesn't emit. An unknown
 interpreted-text role still stays a plain node instead — deliberately,
 see above. A resolved
 embedded-link reference doesn't get the extra `<target>` sibling node
