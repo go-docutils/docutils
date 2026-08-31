@@ -185,7 +185,17 @@ func (p *parser) parseSubstitutionDef(lines []string, i int, name, directiveRest
 		return nil, 0, false
 	}
 	node, next := p.parseDirective(lines, i, dirName, args)
-	el := node.(*doctree.Element)
+	el, ok := node.(*doctree.Element)
+	if !ok {
+		// ".. |name| role:: ..." — a role registration (parseDirective's
+		// only nil-returning case) as a substitution's own content is
+		// nonsensical in real docutils too; fall through to the same
+		// "malformed substitution definition" comment fallback the
+		// caller already uses when no embedded directive is found at
+		// all, rather than inventing a substitution_definition wrapping
+		// nothing.
+		return nil, 0, false
+	}
 	el.Tag = doctree.TagSubstitutionDef
 	el.SetAttr("substitution", normalizeWhitespace(name))
 	return el, next, true
@@ -244,10 +254,17 @@ func (p *parser) parseDirective(lines []string, i int, name, args string) (doctr
 	if name == "role" {
 		// Registers a custom interpreted-text role for the rest of the
 		// document (see role.go) — invisible bookkeeping, same as a
-		// hyperlink target: real docutils' own Role.run leaves nothing
-		// in the tree either (verified against the foreign judge).
+		// hyperlink target: real docutils' own Role.run leaves NOTHING in
+		// the tree, not even a comment (verified against the foreign
+		// judge — an earlier version of this code returned a <comment>
+		// element here, contradicting its own doc comment; caught only
+		// once ":code:"/PEP/RFC role support made the surrounding
+		// paragraph's own content correct enough for this stray sibling
+		// to become the ONLY remaining diff). Callers (parseBlockLines'
+		// two isExplicitMarkupLine call sites) must skip a nil node
+		// rather than append it.
 		p.registerRole(args, body)
-		return doctree.NewElement(doctree.TagComment), next
+		return nil, next
 	}
 	el := doctree.NewElement(doctree.TagDirective)
 	el.SetAttr("name", name)

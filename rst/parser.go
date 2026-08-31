@@ -120,14 +120,28 @@ type parser struct {
 }
 
 // roleDef is one ".. role::" registration: base names the role it derives
-// from (a roleTags entry, or "raw" — the only two bases this parser gives
-// distinct behavior; any OTHER base, or none at all, is docutils' own
-// generic_custom_role, which already behaves exactly like this parser's
-// existing "unknown role" fallback — see roleElement). format only means
-// something when base is "raw" (docutils' own :format: role option).
+// from (a roleTags entry, "code", or "raw" — the only bases this parser
+// gives distinct behavior; any OTHER base, or none at all, is docutils'
+// own generic_custom_role, which already behaves exactly like this
+// parser's existing "unknown role" fallback — see roleElement). format
+// only means something when base is "raw" (docutils' own :format: role
+// option). language/hasLanguage and classes are base=="code"'s own
+// options (roles.py's code_role, read directly — see codeRoleClasses):
+// hasLanguage distinguishes an EXPLICIT ":language:" option from the
+// implicit default (the role's own name), which changes whether a
+// resolved-but-unanalyzable language degrades silently or raises a
+// warning. classes is always populated (registerRole defaults it to the
+// role's own name, docutils.parsers.rst.directives.misc.Role.run's own
+// "if 'class' not in options: options['class'] = ...(new_role_name)"
+// default, read directly) even though only base=="code" consumes it
+// today — every custom role gets this default in real docutils, not just
+// code-derived ones, so it's computed uniformly rather than gated on base.
 type roleDef struct {
-	base   string
-	format string
+	base        string
+	format      string
+	language    string
+	hasLanguage bool
+	classes     []string
 }
 
 // Parse parses reStructuredText source into a document tree, using
@@ -219,7 +233,9 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 		}
 		if isExplicitMarkupLine(lines[i]) {
 			node, next := p.parseExplicitMarkup(lines, i)
-			current.Append(node)
+			if node != nil {
+				current.Append(node)
+			}
 			i = next
 			continue
 		}
@@ -396,7 +412,9 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 		}
 		if isExplicitMarkupLine(lines[i]) {
 			node, next := p.parseExplicitMarkup(lines, i)
-			parent.Append(node)
+			if node != nil {
+				parent.Append(node)
+			}
 			i = next
 			continue
 		}

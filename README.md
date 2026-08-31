@@ -71,14 +71,25 @@ embedded email address), interpreted text with a role, prefix
 (`` :role:`x` ``) or suffix (`` `x`:role: ``), for docutils' built-in
 GENERIC roles (`emphasis`, `strong`, `literal`, `subscript`/`sub`,
 `superscript`/`sup`, `title-reference`/`title`/`t`,
-`abbreviation`/`ab`, `acronym`/`ac`), plus its other two always-registered
-roles, `code` (no syntax highlighting — this parser has no
-role-option syntax to carry a `:language:`, so it degrades to exactly
-the plain `<literal>` real docutils itself falls back to with no
-language set) and `math` (a dedicated `<math>` node holding the raw,
-unescaped TeX source, rendered by both writers below), plus a
+`abbreviation`/`ab`, `acronym`/`ac`), plus its other three always-registered,
+non-generic roles: `math` (a dedicated `<math>` node holding the raw,
+unescaped TeX source, rendered by both writers below); `code` (real
+class-list/highlight-language derivation, `roles.py`'s `code_role`
+ported — the content is preserved raw, backslashes intact, wrapped in
+`<literal class="...">`; since this parser has no Pygments equivalent
+and never will, a *resolved* highlight language always takes docutils'
+own `LexerError` path, which itself distinguishes an EXPLICIT
+`:language:` option, a WARNING + `<problematic>` — "Cannot analyze code.
+Pygments package not found." — from one merely implied by a custom
+role's own name, a silent fallback to the same plain, unclassified shape
+as no language at all); and `pep`/`pep-reference` and `rfc`/`rfc-reference`
+(numeric validation — a PEP number 0-9999, an RFC number ≥ 1, optionally
+with a `#section` suffix — producing a `<reference>` to the canonical
+page on success or an ERROR + `<problematic>` otherwise), plus a
 `.. role:: NAME(BASE)`-registered custom role — aliasing a generic role
-by tag the same way a built-in does, or (`BASE` is `raw`, with a
+by tag the same way a built-in does, `code` (with its own `:language:`/
+`:class:` options, defaulting `:class:` to the role's own name exactly
+like real docutils' `Role` directive does), or (`BASE` is `raw`, with a
 `:format:` option) this parser's one INLINE raw construct, mirroring the
 `raw` directive above — any other role name still falls back to a
 generic `<inline role="name">` rather than docutils' error (see "Not yet
@@ -117,11 +128,13 @@ escaping would corrupt hyperref's own `#`-marker convention).
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
 `lineblock.go`/`inline.go`/`table.go`/`gridtable.go` doc comments for
-the exact list and why): docutils' `pep-reference`/`rfc-reference`
-built-in roles (checked against `Parser().parse()` with default
-settings — docutils' own `pep_references`/`rfc_references` settings
-default to **off**, so implementing them unconditionally would diverge
-from upstream's own default rather than fill a real gap), and an unknown
+the exact list and why): docutils' *standalone* PEP/RFC recognition —
+bare `pep-123`/`RFC 123` text with no `:PEP:`/`:RFC:` role markup at all
+(checked against `Parser().parse()` with default settings — docutils'
+own `pep_references`/`rfc_references` settings default to **off**, so
+implementing this unconditionally would diverge from upstream's own
+default rather than fill a real gap; the `:PEP:`/`:RFC:` roles
+themselves ARE ported, see above), and an unknown
 interpreted-text role's rewrite to `problematic` — deliberately, not for
 lack of the machinery: this parser has a real role registry now (see
 `.. role::` below), which resolves exactly what it needs to (a custom
@@ -130,8 +143,16 @@ rewriting every OTHER unrecognized name to `problematic`, since that
 would be a real leniency REGRESSION for any document using a role this
 parser has simply never heard of (a Sphinx/extension role, say) rather
 than a gap filled — real docutils always errors there, this parser
-still doesn't, on purpose. Title-style consistency and enumerator-sequence validation are not
-enforced, and a table's column-margin violations are never detected
+still doesn't, on purpose. Title-style consistency (a title style's LEVEL
+is fixed by first-seen order across the whole document; skipping more
+than one new level at once is an error) and section-title diagnostics
+(too-short overline/underline, missing/mismatched underline, incomplete
+title, invalid title-or-transition) ARE enforced — `matchTitle`/
+`titleDiagnostic`/`checkSubsectionLevel`, `rst/parser.go`; the
+`match_titles=false` case (a title-looking construct somewhere titles
+aren't allowed, e.g. inside a block quote) and enumerator-sequence
+validation (docutils errors on a non-consecutive ordinal) are the two
+pieces still NOT ported. A table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
 content relies on it). A block quote's own indent is discovered the same
 way real docutils' `StringList.get_indented` does: the MINIMUM across a

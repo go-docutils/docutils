@@ -45,22 +45,70 @@ func parseRoleArgs(args string) (name, base string, ok bool) {
 
 // registerRole records one ".. role::" definition — see parser.roles and
 // roleDef. Body is the directive's own gathered, dedented body lines
-// (gatherExplicitBody's output), scanned for ":format: value" the same
-// way a field list's own marker line is recognized.
+// (gatherExplicitBody's output), scanned for ":key: value" lines the same
+// way a field list's own marker line is recognized; "format" (raw-based
+// roles), "language" and "class" (code-based roles) are the only three
+// this parser gives real meaning to.
 func (p *parser) registerRole(args string, body []string) {
 	name, base, ok := parseRoleArgs(args)
 	if !ok {
 		return
 	}
 	def := roleDef{base: strings.ToLower(base)}
+	classGiven := false
 	for _, line := range body {
 		trimmed := strings.TrimLeft(line, " ")
-		if key, col, ok := matchFieldMarker(trimmed); ok && strings.EqualFold(key, "format") {
-			def.format = strings.ToLower(strings.TrimSpace(trimmed[col:]))
+		key, col, ok := matchFieldMarker(trimmed)
+		if !ok {
+			continue
 		}
+		val := strings.TrimSpace(trimmed[col:])
+		switch {
+		case strings.EqualFold(key, "format"):
+			def.format = strings.ToLower(val)
+		case strings.EqualFold(key, "language"):
+			def.language = val
+			def.hasLanguage = true
+		case strings.EqualFold(key, "class"):
+			def.classes = classOption(val)
+			classGiven = true
+		}
+	}
+	// docutils.parsers.rst.directives.misc.Role.run (read directly): "if
+	// 'class' not in options: options['class'] = directives.class_option
+	// (new_role_name)" — every custom role gets its own name as its
+	// default class list unless the definition gives one explicitly.
+	if !classGiven {
+		def.classes = classOption(name)
 	}
 	if p.roles == nil {
 		p.roles = map[string]roleDef{}
 	}
 	p.roles[strings.ToLower(name)] = def
+}
+
+// classOption mirrors docutils.parsers.rst.directives.class_option (via
+// nodes.make_id, both read directly): splits on whitespace, then
+// lowercases each token and replaces any character that isn't a letter,
+// digit, or hyphen with a hyphen. make_id's fuller Unicode-normalization
+// behavior (NFKD decomposition, leading-digit handling) isn't replicated —
+// every role/class name reaching this parser in practice is already a
+// plain ASCII identifier.
+func classOption(s string) []string {
+	var out []string
+	for _, tok := range strings.Fields(s) {
+		var b strings.Builder
+		for _, r := range strings.ToLower(tok) {
+			switch {
+			case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+				b.WriteRune(r)
+			default:
+				b.WriteByte('-')
+			}
+		}
+		if b.Len() > 0 {
+			out = append(out, b.String())
+		}
+	}
+	return out
 }
