@@ -692,6 +692,17 @@ func titleDiagnostic(lines []string, i int) (msg *doctree.Element, consumed int,
 		return nil, 0, false
 	}
 	overline := trimTrailingSpace(lines[i])
+	if overline == "::" {
+		// A bare literal-block-opener line is a uniform line too (two
+		// colons, same character), but is never a title/transition
+		// attempt at all — real docutils' Body.line explicitly excludes
+		// it (states.py, read directly) before its length check would
+		// otherwise catch it as "too short" and wrongly annotate it;
+		// this project's own consumeParagraph already gives a bare "::"
+		// paragraph its established special handling once it gets there
+		// undisturbed.
+		return nil, 0, false
+	}
 	overlineLine := i + 1
 	if len([]rune(overline)) < 4 {
 		// Too short to be either an overline or a transition at all (real
