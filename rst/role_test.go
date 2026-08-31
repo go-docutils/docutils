@@ -24,24 +24,52 @@ func TestRoleDirective(t *testing.T) {
 		want   string
 	}{
 		{
-			"a role based on a generic role aliases its tag",
+			// roles.py's set_implicit_options: EVERY role function
+			// implicitly supports a ":class:" option, defaulted by the
+			// "role" directive to the role's own name when the
+			// definition doesn't give one explicitly (registerRole/
+			// classOption) — an aliased role carries it same as any
+			// other. An earlier version of this test predates that
+			// finding and wrongly expected no class attribute at all.
+			"a role based on a generic role aliases its tag, carrying class=\"<role name>\"",
 			".. role:: custom(strong)\n\nSome :custom:`text` here.\n",
-			"<document>\n    <paragraph>\n        Some \n        <strong>\n            text\n         here.\n",
+			"<document>\n    <paragraph>\n        Some \n        <strong class=\"custom\">\n            text\n         here.\n",
 		},
 		{
-			"a role based on raw becomes an inline raw node, format from the :format: option",
+			"a role based on raw becomes an inline raw node, format from the :format: option, plus class=\"<role name>\"",
 			".. role:: myraw(raw)\n   :format: html\n\nInline :myraw:`<b>x</b>` here.\n",
-			"<document>\n    <paragraph>\n        Inline \n        <raw format=\"html\">\n            <b>x</b>\n         here.\n",
+			"<document>\n    <paragraph>\n        Inline \n        <raw class=\"myraw\" format=\"html\">\n            <b>x</b>\n         here.\n",
 		},
 		{
-			"a bare role definition (no base) is docutils' own generic_custom_role, same as this parser's existing unregistered-role fallback",
+			// A bare role definition (no base) is docutils' own
+			// generic_custom_role: <inline class="..."> — NOT the same
+			// shape as this parser's own unregistered-role fallback
+			// (<inline role="...">, see the next case) even though an
+			// earlier version of this test claimed they matched; that
+			// claim predates the corpus catching the real difference.
+			"a bare role definition (no base) is docutils' own generic_custom_role: class=\"<role name>\", not role=\"...\"",
 			".. role:: custom\n\nSome :custom:`text` here.\n",
-			"<document>\n    <paragraph>\n        Some \n        <inline role=\"custom\">\n            text\n         here.\n",
+			"<document>\n    <paragraph>\n        Some \n        <inline class=\"custom\">\n            text\n         here.\n",
 		},
 		{
 			"an unregistered role name is unaffected — same fallback as before this feature existed",
 			"Some :unregistered:`text` here.\n",
 			"<document>\n    <paragraph>\n        Some \n        <inline role=\"unregistered\">\n            text\n         here.\n",
+		},
+		{
+			"an EXPLICIT :class: option overrides the role-name default entirely, not just adds to it",
+			".. role:: custom(emphasis)\n   :class: special\n\n:custom:`text`\n",
+			"<document>\n    <paragraph>\n        <emphasis class=\"special\">\n            text\n",
+		},
+		{
+			// roles.py's raw_role, read directly: the BUILT-IN "raw" role
+			// used DIRECTLY (never through ".. role::", so no :format:
+			// option can ever reach it) always errors — distinct from a
+			// raw-BASED custom role, which supplies its own format and
+			// works fine (see the raw-role case above).
+			"the built-in \"raw\" role used directly (no :format:) always errors",
+			"Can't use the :raw:`role` directly.\n",
+			"<document>\n    <paragraph>\n        Can't use the \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            :raw:`role`\n         directly.\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            No format (Writer name) is associated with this role: \"raw\".\n            The \"raw\" role cannot be used directly.\n            Instead, use the \"role\" directive to create a new role with an associated format.\n",
 		},
 		{
 			// codeRoleClasses: no ":language:"/":class:" option at all —
