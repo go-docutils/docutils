@@ -86,6 +86,16 @@ func TestSectionOverline(t *testing.T) {
 			"<document>\n    <section id=\"one\" name=\"one\">\n        <title>\n            One\n        <paragraph>\n            Para one.\n    <section id=\"two\" name=\"two\">\n        <title>\n            Two\n        <paragraph>\n            Para two.\n",
 		},
 		{
+			// A bare "::" literal-block-opener line is a uniform line too
+			// (two colons, same character) — regression: an earlier version
+			// of titleDiagnostic didn't exclude it, so it wrongly emitted
+			// the "too short to be a title" INFO notice as a spurious extra
+			// paragraph sibling in front of the actual literal block.
+			"a bare :: literal-block marker is never a title attempt",
+			"Sample:\n\n::\n\n   code line one\n   code line two\n",
+			"<document>\n    <paragraph>\n        Sample:\n    <literal_block>\n        code line one\n        code line two\n",
+		},
+		{
 			"a numbered title is a title, not a one-item enumerated list",
 			"1. Numbered Title\n=================\n\nContent.\n",
 			"<document>\n    <section id=\"numbered-title\" name=\"1. numbered title\">\n        <title>\n            1. Numbered Title\n        <paragraph>\n            Content.\n",
