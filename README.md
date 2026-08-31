@@ -162,6 +162,16 @@ output). A table's `<tgroup cols="N">`/`<colspec colwidth="W">` wrapper
 IS produced (verified: it's part of the bare parse, not a later
 transform or writer-side addition, unlike the above), the `html`/
 `latex` writers and `go-richdoc/rst` all unwrap it transparently.
+Every section title IS registered as an implicit hyperlink target too
+(docutils' own `new_subsection`/`create_id`, ported): a `` `Some Title`_ ``
+reference resolves to a same-document anchor derived from the title, the
+`id` a plain-ASCII slug (accents folded, everything else stripped) and the
+`name` the whitespace-normalized title text — both writers emit the `id`
+as a real anchor (`<section id="...">` in HTML, a bare `\hypertarget{id}{}`
+right before the sectioning command in LaTeX). Two sections sharing a
+title get distinct ids (`title`, `title-1`, ...) with no ambiguous-name
+diagnostic, the same "no duplicate/ambiguous-name diagnostics"
+simplification as dangling-reference rewriting above.
 Sphinx's `autodoc` extension (and `napoleon`, downstream of
 it) is out of scope entirely: it works by importing and introspecting
 live Python code, which is not portable to pure Go.

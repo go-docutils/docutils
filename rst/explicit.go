@@ -483,6 +483,19 @@ func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTarg
 			}
 		}
 	}
+	if el.Tag == doctree.TagSection {
+		// A section title is an implicit hyperlink target — see
+		// assignSectionTargets, which sets name/id before this pass runs.
+		// No duplicate-name precedence rule against an explicit <target>
+		// sharing the same name: real docutils diagnoses that as a
+		// duplicate-name warning, a diagnostic this project already
+		// doesn't implement for any other name collision (see
+		// resolveTargets' own doc comment) — last write in document order
+		// wins here too, the same simplification applied everywhere else.
+		if name := el.Attr("name"); name != "" && el.Attr("id") != "" {
+			direct[name] = "#" + el.Attr("id")
+		}
+	}
 	for _, c := range el.Children {
 		collectTargets(c, direct, indirect, anonTargets)
 	}

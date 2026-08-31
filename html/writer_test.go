@@ -21,7 +21,7 @@ func TestRender(t *testing.T) {
 		{
 			"nested sections use increasing heading levels",
 			"Top\n===\n\nIntro.\n\nSub\n---\n\nNested.\n",
-			"<section><h1>Top</h1><p>Intro.</p><section><h2>Sub</h2><p>Nested.</p></section></section>",
+			`<section id="top"><h1>Top</h1><p>Intro.</p><section id="sub"><h2>Sub</h2><p>Nested.</p></section></section>`,
 		},
 		{
 			"bullet and enumerated lists",

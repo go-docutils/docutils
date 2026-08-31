@@ -88,6 +88,7 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	p := &parser{opts: opts}
 	doc := doctree.NewElement(doctree.TagDocument)
 	p.parseDocument(splitLines(source), doc)
+	assignSectionTargets(doc)
 	resolveTargets(doc)
 	resolveFootnoteNumbers(doc)
 	promoteDocInfo(doc)

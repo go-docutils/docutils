@@ -86,7 +86,14 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 	case doctree.TagSection:
 		// The section's OWN title renders at `level`; everything else
 		// (including a nested <section>, one level deeper) gets level+1
-		// — same reasoning as html.Render's heading-depth tracking.
+		// — same reasoning as html.Render's heading-depth tracking. The
+		// bare \hypertarget (see assignSectionTargets for the id) makes a
+		// `Some Title`_-style reference to this section resolve to a real
+		// anchor instead of a dangling \hyperlink, same idiom TagTarget
+		// already uses for an inline internal target.
+		if id := el.Attr("id"); id != "" {
+			b.WriteString("\\hypertarget{" + escapeText(id) + "}{}")
+		}
 		for _, c := range el.Children {
 			if ce, ok := c.(*doctree.Element); ok && ce.Tag == doctree.TagTitle {
 				renderElement(b, ce, level)

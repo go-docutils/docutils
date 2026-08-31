@@ -53,8 +53,14 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 	case doctree.TagSection:
 		// A section's OWN title renders at the current heading level;
 		// everything else (including a nested <section>, whose title
-		// must render one level deeper) gets headingLevel+1.
-		b.WriteString("<section>")
+		// must render one level deeper) gets headingLevel+1. The id (see
+		// assignSectionTargets) makes a `Some Title`_-style reference to
+		// this section resolve to a real anchor, not just a dangling href.
+		if id := el.Attr("id"); id != "" {
+			b.WriteString(`<section id="` + escapeAttr(id) + `">`)
+		} else {
+			b.WriteString("<section>")
+		}
 		for _, c := range el.Children {
 			if ce, ok := c.(*doctree.Element); ok && ce.Tag == doctree.TagTitle {
 				renderElement(b, ce, headingLevel)
