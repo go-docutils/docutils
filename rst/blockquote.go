@@ -41,11 +41,17 @@ func (p *parser) parseBlockQuotes(lines []string, i int) ([]*doctree.Element, in
 		bqLines, attrLines, remaining := splitAttribution(indented)
 		bq := doctree.NewElement(doctree.TagBlockQuote)
 		p.parseBlockLines(bqLines, bq)
+		out = append(out, bq)
 		if attrLines != nil {
 			text := joinTrimmed(attrLines)
-			bq.Append(doctree.NewElement(doctree.TagAttribution, p.parseInline(text)...))
+			attrNodes, attrMsgs := p.parseInline(text, 0)
+			bq.Append(doctree.NewElement(doctree.TagAttribution, attrNodes...))
+			// real docutils' Body.block_quote: "elements += messages" —
+			// the attribution's own inline-markup messages are SIBLINGS of
+			// the block_quote itself (states.py, read directly), not
+			// children of the attribution.
+			out = append(out, attrMsgs...)
 		}
-		out = append(out, bq)
 		indented = remaining
 		for len(indented) > 0 && isBlankStr(indented[0]) {
 			indented = indented[1:]

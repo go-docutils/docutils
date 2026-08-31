@@ -117,7 +117,7 @@ func TestInlineMarkupBoundaries(t *testing.T) {
 		{
 			"an OPENING bracket right after the end-string is REJECTED, not a valid end",
 			"*emphasis*(more\n",
-			"<document>\n    <paragraph>\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            *\n        emphasis*(more\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Inline emphasis start-string without end-string.\n",
+			"<document>\n    <paragraph>\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            *\n        emphasis*(more\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline emphasis start-string without end-string.\n",
 		},
 		{
 			"an alphanumeric character immediately before the start-string is invalid",

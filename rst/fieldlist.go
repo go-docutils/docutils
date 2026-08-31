@@ -48,8 +48,16 @@ func (p *parser) parseFieldList(lines []string, i int) (*doctree.Element, int) {
 		}
 		bodyLines, next := gatherListItemLines(lines, i, col, first)
 		field := doctree.NewElement(doctree.TagField)
-		field.Append(doctree.NewElement(doctree.TagFieldName, p.parseInline(name)...))
+		nameNodes, nameMsgs := p.parseInline(name, 0)
+		field.Append(doctree.NewElement(doctree.TagFieldName, nameNodes...))
 		body := doctree.NewElement(doctree.TagFieldBody)
+		// real docutils' Body.field: "field_body = nodes.field_body(...,
+		// *name_messages)" — the field NAME's own inline-markup messages
+		// become the field_body's FIRST children, ahead of its parsed
+		// content (states.py, read directly), not the field_name's own.
+		for _, m := range nameMsgs {
+			body.Append(m)
+		}
 		p.parseBlockLines(bodyLines, body)
 		field.Append(body)
 		fl.Append(field)
@@ -93,8 +101,16 @@ func (p *parser) parseDefinitionList(lines []string, i int) (*doctree.Element, i
 		indent := leadingSpaces(lines[i+1])
 		block, next := consumeIndentedBlock(lines, i+1, indent)
 		item := doctree.NewElement(doctree.TagDefinitionListItem)
-		item.Append(doctree.NewElement(doctree.TagTerm, p.parseInline(term)...))
+		termNodes, termMsgs := p.parseInline(term, 0)
+		item.Append(doctree.NewElement(doctree.TagTerm, termNodes...))
 		def := doctree.NewElement(doctree.TagDefinition)
+		// real docutils' Text.definition_list_item: "dd = nodes.definition
+		// ('', *messages)" — the term's own inline-markup messages become
+		// the <definition>'s FIRST children, ahead of its own parsed
+		// content (states.py, read directly).
+		for _, m := range termMsgs {
+			def.Append(m)
+		}
 		p.parseBlockLines(block, def)
 		item.Append(def)
 		dl.Append(item)

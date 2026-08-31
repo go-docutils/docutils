@@ -77,7 +77,7 @@ func TestUnclosedInlineMarkupBecomesProblematic(t *testing.T) {
 		{
 			"two independent unclosed markers collect two separate, correctly numbered messages",
 			"Two unclosed: *first and **second here.\n",
-			"<document>\n    <paragraph>\n        Two unclosed: \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            *\n        first and \n        <problematic id=\"problematic-2\" refid=\"system-message-2\">\n            **\n        second here.\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Inline emphasis start-string without end-string.\n        <system_message backref=\"problematic-2\" id=\"system-message-2\">\n            <paragraph>\n                Inline strong start-string without end-string.\n",
+			"<document>\n    <paragraph>\n        Two unclosed: \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            *\n        first and \n        <problematic id=\"problematic-2\" refid=\"system-message-2\">\n            **\n        second here.\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline emphasis start-string without end-string.\n    <system_message backref=\"problematic-2\" id=\"system-message-2\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline strong start-string without end-string.\n",
 		},
 		{
 			"an unclosed substitution reference stays plain text, no warning at all",
@@ -87,7 +87,17 @@ func TestUnclosedInlineMarkupBecomesProblematic(t *testing.T) {
 		{
 			"a role-prefixed unclosed backquote still ends up byte-identical to real docutils",
 			"see :role:`unclosed here\n",
-			"<document>\n    <paragraph>\n        see :role:\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            `\n        unclosed here\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Inline interpreted text or phrase reference start-string without end-string.\n",
+			"<document>\n    <paragraph>\n        see :role:\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            `\n        unclosed here\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline interpreted text or phrase reference start-string without end-string.\n",
+		},
+		{
+			"an unclosed marker in a section TITLE attaches to the section itself, not a trailing document section — byte-identical to real docutils including line",
+			"Test *unclosed title\n=====================\n",
+			"<document>\n    <section id=\"test-unclosed-title\" name=\"test *unclosed title\">\n        <title>\n            Test \n            <problematic id=\"problematic-1\" refid=\"system-message-1\">\n                *\n            unclosed title\n        <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n            <paragraph>\n                Inline emphasis start-string without end-string.\n",
+		},
+		{
+			"an unclosed marker inside a nested construct (a list item) still attaches as a sibling of its own paragraph, not a trailing document section — line is omitted (parser.currentLine's own documented scope boundary: a list item's lines are a rebased sub-slice, not tracked back to an absolute document position), everything else byte-identical to real docutils",
+			"- item with *unclosed here\n",
+			"<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with \n                <problematic id=\"problematic-1\" refid=\"system-message-1\">\n                    *\n                unclosed here\n            <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" type=\"WARNING\">\n                <paragraph>\n                    Inline emphasis start-string without end-string.\n",
 		},
 	}
 	for _, tc := range cases {

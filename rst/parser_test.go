@@ -185,6 +185,8 @@ func TestInline(t *testing.T) {
 		{"strong", "a **bold** word", "a \n<strong>\n    bold\n word\n"},
 		{"emphasis", "an *italic* word", "an \n<emphasis>\n    italic\n word\n"},
 		{"literal", "some ``code()`` here", "some \n<literal>\n    code()\n here\n"},
+		{"literal restores a backslash instead of stripping it, unlike every other marker", "``\\literal``", "<literal>\n    \\literal\n"},
+		{"literal restores a backslash in the MIDDLE of its content too", "``lite\\ral``", "<literal>\n    lite\\ral\n"},
 		{"named reference", "see `Section`_ for details", "see \n<reference name=\"Section\" refname=\"section\">\n    Section\n for details\n"},
 		{"no nested markup inside strong", "**a *b* c**", "<strong>\n    a *b* c\n"},
 		{"unmatched marker stays literal", "2 * 3 = 6", "2 * 3 = 6\n"},
@@ -212,7 +214,7 @@ func TestInline(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			nodes := (&parser{}).parseInline(tc.text)
+			nodes, _ := (&parser{}).parseInline(tc.text, 0)
 			var b strings.Builder
 			for _, n := range nodes {
 				b.WriteString(doctree.Dump(n))

@@ -162,7 +162,20 @@ pair, a bare interpreted-text backquote) IS rewritten to `<problematic>`
 too — `Inliner.inline_obj`, ported — a genuinely SEPARATE source from the
 dangling-reference/anonymous-mismatch cases above: this one fires during
 inline PARSING itself (`inline.go`), not a whole-document post-pass over
-an already-built tree. A `substitution_reference` ("`|x`" with no closing "`|`") routes through
+an already-built tree, and its `<system_message>` is attached directly as
+a sibling of whatever it came from (a paragraph, a section title, a block
+quote's attribution, a field name's body, a definition list term, a line
+block line) at that construct's own point of origin — real docutils'
+`RSTState.paragraph`/`new_subsection`/`parse_attribution`/`field`/
+`line_block_line`/`term` all `return`/`+=` these messages as siblings,
+states.py read directly — NEVER collected into the trailing
+`system-messages` section above. That section is real docutils' own
+`transforms.universal.Messages`, and it wraps only messages with no
+parent at all (`if not msg.parent`, read directly) — an inline-markup
+message already has one the moment it's attached, so it is categorically
+excluded, unlike the dangling-reference/anonymous-mismatch messages
+(built via `document.reporter.error` with no tree insertion of their
+own, hence genuinely parentless). A `substitution_reference` ("`|x`" with no closing "`|`") routes through
 the identical real-docutils mechanism (`inline_obj`) yet never actually
 produces this warning in practice — checked against the foreign judge for
 several inputs, not assumed from reading the source alone — so this parser
@@ -218,7 +231,47 @@ rewriting above, each a deliberately simplified PORT of the
 corresponding real transform, not a parser-level gap (verified by comparing
 against `Parser().parse(src, document)` directly, before docutils' own
 transform pipeline runs, not `publish_string`'s fully-transformed
-output). A table's `<tgroup cols="N">`/`<colspec colwidth="W">` wrapper
+output). A literal span (`` `` `` ``) RESTORES its backslash escapes
+instead of stripping them — the ONLY marker with this behavior:
+`Inliner.literal` calls `inline_obj(..., restore_backslashes=True)`,
+which (`nodes.unescape`, read directly) puts the literal backslash back
+rather than dropping it, so `` ``\literal`` `` keeps its own visible
+backslash (`\literal`) where every other construct (emphasis, strong,
+a role's own interpreted text, ...) would silently drop it. An escaped
+character that would otherwise complete a MULTI-CHARACTER close
+delimiter (an escaped first backtick immediately followed by a second,
+real one — `` ``text\`` `` — real docutils' `\x00`-substitution still
+counts the escaped character's own identity toward the "``" pair, only
+suppressing the backslash from the final text) is a known, NOT yet
+ported gap: this parser's own escaped-rune representation
+(`escapeRune`/`isEscapedRune` in `inline.go`) makes an escaped character
+unrecognizable as itself to any literal-rune comparison, which also
+affects general marker start-boundary recognition immediately after a
+backslash-escaped space (`m\ *a*` — the escaped space should count as
+valid preceding whitespace for `*a*` to open at all, same underlying
+cause) — confirmed against the foreign judge, deliberately NOT fixed in
+this round: it touches boundary-matching code shared by every marker
+type, not a single self-contained call site.
+
+Every `<system_message>` this parser builds now carries `level`/`type`
+(constants per message kind — inline-markup-time messages are always
+`level="2" type="WARNING"`, matching `Inliner.inline_obj`'s
+`self.reporter.warning(...)` exactly, since "start-string without
+end-string" is the only text that function ever produces) and, for a
+PARAGRAPH or a SECTION TITLE at the top level of the document (i.e. not
+nested inside a list item, block quote, field body, definition, or
+table cell), `line` too — the construct's own real 1-indexed source
+line, matching real docutils' `RSTState.paragraph`/`new_subsection`
+exactly (verified against the foreign judge for both an underlined and
+an overlined title, where the reported line is the title TEXT's own
+line, never the overline's). A message from any OTHER inline-parsing
+context, or from a nested one, still omits `line` — this parser doesn't
+track absolute source position through recursion into a rebased
+sub-slice of lines (a list item, a block quote's body, a field's body,
+a definition, a table cell) anywhere yet, a genuinely separate,
+larger undertaking (see `parser.currentLine`'s own doc comment in
+`parser.go`) than threading it through the two top-level call sites
+this round covers. A table's `<tgroup cols="N">`/`<colspec colwidth="W">` wrapper
 IS produced (verified: it's part of the bare parse, not a later
 transform or writer-side addition, unlike the above), the `html`/
 `latex` writers and `go-richdoc/rst` all unwrap it transparently.
