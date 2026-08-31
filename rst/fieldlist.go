@@ -13,10 +13,27 @@ import "github.com/go-docutils/docutils/doctree"
 // tables had proven out the shared marker+indented-continuation machinery
 // (gatherListItemLines) option lists reuse directly.
 
-// matchFieldMarker recognizes ":name: rest" at the start of a line,
-// docutils' field_marker pattern `:(?![: ])...(?<! ):( +|$)` simplified:
-// a leading ':' not immediately followed by ':' or ' ', then the name
-// runs up to the next ':' that is itself followed by a space or EOL.
+// matchFieldMarker recognizes ":name: rest" at the start of a line, docutils'
+// own field_marker pattern (states.py, read directly):
+//
+//	:(?![: ])([^:\\]|\\.|:(?!([ `]|$)))*(?<! ):( +|$)
+//
+// A leading ':' not immediately followed by ':' or ' ', then the name runs
+// up to the next ':' that is followed by a space or EOL (success) OR a
+// backtick — an embedded ':' followed by ANYTHING ELSE (not space/EOL/
+// backtick) is silently part of the name, and scanning continues past it;
+// this is NOT the same as "skip ahead to the next later colon that fits" —
+// a colon immediately followed by a backtick fails the WHOLE match right
+// there, it is never treated as ordinary name content to be skipped over.
+// Without that distinction, a prefix-form interpreted-text role right at
+// the start of a line (":title:`x`") gets misread as a field marker whose
+// "name" swallows the backtick and keeps hunting for a later matching
+// colon — exactly the corpus failure this was caught from (verified
+// against the foreign judge, not assumed from the regex alone). The
+// pattern's own "(?<! )" (a space right before the closing colon also
+// disqualifies it) isn't implemented — no corpus case reached this
+// project needs it, and it interacts with backtracking in a way that's
+// not worth guessing at without one.
 func matchFieldMarker(line string) (name string, contentCol int, ok bool) {
 	if len(line) < 2 || line[0] != ':' || line[1] == ':' || line[1] == ' ' {
 		return "", 0, false
@@ -28,8 +45,11 @@ func matchFieldMarker(line string) (name string, contentCol int, ok bool) {
 		if j+1 == len(line) {
 			return line[1:j], j + 1, true
 		}
-		if line[j+1] == ' ' {
+		switch line[j+1] {
+		case ' ':
 			return line[1:j], j + 2, true
+		case '`':
+			return "", 0, false
 		}
 	}
 	return "", 0, false

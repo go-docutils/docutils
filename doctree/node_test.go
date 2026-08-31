@@ -97,3 +97,34 @@ func TestDumpMultilineText(t *testing.T) {
 		t.Errorf("Dump() = %q, want %q", got, want)
 	}
 }
+
+// TestDumpTrailingNewlineNotABlankLine mirrors docutils' own Text.pformat
+// (nodes.py, read directly), which splits via Python's str.splitlines()
+// rather than str.split("\n") — a Text node whose data ends in a literal
+// "\n" (routine: a multi-line paragraph's own line-joining keeps the
+// source's embedded newlines, and one can land as the last character of a
+// buffered run right before an inline-markup construct starting a new
+// source line, e.g. "...markup:\n:emphasis:`emphasis`") must not print a
+// spurious trailing blank line. Regression: found via test_interpreted.py's
+// "basics" corpus cases, not assumed from the general shape of the bug.
+func TestDumpTrailingNewlineNotABlankLine(t *testing.T) {
+	e := NewElement(TagParagraph,
+		&Text{Data: "Explicit roles for standard inline markup:\n"},
+		NewElement(TagEmphasis, &Text{Data: "emphasis"}),
+	)
+	want := "<paragraph>\n" +
+		"    Explicit roles for standard inline markup:\n" +
+		"    <emphasis>\n" +
+		"        emphasis\n"
+	if got := Dump(e); got != want {
+		t.Errorf("Dump() =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestDumpEmptyText(t *testing.T) {
+	e := NewElement(TagParagraph, &Text{Data: ""})
+	want := "<paragraph>\n"
+	if got := Dump(e); got != want {
+		t.Errorf("Dump() = %q, want %q (an empty Text node prints no lines, like Python's \"\".splitlines())", got, want)
+	}
+}
