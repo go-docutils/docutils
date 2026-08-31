@@ -47,7 +47,7 @@ func TestParse(t *testing.T) {
 		{
 			name:   "sections, paragraph with inline markup, lists",
 			source: "Section Title\n=============\n\nSubsection\n----------\n\nA paragraph with *emphasis* and ``literal`` text.\n\n- a bullet\n- list\n\n1. an enumerated\n2. list\n",
-			want:   "<document>\n    <section id=\"section-title\" name=\"section title\">\n        <title>\n            Section Title\n        <section id=\"subsection\" name=\"subsection\">\n            <title>\n                Subsection\n            <paragraph>\n                A paragraph with \n                <emphasis>\n                    emphasis\n                 and \n                <literal>\n                    literal\n                 text.\n            <bullet_list bullet=\"-\">\n                <list_item>\n                    <paragraph>\n                        a bullet\n                <list_item>\n                    <paragraph>\n                        list\n            <enumerated_list>\n                <list_item>\n                    <paragraph>\n                        an enumerated\n                <list_item>\n                    <paragraph>\n                        list\n",
+			want:   "<document>\n    <section id=\"section-title\" name=\"section title\">\n        <title>\n            Section Title\n        <section id=\"subsection\" name=\"subsection\">\n            <title>\n                Subsection\n            <paragraph>\n                A paragraph with \n                <emphasis>\n                    emphasis\n                 and \n                <literal>\n                    literal\n                 text.\n            <bullet_list bullet=\"-\">\n                <list_item>\n                    <paragraph>\n                        a bullet\n                <list_item>\n                    <paragraph>\n                        list\n            <enumerated_list enumtype=\"arabic\" prefix=\"\" suffix=\".\">\n                <list_item>\n                    <paragraph>\n                        an enumerated\n                <list_item>\n                    <paragraph>\n                        list\n",
 		},
 		{
 			name:   "paragraph, block quote with two paragraphs, transition, paragraph",
@@ -57,7 +57,7 @@ func TestParse(t *testing.T) {
 		{
 			name:   "enumerated list item containing a nested bullet list",
 			source: "1. outer item one\n\n   - nested bullet a\n   - nested bullet b\n\n2. outer item two\n",
-			want:   "<document>\n    <enumerated_list>\n        <list_item>\n            <paragraph>\n                outer item one\n            <bullet_list bullet=\"-\">\n                <list_item>\n                    <paragraph>\n                        nested bullet a\n                <list_item>\n                    <paragraph>\n                        nested bullet b\n        <list_item>\n            <paragraph>\n                outer item two\n",
+			want:   "<document>\n    <enumerated_list enumtype=\"arabic\" prefix=\"\" suffix=\".\">\n        <list_item>\n            <paragraph>\n                outer item one\n            <bullet_list bullet=\"-\">\n                <list_item>\n                    <paragraph>\n                        nested bullet a\n                <list_item>\n                    <paragraph>\n                        nested bullet b\n        <list_item>\n            <paragraph>\n                outer item two\n",
 		},
 		{
 			name:   "block quote containing a bullet list and a second paragraph",
@@ -67,7 +67,7 @@ func TestParse(t *testing.T) {
 		{
 			name:   "list item with two paragraphs and a nested enumerated list",
 			source: "1. outer item\n\n   Second paragraph of outer item.\n\n   1. nested enumerated a\n   2. nested enumerated b\n",
-			want:   "<document>\n    <enumerated_list>\n        <list_item>\n            <paragraph>\n                outer item\n            <paragraph>\n                Second paragraph of outer item.\n            <enumerated_list>\n                <list_item>\n                    <paragraph>\n                        nested enumerated a\n                <list_item>\n                    <paragraph>\n                        nested enumerated b\n",
+			want:   "<document>\n    <enumerated_list enumtype=\"arabic\" prefix=\"\" suffix=\".\">\n        <list_item>\n            <paragraph>\n                outer item\n            <paragraph>\n                Second paragraph of outer item.\n            <enumerated_list enumtype=\"arabic\" prefix=\"\" suffix=\".\">\n                <list_item>\n                    <paragraph>\n                        nested enumerated a\n                <list_item>\n                    <paragraph>\n                        nested enumerated b\n",
 		},
 		{
 			name:   "comment, directive, hyperlink target with reference resolution, literal block",

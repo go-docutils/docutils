@@ -190,8 +190,11 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if isEnumListStart(lines, i) {
-			list, next := p.parseEnumeratedList(lines, i)
+			list, siblings, next := p.parseEnumeratedList(lines, i)
 			current.Append(list)
+			for _, sib := range siblings {
+				current.Append(sib)
+			}
 			i = next
 			continue
 		}
@@ -369,8 +372,11 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if isEnumListStart(lines, i) {
-			list, next := p.parseEnumeratedList(lines, i)
+			list, siblings, next := p.parseEnumeratedList(lines, i)
 			parent.Append(list)
+			for _, sib := range siblings {
+				parent.Append(sib)
+			}
 			i = next
 			continue
 		}
@@ -527,10 +533,48 @@ func (p *parser) parseBulletList(lines []string, i int) (*doctree.Element, int) 
 	return list, i
 }
 
-func (p *parser) parseEnumeratedList(lines []string, i int) (*doctree.Element, int) {
+// parseEnumeratedList ports Body.enumerator + EnumeratedList.enumerator
+// together (states.py, read directly): the FIRST item establishes the
+// list's format/sequence/starting ordinal (matchEnumStart) — enumtype
+// mirrors docutils' own "'#' displays as 'arabic'" rule, prefix/suffix
+// come from the format, and a starting ordinal other than 1 gets both a
+// "start" attribute and an INFO message — every SUBSEQUENT item must
+// continue in the exact same format/sequence/ordinal+1
+// (matchEnumContinuation; "#" is exempt from the sequence/ordinal checks,
+// matching real docutils' own short-circuit for auto-numbering).
+// enumerator-sequence validation WITHIN one item's own acceptance
+// (matchEnumContinuation already enforces ordinal == lastOrdinal+1) is as
+// far as this goes — a genuinely non-consecutive ordinal simply fails to
+// continue the list at all rather than producing docutils' own distinct
+// diagnostic for it, matching this package's own documented scope
+// boundary (see the package doc comment). Both diagnostics real docutils
+// produces here (self.parent += msg, read directly) land as SIBLINGS of
+// the <enumerated_list> in the tree, never nested inside it — hence the
+// separate return value rather than an in-list Append.
+func (p *parser) parseEnumeratedList(lines []string, i int) (*doctree.Element, []*doctree.Element, int) {
+	format, sequence, text, ordinal, col, ok := matchEnumStart(lines, i)
+	if !ok {
+		return doctree.NewElement(doctree.TagEnumeratedList), nil, i
+	}
 	list := doctree.NewElement(doctree.TagEnumeratedList)
-	for i < len(lines) && isEnumListStart(lines, i) {
-		col := enumContentColumn(lines[i])
+	fi := enumFormats[format]
+	enumtype := sequence
+	if enumtype == "#" {
+		enumtype = "arabic"
+	}
+	list.SetAttr("enumtype", enumtype)
+	list.SetAttr("prefix", fi.prefix)
+	list.SetAttr("suffix", fi.suffix)
+	var siblings []*doctree.Element
+	if ordinal != 1 {
+		list.SetAttr("start", strconv.Itoa(ordinal))
+		siblings = append(siblings, sectionMessage("1", "INFO",
+			"Enumerated list start value not ordinal-1: \""+text+"\" (ordinal "+strconv.Itoa(ordinal)+")",
+			i+1, ""))
+	}
+	auto := sequence == "#"
+	lastOrdinal := ordinal
+	for {
 		first := ""
 		if len(lines[i]) > col {
 			first = lines[i][col:]
@@ -539,12 +583,37 @@ func (p *parser) parseEnumeratedList(lines []string, i int) (*doctree.Element, i
 		item := doctree.NewElement(doctree.TagListItem)
 		p.parseBlockLines(itemLines, item)
 		list.Append(item)
+		// gatherListItemLines only ever stops at EOF or a genuine
+		// non-blank, insufficiently-indented line — any blank lines
+		// right before that point were already absorbed into its own
+		// scan, so `lines[next]` itself is never blank; whether a
+		// blank-line GAP existed has to be read off the line just
+		// before the break instead.
+		hadBlankGap := next > i && isBlankStr(lines[next-1])
 		i = next
-		for i < len(lines) && isBlankStr(lines[i]) {
-			i++
+		if i >= len(lines) {
+			break
 		}
+		nOrd, nCol, nAuto, cok := matchEnumContinuation(lines, i, format, sequence, lastOrdinal, auto)
+		if !cok {
+			if !hadBlankGap {
+				// A non-blank line right after the last item's own
+				// content, no blank line in between, that does NOT
+				// continue this list — Body's own unindent_warning
+				// shape, matching every other list/block-quote type in
+				// this project. The offending line is left untouched
+				// for the caller's own dispatch loop to reprocess fresh
+				// (it may start a DIFFERENT list, e.g. a new roman-
+				// numeral run — see enum.go's matchEnumStart doc
+				// comment).
+				siblings = append(siblings, sectionMessage("2", "WARNING",
+					"Enumerated list ends without a blank line; unexpected unindent.", i+1, ""))
+			}
+			break
+		}
+		lastOrdinal, col, auto = nOrd, nCol, nAuto
 	}
-	return list, i
+	return list, siblings, i
 }
 
 // matchTitle checks for a section title starting at lines[i]: an
@@ -822,7 +891,13 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 			break
 		}
 		if j > i {
-			if isBulletLine(lines[j]) || isEnumLine(lines[j]) || isExplicitMarkupLine(lines[j]) {
+			// isEnumListStart, not the bare shape check isEnumLine: a
+			// line that merely LOOKS enumerator-shaped but fails its own
+			// validity check (an invalid roman numeral, or one whose
+			// own forward lookahead fails) must not split a paragraph
+			// that was already underway — matches isDefinitionTermLine's
+			// identical reasoning just above in a sibling file.
+			if isBulletLine(lines[j]) || isEnumListStart(lines, j) || isExplicitMarkupLine(lines[j]) {
 				break
 			}
 			if _, _, isField := matchFieldMarker(lines[j]); isField {
