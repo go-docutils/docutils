@@ -89,6 +89,17 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		writeTag(b, "li", "", el, headingLevel)
 	case doctree.TagBlockQuote:
 		writeTag(b, "blockquote", "", el, headingLevel)
+	case doctree.TagAttribution:
+		// Real docutils' default `attribution` setting ("dash") prepends a
+		// bare em-dash to the visible text, no space after it — verified
+		// against publish_string's actual html5 output, not assumed from
+		// the writer source alone (settings.attribution is configurable;
+		// this project has no settings surface, so it always renders the
+		// DEFAULT the way this project's other writers already do for
+		// every other configurable-in-real-docutils default).
+		b.WriteString(`<p class="attribution">—`)
+		renderChildren(b, el, headingLevel)
+		b.WriteString("</p>")
 	case doctree.TagTransition:
 		b.WriteString("<hr>")
 	case doctree.TagLiteralBlock, doctree.TagDoctestBlock:

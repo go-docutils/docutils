@@ -56,6 +56,7 @@ const (
 	TagEnumeratedList     = "enumerated_list"
 	TagListItem           = "list_item"
 	TagBlockQuote         = "block_quote"
+	TagAttribution        = "attribution"
 	TagTransition         = "transition"
 	TagEmphasis           = "emphasis"
 	TagStrong             = "strong"

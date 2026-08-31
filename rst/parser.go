@@ -119,8 +119,10 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if leadingSpaces(lines[i]) > 0 {
-			bq, next := p.parseBlockQuote(lines, i)
-			current.Append(bq)
+			bqs, next := p.parseBlockQuotes(lines, i)
+			for _, bq := range bqs {
+				current.Append(bq)
+			}
 			i = next
 			continue
 		}
@@ -228,8 +230,10 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if leadingSpaces(lines[i]) > 0 {
-			bq, next := p.parseBlockQuote(lines, i)
-			parent.Append(bq)
+			bqs, next := p.parseBlockQuotes(lines, i)
+			for _, bq := range bqs {
+				parent.Append(bq)
+			}
 			i = next
 			continue
 		}
@@ -317,14 +321,6 @@ func (p *parser) levelForStyle(s titleStyle) int {
 	}
 	p.titleStyles = append(p.titleStyles, s)
 	return len(p.titleStyles)
-}
-
-func (p *parser) parseBlockQuote(lines []string, i int) (*doctree.Element, int) {
-	indent := leadingSpaces(lines[i])
-	block, next := consumeIndentedBlock(lines, i, indent)
-	bq := doctree.NewElement(doctree.TagBlockQuote)
-	p.parseBlockLines(block, bq)
-	return bq, next
 }
 
 func (p *parser) parseBulletList(lines []string, i int) (*doctree.Element, int) {

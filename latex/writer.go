@@ -120,6 +120,16 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		renderChildren(b, el, level) // reached only defensively; see renderListItems
 	case doctree.TagBlockQuote:
 		wrapEnv(b, "quote", func() { renderChildren(b, el, level) })
+	case doctree.TagAttribution:
+		// Real docutils' default `attribution` setting ("dash") right-aligns
+		// the text with a bare em-dash prefix — verified against
+		// publish_string's actual latex output, not assumed. Grouped in
+		// braces so \raggedleft doesn't leak past this one line — vanilla
+		// LaTeX, no custom macro package, matching this writer's own
+		// existing scope (see the package doc comment).
+		b.WriteString("\n{\\raggedleft —")
+		renderChildren(b, el, level)
+		b.WriteString("\\par}\n")
 	case doctree.TagTransition:
 		b.WriteString("\n\\noindent\\hrulefill\n\n")
 	case doctree.TagLiteralBlock, doctree.TagDoctestBlock:

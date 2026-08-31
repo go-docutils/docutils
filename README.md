@@ -133,7 +133,18 @@ than a gap filled — real docutils always errors there, this parser
 still doesn't, on purpose. Title-style consistency and enumerator-sequence validation are not
 enforced, and a table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
-content relies on it). A dangling NAMED reference (bare, backtick-quoted,
+content relies on it). A block quote's own indent is discovered the same
+way real docutils' `StringList.get_indented` does: the MINIMUM across a
+whole (possibly variable-depth) indented run, not the first line's own
+indent — a deeper-then-shallower run correctly NESTS instead of producing
+sibling block quotes. A trailing "-- text" / "--- text" / em-dash-prefixed
+attribution line, preceded by a blank line and internally
+consistently-indented, becomes a real `<attribution>`, splitting the
+region into one `<block_quote>` per attribution boundary — `split_attribution`
++ `check_attribution`, ported; the diagnostics real docutils emits for a
+malformed attempt (an inconsistent-indent continuation, an unindent with no
+blank line first) are deliberately NOT ported, the same scope boundary as
+title-style/table-column diagnostics just above. A dangling NAMED reference (bare, backtick-quoted,
 or an embedded indirect alias — matched by name and found nowhere) IS
 rewritten to `<problematic>`, with every such message collected into a
 trailing `<section class="system-messages">`, docutils' own
