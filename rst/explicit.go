@@ -391,14 +391,24 @@ func normalizeName(s string) string {
 // regardless of which side has the surplus, all sharing ONE message
 // (docutils' own "Anonymous hyperlink mismatch" error).
 // resolveTargets links every reference to its target's URI and rewrites
-// dangling/mismatched ones to <problematic>. initMessages/initMsgCount seed
-// the message list and id counter with whatever markupProblematic (inline.go)
-// already collected during parsing — real docutils' own Messages transform
-// merges document.parse_messages (ids assigned first, parsing finishes
-// before any transform runs) with document.transform_messages (this
-// function's own dangling-reference/anonymous-mismatch messages, assigned
-// next) into ONE continuous sequence, not two independently-numbered ones.
-func resolveTargets(doc *doctree.Element, initMessages []*doctree.Element, initMsgCount int) {
+// dangling/mismatched ones to <problematic>, collecting its OWN
+// dangling-reference/anonymous-mismatch messages into one trailing
+// <section class="system-messages"> — these, unlike parseInline's
+// paragraph/title-time messages (already attached at their point of
+// origin by their own callers, see parser.go/inline.go), are genuinely
+// parentless: real docutils' DanglingReferencesVisitor builds them via
+// document.reporter.error with no tree insertion at all (transforms/
+// references.py, read directly), so they fall to transforms.universal.
+// Messages' "loose messages" wrap, which this function's own
+// systemMessagesSection replicates. initMsgCount seeds the id counter
+// with whatever markupProblematic (inline.go) already assigned during
+// parsing, so both sources share ONE continuous "problematic-N"/
+// "system-message-N" sequence instead of two independently-numbered
+// ones — real docutils' own Messages transform merges document.
+// parse_messages (ids assigned first, parsing finishes before any
+// transform runs) with document.transform_messages (this function's own,
+// assigned next).
+func resolveTargets(doc *doctree.Element, initMsgCount int) {
 	direct := map[string]string{}
 	indirect := map[string]string{}
 	var anonTargets []anonTarget
@@ -424,7 +434,7 @@ func resolveTargets(doc *doctree.Element, initMessages []*doctree.Element, initM
 		}
 	}
 	anonIndex := 0
-	messages := initMessages
+	var messages []*doctree.Element
 	msgCount := initMsgCount
 	var anonMismatch *doctree.Element
 	if n := countAnonymousReferences(doc); n != len(anonURIs) {

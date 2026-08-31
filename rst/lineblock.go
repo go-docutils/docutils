@@ -36,9 +36,20 @@ type lbLine struct {
 	indent int
 }
 
-func (p *parser) parseLineBlock(lines []string, i int) (*doctree.Element, int) {
+// parseLineBlock returns the built <line_block> plus every line's own
+// inline-markup messages, in line order — real docutils attaches these
+// individually as each line is consumed (Body.line_block: "self.parent +=
+// messages"; LineBlock.line_block continuation: "self.parent.parent +=
+// messages" — states.py, read directly), always to the line_block's OWN
+// enclosing parent, never nested inside it or inside any individual
+// <line>. Since nothing else is appended to that enclosing parent while a
+// line_block is still being consumed, collecting them here and having the
+// caller append them, in order, right after the (now complete) line_block
+// produces the identical final tree position.
+func (p *parser) parseLineBlock(lines []string, i int) (*doctree.Element, []*doctree.Element, int) {
 	lb := doctree.NewElement(doctree.TagLineBlock)
 	var items []lbLine
+	var messages []*doctree.Element
 	for i < len(lines) && isLineBlockLine(lines[i]) {
 		rest := lines[i][1:]
 		indent := -1
@@ -51,7 +62,9 @@ func (p *parser) parseLineBlock(lines []string, i int) (*doctree.Element, int) {
 			indent = n - 1
 			content = rest[n:]
 		}
-		items = append(items, lbLine{doctree.NewElement(doctree.TagLine, p.parseInline(content)...), indent})
+		contentNodes, contentMsgs := p.parseInline(content, 0)
+		items = append(items, lbLine{doctree.NewElement(doctree.TagLine, contentNodes...), indent})
+		messages = append(messages, contentMsgs...)
 		i++
 	}
 	if len(items) > 0 && items[0].indent < 0 {
@@ -63,7 +76,7 @@ func (p *parser) parseLineBlock(lines []string, i int) (*doctree.Element, int) {
 		}
 	}
 	nestLineBlockSegment(lb, items)
-	return lb, i
+	return lb, messages, i
 }
 
 // nestLineBlockSegment is docutils' nest_line_block_segment: within one
