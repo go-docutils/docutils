@@ -206,7 +206,17 @@ func (p *parser) buildSimpleTable(block []string) (*doctree.Element, bool) {
 			for _, l := range rowLines {
 				cellLines = append(cellLines, sliceColumn(l, col.start, col.end))
 			}
-			cells[ci].lines = cellLines
+			// A cell's text is centered or otherwise inset within its
+			// fixed-width column (e.g. "  A  " in a 5-wide column) as
+			// often as not — sliceColumn preserves that raw leading
+			// whitespace verbatim, which parseBlockLines would otherwise
+			// read as a real indent and wrap in a spurious block_quote.
+			// Real docutils' own SimpleTableParser doesn't special-case
+			// this either; the dedent happens implicitly because nested
+			// parsing works from each cell's own coordinate system, not
+			// the table's — dedentCellLines (already used by the grid-
+			// table path, gridtable.go) reproduces that here directly.
+			cells[ci].lines = dedentCellLines(cellLines)
 		}
 		rows = append(rows, cells)
 		return true

@@ -15,15 +15,19 @@ import (
 // hyperlink_target, substitution_def, directive, and falls back to
 // comment.
 //
-// SCOPE (v1): directives are captured structurally ONLY — name, a
+// SCOPE (v1): most directives are captured structurally ONLY — name, a
 // single-line argument string, and the raw (unparsed, not split into
 // options vs. content) body text — never dispatched to per-directive
-// semantics (there is no directive registry); a substitution definition
-// is captured the same way, with its `|name|` attached as an extra
-// attribute. Directive/comment/footnote/citation/substitution body
-// indentation is assumed to be exactly 3 columns (the ".. " prefix
-// width), which covers the overwhelming convention in real-world reST
-// but not an arbitrarily-indented body. A hyperlink target may be named
+// semantics; a substitution definition is captured the same way, with
+// its `|name|` attached as an extra attribute. "raw", "table", and
+// "list-table" are the exceptions with real per-directive semantics (see
+// Options.RawEnabled and tabledirective.go); there is still no general
+// directive registry beyond those three. Directive/comment/footnote/
+// citation/substitution body indentation is dedented by whatever the
+// FIRST body line's own actual indent is (docutils' own
+// StringList.get_indented, read directly) — not a fixed assumption tied
+// to the ".. " marker's own 3-column width, which an earlier version of
+// this code wrongly assumed. A hyperlink target may be named
 // (a direct URI, or chased through however many INDIRECT hops — see
 // bareIndirectTargetName), an INLINE target inside a paragraph (see
 // inline.go's tryInlineTarget), or ANONYMOUS (`.. __: uri`, resolved by
@@ -50,36 +54,56 @@ func isExplicitMarkupLine(s string) bool {
 // gatherExplicitBody collects the body of an explicit-markup construct:
 // an optional leading blank line, then a block indented >= 3 columns
 // (dedented), continuing across blank lines until a genuine dedent.
+// The dedent amount is the FIRST body line's own actual indentation —
+// docutils' own StringList.get_indented, read directly, uses whatever
+// that first line's real indent is (a directive's own argument, if any,
+// carries no bearing on it), not a fixed assumption tied to the ".. "
+// marker's own 3-column width; a real corpus case (".. table::\n    "
+// ":width: ...", 4 columns, no argument on the directive's own line)
+// needs exactly this, not the 3 this project previously hardcoded.
 func gatherExplicitBody(lines []string, i int) ([]string, int) {
 	j := i + 1
 	for j < len(lines) && isBlankStr(lines[j]) {
 		j++
 	}
-	if j >= len(lines) || leadingSpaces(lines[j]) < 3 {
+	if j >= len(lines) {
 		return nil, i + 1
 	}
-	return consumeIndentedBlock(lines, j, 3)
+	indent := leadingSpaces(lines[j])
+	if indent < 3 {
+		return nil, i + 1
+	}
+	return consumeIndentedBlock(lines, j, indent)
 }
 
-func (p *parser) parseExplicitMarkup(lines []string, i int) (doctree.Node, int) {
+// parseExplicitMarkup returns every sibling node one explicit-markup
+// construct produces — almost always exactly one, but a directive that
+// builds its own diagnostics as SIBLINGS (real docutils' own
+// "self.parent += extra_message" shape — see the table/list-table
+// directives, tabledirective.go) needs more than one, and a role
+// registration (see parseDirective) needs zero.
+func (p *parser) parseExplicitMarkup(lines []string, i int) ([]doctree.Node, int) {
 	line := lines[i]
 	if len(line) == 2 {
-		return doctree.NewElement(doctree.TagComment), i + 1
+		return []doctree.Node{doctree.NewElement(doctree.TagComment)}, i + 1
 	}
 	rest := line[3:]
 
 	if label, labelRest, ok := matchBracketLabel(rest); ok {
-		return p.parseFootnoteOrCitation(lines, i, label, labelRest)
+		node, next := p.parseFootnoteOrCitation(lines, i, label, labelRest)
+		return []doctree.Node{node}, next
 	}
 	if strings.HasPrefix(rest, "__:") {
-		return parseAnonymousTarget(lines, i, rest[3:])
+		node, next := parseAnonymousTarget(lines, i, rest[3:])
+		return []doctree.Node{node}, next
 	}
 	if len(rest) > 1 && rest[0] == '_' && rest[1] != ' ' {
-		return parseHyperlinkTarget(lines, i, rest[1:])
+		node, next := parseHyperlinkTarget(lines, i, rest[1:])
+		return []doctree.Node{node}, next
 	}
 	if subName, subRest, ok := matchPipeLabel(rest); ok {
 		if node, next, ok := p.parseSubstitutionDef(lines, i, subName, subRest); ok {
-			return node, next
+			return []doctree.Node{node}, next
 		}
 		// Malformed substitution definition: fall through to comment,
 		// matching docutils' fallback for any unmatched explicit
@@ -88,7 +112,8 @@ func (p *parser) parseExplicitMarkup(lines []string, i int) (doctree.Node, int) 
 	if name, args, ok := matchDirectiveName(rest); ok {
 		return p.parseDirective(lines, i, name, args)
 	}
-	return parseComment(lines, i, rest)
+	node, next := parseComment(lines, i, rest)
+	return []doctree.Node{node}, next
 }
 
 // matchBracketLabel recognizes "[label] rest" at the start of s — the
@@ -184,16 +209,20 @@ func (p *parser) parseSubstitutionDef(lines []string, i int, name, directiveRest
 	if !ok {
 		return nil, 0, false
 	}
-	node, next := p.parseDirective(lines, i, dirName, args)
-	el, ok := node.(*doctree.Element)
+	nodes, next := p.parseDirective(lines, i, dirName, args)
+	// ".. |name| role:: ..." (parseDirective's own nil-returning case) or
+	// a table/list-table directive that produced more than one sibling
+	// node (an error, or a title-inline-markup message alongside the
+	// table) as a substitution's own content is nonsensical in real
+	// docutils too; fall through to the same "malformed substitution
+	// definition" comment fallback the caller already uses when no
+	// embedded directive is found at all, rather than inventing a
+	// substitution_definition wrapping something it can't represent.
+	if len(nodes) != 1 {
+		return nil, 0, false
+	}
+	el, ok := nodes[0].(*doctree.Element)
 	if !ok {
-		// ".. |name| role:: ..." — a role registration (parseDirective's
-		// only nil-returning case) as a substitution's own content is
-		// nonsensical in real docutils too; fall through to the same
-		// "malformed substitution definition" comment fallback the
-		// caller already uses when no embedded directive is found at
-		// all, rather than inventing a substitution_definition wrapping
-		// nothing.
 		return nil, 0, false
 	}
 	el.Tag = doctree.TagSubstitutionDef
@@ -241,7 +270,7 @@ func matchDirectiveName(rest string) (name, args string, ok bool) {
 // real docutils treats as a directive-level error this parser doesn't
 // generally validate for anyway), it falls back to the same structural
 // capture any other unimplemented directive gets.
-func (p *parser) parseDirective(lines []string, i int, name, args string) (doctree.Node, int) {
+func (p *parser) parseDirective(lines []string, i int, name, args string) ([]doctree.Node, int) {
 	body, next := gatherExplicitBody(lines, i)
 	if name == "raw" && p.opts.RawEnabled && args != "" {
 		el := doctree.NewElement(doctree.TagRaw)
@@ -249,7 +278,7 @@ func (p *parser) parseDirective(lines []string, i int, name, args string) (doctr
 		if len(body) > 0 {
 			el.Append(&doctree.Text{Data: strings.Join(body, "\n")})
 		}
-		return el, next
+		return []doctree.Node{el}, next
 	}
 	if name == "role" {
 		// Registers a custom interpreted-text role for the rest of the
@@ -260,11 +289,15 @@ func (p *parser) parseDirective(lines []string, i int, name, args string) (doctr
 		// element here, contradicting its own doc comment; caught only
 		// once ":code:"/PEP/RFC role support made the surrounding
 		// paragraph's own content correct enough for this stray sibling
-		// to become the ONLY remaining diff). Callers (parseBlockLines'
-		// two isExplicitMarkupLine call sites) must skip a nil node
-		// rather than append it.
+		// to become the ONLY remaining diff).
 		p.registerRole(args, body)
 		return nil, next
+	}
+	if name == "table" {
+		return p.runTableDirective(lines, i, next, args, body), next
+	}
+	if name == "list-table" {
+		return p.runListTableDirective(lines, i, next, args, body), next
 	}
 	el := doctree.NewElement(doctree.TagDirective)
 	el.SetAttr("name", name)
@@ -274,7 +307,7 @@ func (p *parser) parseDirective(lines []string, i int, name, args string) (doctr
 	if len(body) > 0 {
 		el.Append(&doctree.Text{Data: strings.Join(body, "\n")})
 	}
-	return el, next
+	return []doctree.Node{el}, next
 }
 
 func parseComment(lines []string, i int, rest string) (doctree.Node, int) {
