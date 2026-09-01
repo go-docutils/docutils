@@ -76,7 +76,21 @@ only valid directly inside a document or section (a topic ALSO directly
 inside a sidebar); anywhere else — a list item, a block quote, another
 topic — is an ERROR, checked against this parser's own notion of "the
 container currently being appended to", the same thing real docutils'
-own `state_machine.node` check means; `:class:`/`:name:` options work
+own `state_machine.node` check means; `image` (a REQUIRED URI argument,
+no content permitted, `:alt:`/`:height:`/`:width:`/`:scale:`/`:align:`
+— validated against `left`/`center`/`right`, real docutils' own
+substitution-definition-only vertical-values variant not implemented —
+/`:loading:` — `embed`/`link`/`lazy` — /`:class:`/`:name:` options) and
+`figure` (same argument, reuses `image`'s own option handling for
+everything but its own `:figwidth:`/`:figclass:`/`:figname:`/`:align:`,
+plus an optional caption/legend body: the content's first `<paragraph>`
+becomes `<caption>`, an empty comment suppresses the caption entirely,
+anything else there is an ERROR discarding whatever legend would have
+followed, and everything remaining after becomes `<legend>`; a
+`.. class::`-produced `<pending>` node ahead of the caption is not
+reproduced — this project has no transform system and so no `<pending>`
+node at all — though a bare hyperlink target in that position still
+passes through correctly); `:class:`/`:name:` options work
 the same way real docutils' own generic option/content-block split does
 (`Body.parse_directive_block`, read directly): the option block is
 whatever TRAILING run of `:key: value` lines the directive's own body
@@ -87,8 +101,9 @@ there — so real content is free to precede the options, and a role
 invocation elsewhere in that content is never mistaken for one.
 Directive-level argument/option-syntax errors, e.g. a malformed
 `:widths:` value or an unknown option key entirely, are NOT validated
-for any directive, matching this project's own established scope
-boundary — see "Not yet ported" below, hyperlink
+for any directive (`:align:`/`:loading:` on `image`/`figure` are the one
+exception, both directly corpus-tested), matching this project's own
+established scope boundary — see "Not yet ported" below, hyperlink
 targets with reference resolution — including INDIRECT targets
 (`.. _a: b_`, whose value is itself another target's name, chased
 through however many hops until a real URI is reached; a cycle is left
@@ -107,9 +122,22 @@ ten-symbol sequence, doubling/tripling/... once it wraps: `**`, `††`,
 ...) — both matched to their references by document-order position
 when unnamed, same mechanism as anonymous targets above), citations
 (`[CITE2002]_`, never auto-numbered), substitution definitions/references
-(`|name|`, its content likewise captured structurally rather than
-executed — a substitution definition is a directive invocation, most
-often `replace::`; `|name|_`/`|name|__` used AS a hyperlink resolves the
+(`|name|` — its content is always an embedded directive invocation,
+real semantics for `replace::` (inline-parsed as one paragraph's worth
+of content, nested directly as the substitution's own children — a
+prohibited construct inside it, an anonymous reference, an
+auto-numbered/auto-symbol footnote reference, or anything carrying its
+own name/id, is a real ERROR, matching
+`disallowed_inside_substitution_definitions`; a `<problematic>` anywhere
+in the result, checked first, is a separate ERROR of its own), `image::`
+(the substitution's own name becomes the embedded image's default
+`:alt:`, matching real docutils' `option_presets`), and `raw::` (already
+a real directive on its own — nested here rather than flattened onto
+attributes, the shape an earlier version of this project mistakenly
+produced); any OTHER directive name is captured only as far as
+"produced nothing this project can nest here", the same "empty or
+invalid" outcome real docutils reaches too by filtering a non-inline
+result out — `|name|_`/`|name|__` used AS a hyperlink resolves the
 same way a bare/anonymous reference does, just wrapping the substitution
 instead of carrying its own display text), and inline markup for `**strong**`, `*emphasis*`,
 `` ``literal`` ``, a bare `` `x` `` with no role (docutils' DEFAULT
@@ -462,11 +490,9 @@ flags joined into one `<dt>`, e.g. `<dt>-f, --file=FILE</dt>`; a
 `:math:` role becomes the raw TeX source wrapped in `\(...\)`, the
 MathJax inline-delimiter convention, plain text with no wrapping tag
 or script dependency — MathJax auto-detects it with no markup of its
-own to hook into); a directive (including a
-substitution definition's embedded `replace::`) renders as
-`<pre class="directive" data-directive="name">` rather than being
-silently dropped, since there's no semantic dispatch to render it
-properly; an unresolved reference/substitution-reference falls back to
+own to hook into); a directive with no semantic dispatch of its own
+renders as `<pre class="directive" data-directive="name">` rather than
+being silently dropped; an unresolved reference/substitution-reference falls back to
 plain text since there's nothing to link to or substitute. Verified
 structurally against docutils' `--writer=html5` output on representative
 documents (not byte-for-byte, given the scope above) plus a tag-balance

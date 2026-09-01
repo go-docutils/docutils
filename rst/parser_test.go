@@ -32,12 +32,10 @@ import (
 // (see inline.go). The simple-table and grid-table fixtures are
 // docutils' OWN SimpleTableParser/GridTableParser docstring examples,
 // verbatim — including header, multi-line cell, nested bullet list,
-// column-span/row-span rows, and the tgroup/colspec wrapper. Two more
-// known, documented divergences: a directive (including a substitution
-// definition's embedded `replace::`) is captured structurally rather
-// than dispatched to semantics, and an unresolved reference stays a
-// bare reference node instead of being rewritten to `problematic` with
-// an appended system-message section.
+// column-span/row-span rows, and the tgroup/colspec wrapper. One
+// remaining known, documented divergence: most directives are captured
+// structurally rather than dispatched to real semantics (see the
+// package doc comment's own SCOPE note for which few are exceptions).
 func TestParse(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -79,9 +77,11 @@ func TestParse(t *testing.T) {
 			want:   "<document>\n    <paragraph>\n        Intro paragraph.\n    <comment>\n        This is a comment.\n        Second comment line.\n    <directive name=\"some-directive\">\n        This is directive content.\n        Second line.\n    <paragraph>\n        See \n        <reference name=\"Example\" refname=\"example\" refuri=\"https://example.com\">\n            Example\n         for details.\n    <target name=\"example\" refuri=\"https://example.com\">\n    <paragraph>\n        Here is a code sample:\n    <literal_block>\n        def f():\n            return 1\n    <paragraph>\n        Done.\n",
 		},
 		{
+			// an earlier version of this test used ".. figure::" here,
+			// which predates figure becoming a real, implemented directive.
 			name:   "unresolved reference (now problematic, plus a trailing system-messages section), empty comment, plain comment, directive with no content",
-			source: "An unresolved `Nowhere`_ reference.\n\n..\n\n.. plain comment no directive shape\n\n.. figure::\n",
-			want:   "<document>\n    <paragraph>\n        An unresolved \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            Nowhere\n         reference.\n    <comment>\n    <comment>\n        plain comment no directive shape\n    <directive name=\"figure\">\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Unknown target name: \"nowhere\".\n",
+			source: "An unresolved `Nowhere`_ reference.\n\n..\n\n.. plain comment no directive shape\n\n.. some-directive-with-no-content::\n",
+			want:   "<document>\n    <paragraph>\n        An unresolved \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            Nowhere\n         reference.\n    <comment>\n    <comment>\n        plain comment no directive shape\n    <directive name=\"some-directive-with-no-content\">\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Unknown target name: \"nowhere\".\n",
 		},
 		{
 			name:   "list item containing a comment and a literal block",
@@ -111,12 +111,12 @@ func TestParse(t *testing.T) {
 		{
 			name:   "footnote, citation, and substitution references with their block definitions",
 			source: "See footnote [1]_, an auto footnote [#]_, an auto-symbol [*]_,\na named auto footnote [#note]_, and a citation [CIT2002]_.\n\n.. [1] A manually numbered footnote.\n\n.. [#] An auto-numbered footnote.\n\n.. [*] An auto-symbol footnote.\n\n.. [#note] A named auto-numbered footnote.\n\n.. [CIT2002] A citation body.\n\nReplace this |name| with something.\n\n.. |name| replace:: substituted text\n",
-			want:   "<document>\n    <paragraph>\n        See footnote \n        <footnote_reference refname=\"1\">\n            1\n        , an auto footnote \n        <footnote_reference auto=\"1\" refname=\"footnote-1\">\n            2\n        , an auto-symbol \n        <footnote_reference auto=\"*\" refname=\"footnote-2\">\n            *\n        ,\n        a named auto footnote \n        <footnote_reference auto=\"1\" refname=\"note\">\n            3\n        , and a citation \n        <citation_reference refname=\"cit2002\">\n            CIT2002\n        .\n    <footnote name=\"1\">\n        <label>\n            1\n        <paragraph>\n            A manually numbered footnote.\n    <footnote auto=\"1\" name=\"footnote-1\">\n        <label>\n            2\n        <paragraph>\n            An auto-numbered footnote.\n    <footnote auto=\"*\" name=\"footnote-2\">\n        <label>\n            *\n        <paragraph>\n            An auto-symbol footnote.\n    <footnote auto=\"1\" name=\"note\">\n        <label>\n            3\n        <paragraph>\n            A named auto-numbered footnote.\n    <citation name=\"cit2002\">\n        <label>\n            CIT2002\n        <paragraph>\n            A citation body.\n    <paragraph>\n        Replace this \n        <substitution_reference refname=\"name\">\n            name\n         with something.\n    <substitution_definition arguments=\"substituted text\" name=\"replace\" substitution=\"name\">\n",
+			want:   "<document>\n    <paragraph>\n        See footnote \n        <footnote_reference refname=\"1\">\n            1\n        , an auto footnote \n        <footnote_reference auto=\"1\" refname=\"footnote-1\">\n            2\n        , an auto-symbol \n        <footnote_reference auto=\"*\" refname=\"footnote-2\">\n            *\n        ,\n        a named auto footnote \n        <footnote_reference auto=\"1\" refname=\"note\">\n            3\n        , and a citation \n        <citation_reference refname=\"cit2002\">\n            CIT2002\n        .\n    <footnote name=\"1\">\n        <label>\n            1\n        <paragraph>\n            A manually numbered footnote.\n    <footnote auto=\"1\" name=\"footnote-1\">\n        <label>\n            2\n        <paragraph>\n            An auto-numbered footnote.\n    <footnote auto=\"*\" name=\"footnote-2\">\n        <label>\n            *\n        <paragraph>\n            An auto-symbol footnote.\n    <footnote auto=\"1\" name=\"note\">\n        <label>\n            3\n        <paragraph>\n            A named auto-numbered footnote.\n    <citation name=\"cit2002\">\n        <label>\n            CIT2002\n        <paragraph>\n            A citation body.\n    <paragraph>\n        Replace this \n        <substitution_reference refname=\"name\">\n            name\n         with something.\n    <substitution_definition name=\"name\">\n        substituted text\n",
 		},
 		{
 			name:   "footnote and substitution definition inside list items",
 			source: "- item with a footnote\n\n  .. [1] A footnote inside a list item.\n\n- item with a substitution definition\n\n  .. |x| replace:: y\n",
-			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a footnote\n            <footnote name=\"1\">\n                <label>\n                    1\n                <paragraph>\n                    A footnote inside a list item.\n        <list_item>\n            <paragraph>\n                item with a substitution definition\n            <substitution_definition arguments=\"y\" name=\"replace\" substitution=\"x\">\n",
+			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a footnote\n            <footnote name=\"1\">\n                <label>\n                    1\n                <paragraph>\n                    A footnote inside a list item.\n        <list_item>\n            <paragraph>\n                item with a substitution definition\n            <substitution_definition name=\"x\">\n                y\n",
 		},
 		{
 			name:   "bare and embedded-link references, indirect alias, default-role bare text",

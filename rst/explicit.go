@@ -102,8 +102,8 @@ func (p *parser) parseExplicitMarkup(lines []string, i int, parent *doctree.Elem
 		return []doctree.Node{node}, next
 	}
 	if subName, subRest, ok := matchPipeLabel(rest); ok {
-		if node, next, ok := p.parseSubstitutionDef(lines, i, subName, subRest, parent); ok {
-			return []doctree.Node{node}, next
+		if nodes, next, ok := p.parseSubstitutionDef(lines, i, subName, subRest, parent); ok {
+			return nodes, next
 		}
 		// Malformed substitution definition: fall through to comment,
 		// matching docutils' fallback for any unmatched explicit
@@ -197,37 +197,286 @@ func matchPipeLabel(s string) (name, rest string, ok bool) {
 	return s[1:end], strings.TrimSpace(s[end+1:]), true
 }
 
-// parseSubstitutionDef recognizes ".. |name| directive:: args", the
-// only shape a substitution definition takes (its "content" is always
-// an embedded directive invocation — commonly `replace::`, `image::`,
-// or `unicode::` — never implemented, so this stores the same
-// structural capture parseDirective would). Returns ok=false for a
-// malformed definition (no embedded directive), matching docutils'
-// fallback to a plain comment in that case.
-func (p *parser) parseSubstitutionDef(lines []string, i int, name, directiveRest string, parent *doctree.Element) (doctree.Node, int, bool) {
-	dirName, args, ok := matchDirectiveName(directiveRest)
+// parseSubstitutionDef recognizes ".. |name| directive:: args" (the
+// directive marker may start on a LATER body line entirely, when nothing
+// follows "|name|" on the definition's own first line — see block's
+// construction below) — the ONLY shape a substitution definition takes:
+// its content is always an embedded directive invocation, most commonly
+// "replace::" or "image::" (ported here) or "raw::" (already a real
+// directive, just needed proper nesting — see below); "unicode::" is not
+// ported (no corpus case needs it). Ports Body.substitution_def +
+// SubstitutionDef (states.py, read directly): unlike parseDirective's own
+// generic structural capture, a genuine substitution_definition NESTS
+// whatever the embedded directive actually produced as real children —
+// an <image>, a <raw>, or replace's own inline-parsed content — never
+// flattening it onto attributes the way this project's earlier version
+// did (a real, previously-shipped bug: it relabeled the embedded
+// directive's OWN element in place rather than wrapping it).
+//
+// Returns ok=false only for a genuinely malformed marker with NO
+// embedded-directive-shaped line anywhere in its own body at all AND no
+// recognized body-text fallback either — matching docutils' own final
+// "return self.comment(...)" when even the substitution-marker pattern
+// itself never matches (case: no directive name at all right after
+// "|name|", not even on a later line — the marker's OWN name may still
+// legitimately span multiple physical lines in real docutils, a
+// narrower, separate gap this project does not implement: matchPipeLabel
+// only ever recognizes a "|name|" whose closing "|" sits on the SAME
+// line as ".. |").
+func (p *parser) parseSubstitutionDef(lines []string, i int, name, directiveRest string, parent *doctree.Element) ([]doctree.Node, int, bool) {
+	lineno := i + 1
+	subname := normalizeWhitespace(name)
+	body, next := gatherExplicitBody(lines, i)
+	blockText := strings.Join(lines[i:next], "\n")
+
+	// gatherExplicitBody's own body has already dropped the blank
+	// line(s) separating directiveRest from the indented block below it
+	// (see admonitions.go's runAdmonitionOrGeneric, the same reasoning,
+	// reused a third time here) — reinserted so parseDirectiveBlock (or,
+	// for "raw", the plain body-join below) can find the real boundary.
+	blanks := 0
+	for j := i + 1; j < len(lines) && isBlankStr(lines[j]); j++ {
+		blanks++
+	}
+	block := make([]string, 0, 1+blanks+len(body))
+	block = append(block, directiveRest)
+	for k := 0; k < blanks; k++ {
+		block = append(block, "")
+	}
+	block = append(block, body...)
+	for len(block) > 0 && isBlankStr(block[len(block)-1]) {
+		block = block[:len(block)-1]
+	}
+	if len(block) > 0 && block[0] == "" {
+		block = block[1:]
+	}
+
+	if len(block) == 0 {
+		return []doctree.Node{sectionMessage("2", "WARNING",
+			`Substitution definition "`+subname+`" missing contents.`, lineno, ".. |"+name+"|")}, next, true
+	}
+
+	dirName, dirArgs, ok := matchDirectiveName(strings.TrimSpace(block[0]))
 	if !ok {
-		return nil, 0, false
+		// Body.substitution_def's own "text" fallback: arbitrary body
+		// content with no embedded-directive marker at all nested-parses
+		// as ordinary block content, then keeps only its top-level
+		// Inline/Text children — never any, since parseBlockLines always
+		// produces block-level elements (a <paragraph>, a <bullet_list>,
+		// ...) here, so this always ends up empty. Shortcuts straight to
+		// the same "empty or invalid" outcome that emptiness produces
+		// below, without actually invoking parseBlockLines for content
+		// this project already knows can never survive the filter.
+		return []doctree.Node{sectionMessage("2", "WARNING",
+			`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
 	}
-	nodes, next := p.parseDirective(lines, i, dirName, args, parent)
-	// ".. |name| role:: ..." (parseDirective's own nil-returning case) or
-	// a table/list-table directive that produced more than one sibling
-	// node (an error, or a title-inline-markup message alongside the
-	// table) as a substitution's own content is nonsensical in real
-	// docutils too; fall through to the same "malformed substitution
-	// definition" comment fallback the caller already uses when no
-	// embedded directive is found at all, rather than inventing a
-	// substitution_definition wrapping something it can't represent.
-	if len(nodes) != 1 {
-		return nil, 0, false
+	rest := block[1:]
+
+	el := doctree.NewElement(doctree.TagSubstitutionDef)
+	el.SetAttr("name", subname)
+
+	switch {
+	case strings.EqualFold(dirName, "replace"):
+		msgs, errEl := p.fillReplaceSubstitution(el, subname, dirArgs, rest, lineno, blockText)
+		if errEl != nil {
+			return append(msgs, errEl), next, true
+		}
+		if len(msgs) > 0 {
+			return append(msgs, el), next, true
+		}
+	case strings.EqualFold(dirName, "raw") && p.opts.RawEnabled && dirArgs != "":
+		raw := doctree.NewElement(doctree.TagRaw)
+		raw.SetAttr("format", strings.ToLower(strings.Join(strings.Fields(dirArgs), " ")))
+		rawBody := trimLeadingBlanks(rest)
+		for len(rawBody) > 0 && isBlankStr(rawBody[len(rawBody)-1]) {
+			rawBody = rawBody[:len(rawBody)-1]
+		}
+		if len(rawBody) > 0 {
+			raw.Append(&doctree.Text{Data: strings.Join(rawBody, "\n")})
+		}
+		el.Append(raw)
+	case strings.EqualFold(dirName, "image"):
+		combined := append([]string{dirArgs}, rest...)
+		argument, options, content := parseDirectiveBlock(combined, true)
+		nodes := finishImageDirective("image", argument, options, content, subname, lineno, blockText)
+		if len(nodes) != 1 {
+			return []doctree.Node{sectionMessage("2", "WARNING",
+				`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
+		}
+		if img, ok := nodes[0].(*doctree.Element); ok && img.Tag == doctree.TagImage {
+			el.Append(img)
+		} else {
+			return []doctree.Node{nodes[0]}, next, true
+		}
+	default:
+		// Any OTHER directive name — a real but non-inline directive
+		// (real docutils would run it, then filter its non-Inline result
+		// out, ending up empty the same way the "text" fallback above
+		// does) or one this project's own directive registry has never
+		// heard of (real docutils' own "No directive entry..."/"Unknown
+		// directive type" diagnostic pair — deliberately NOT reproduced
+		// here, matching this project's already-established, deliberate
+		// leniency toward unrecognized directive names elsewhere, e.g.
+		// role.go's own scope note: this parser's registry exists to
+		// serve specific directives, not to police every name a document
+		// might use). Either way, "empty or invalid" is the correct
+		// eventual outcome for a real docutils document too.
+		return []doctree.Node{sectionMessage("2", "WARNING",
+			`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
 	}
-	el, ok := nodes[0].(*doctree.Element)
+
+	if len(el.Children) == 0 {
+		return []doctree.Node{sectionMessage("2", "WARNING",
+			`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
+	}
+	return []doctree.Node{el}, next, true
+}
+
+// fillReplaceSubstitution implements the "replace" directive (misc.py's
+// Replace.run, read directly) — valid ONLY inside a substitution
+// definition (real docutils raises an "Invalid context" error otherwise;
+// this project only ever reaches this path from inside one, so that
+// restriction holds for free rather than needing an explicit check).
+// Its same-line argument text plus any body lines are joined and
+// inline-parsed as ONE paragraph's worth of content, appended directly
+// as el's own children — then checked against the same three
+// prohibited-content categories real docutils checks for ANY embedded
+// directive's result (disallowed_inside_substitution_definitions, read
+// directly): an anonymous reference, an auto-numbered/auto-symbol
+// footnote reference, or anything carrying its own name/id (an inline
+// target); a <problematic> anywhere in the result (most commonly an
+// unclosed inline-markup start-string) is checked FIRST, before either
+// of those, matching substitution_def's own findall loop order. msgs is
+// every inline-markup diagnostic parseInline itself generated (an
+// unclosed emphasis/strong/literal start-string, etc.) — real docutils
+// attaches these as SIBLINGS of whatever construct produced them (the
+// v0.20.1 round's own placement rule, reused here for the same reason:
+// this is genuinely a paragraph-equivalent construct), always returned
+// regardless of whether errEl is also non-nil, since the corpus shows
+// them appearing BEFORE either outcome.
+//
+// SCOPE: real docutils' Replace.run assert_has_content()'s + a genuine
+// multi-paragraph check (self.content joined and re-nested-parsed,
+// erroring "may contain a single paragraph only" when it splits into
+// more than one) are both collapsed here into the SAME "empty or
+// invalid" warning parseSubstitutionDef already gives an embedded
+// directive with no usable result — a real, deliberate simplification,
+// not an oversight: this project's own text-then-parseInline shape
+// never actually detects a paragraph break within replace's own content
+// the way a full nested_parse would, and the two real, more specific
+// diagnostics that distinction unlocks are low corpus value on their
+// own (test_directives/test_replace.py, 2 of its 5 cases).
+func (p *parser) fillReplaceSubstitution(el *doctree.Element, subname, dirArgs string, rest []string, lineno int, blockText string) (msgs []doctree.Node, errEl *doctree.Element) {
+	text := dirArgs
+	body := trimLeadingBlanks(rest)
+	for len(body) > 0 && isBlankStr(body[len(body)-1]) {
+		body = body[:len(body)-1]
+	}
+	if len(body) > 0 {
+		if text != "" {
+			text += "\n"
+		}
+		text += strings.Join(body, "\n")
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, sectionMessage("2", "WARNING",
+			`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)
+	}
+	inlineNodes, inlineMsgs := p.parseInline(text, lineno)
+	for _, m := range inlineMsgs {
+		msgs = append(msgs, m)
+	}
+	if containsProblematic(inlineNodes) {
+		msg := doctree.NewElement(doctree.TagSystemMessage,
+			doctree.NewElement(doctree.TagParagraph, &doctree.Text{Data: "Problematic content in substitution definition"}),
+			doctree.NewElement(doctree.TagLiteralBlock, &doctree.Text{Data: blockText}),
+			doctree.NewElement(doctree.TagBlockQuote, doctree.NewElement(doctree.TagParagraph, inlineNodes...)))
+		msg.SetAttr("level", "3")
+		msg.SetAttr("type", "ERROR")
+		if lineno != 0 {
+			msg.SetAttr("line", strconv.Itoa(lineno))
+		}
+		return msgs, msg
+	}
+	if illegal := disallowedInSubstitution(inlineNodes); illegal != "" {
+		return msgs, sectionMessage("3", "ERROR", illegal+" are not supported in a substitution definition.", lineno, blockText)
+	}
+	for _, n := range inlineNodes {
+		el.Append(n)
+	}
+	return msgs, nil
+}
+
+// containsProblematic mirrors substitution_def's own leading check (real
+// docutils checks this BEFORE disallowedInSubstitution, in the same
+// findall loop) — any <problematic> anywhere in the embedded directive's
+// result (an unclosed inline-markup start-string, most commonly) makes
+// the whole substitution definition invalid.
+func containsProblematic(nodes []doctree.Node) bool {
+	for _, n := range nodes {
+		el, ok := n.(*doctree.Element)
+		if !ok {
+			continue
+		}
+		if el.Tag == doctree.TagProblematic {
+			return true
+		}
+		if containsProblematic(el.Children) {
+			return true
+		}
+	}
+	return false
+}
+
+// disallowedInSubstitution mirrors
+// Body.disallowed_inside_substitution_definitions, walked recursively (a
+// real docutils substitution_node.findall(...) walks the WHOLE nested
+// tree, not just top-level children) and in document order, since the
+// check returns on the FIRST offending node encountered — not the first
+// offending category.
+func disallowedInSubstitution(nodes []doctree.Node) string {
+	for _, n := range nodes {
+		if msg := disallowedInSubstitutionNode(n); msg != "" {
+			return msg
+		}
+	}
+	return ""
+}
+
+func disallowedInSubstitutionNode(n doctree.Node) string {
+	el, ok := n.(*doctree.Element)
 	if !ok {
-		return nil, 0, false
+		return ""
 	}
-	el.Tag = doctree.TagSubstitutionDef
-	el.SetAttr("substitution", normalizeWhitespace(name))
-	return el, next, true
+	if el.Tag == doctree.TagReference && el.Attr("anonymous") == "true" {
+		return "Anonymous references"
+	}
+	if el.Tag == doctree.TagFootnoteReference && (el.Attr("auto") == "1" || el.Attr("auto") == "*") {
+		return "References to auto-numbered and auto-symbol footnotes"
+	}
+	if el.Tag == doctree.TagTarget && el.Attr("name") != "" {
+		return "Targets (names and identifiers)"
+	}
+	for _, c := range el.Children {
+		if msg := disallowedInSubstitutionNode(c); msg != "" {
+			return msg
+		}
+	}
+	return ""
+}
+
+// trimLeadingBlanks drops every leading blank line — gatherExplicitBody's
+// own convention (it skips leading blanks to FIND a body's indent,
+// never preserving them), needed here because block's own construction
+// (parseSubstitutionDef, above) preserves them instead, for
+// parseDirectiveBlock's benefit; "raw" and "replace" don't go through
+// parseDirectiveBlock at all, so they need this applied explicitly.
+func trimLeadingBlanks(lines []string) []string {
+	i := 0
+	for i < len(lines) && isBlankStr(lines[i]) {
+		i++
+	}
+	return lines[i:]
 }
 
 // normalizeWhitespace mirrors docutils.nodes.whitespace_normalize_name:
@@ -314,6 +563,12 @@ func (p *parser) parseDirective(lines []string, i int, name, args string, parent
 	}
 	if strings.EqualFold(name, "sidebar") {
 		return p.runTopicOrSidebar(doctree.TagSidebar, lines, i, next, args, body, parent), next
+	}
+	if strings.EqualFold(name, "image") {
+		return p.runImageDirective(lines, i, next, args, body, ""), next
+	}
+	if strings.EqualFold(name, "figure") {
+		return p.runFigureDirective(lines, i, next, args, body), next
 	}
 	el := doctree.NewElement(doctree.TagDirective)
 	el.SetAttr("name", name)
