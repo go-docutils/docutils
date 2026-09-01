@@ -51,7 +51,7 @@ relative indentation, matching docutils' own sub-stanza grouping),
 doctest blocks (kept verbatim, ">>>" prompts included), block
 quotes, literal blocks (`::`), comments, directives (captured
 structurally — name, arguments, raw content — never dispatched to
-per-directive semantics, with three exceptions: `raw` (`.. raw::
+per-directive semantics, with these exceptions: `raw` (`.. raw::
 FORMAT`, whose content passes through completely unprocessed, tagged
 with its target format; see `Options.RawEnabled`, on by default matching
 real docutils' own default despite its confusingly-named `--no-raw`
@@ -59,13 +59,28 @@ flag), `table` (`.. table:: TITLE`, dispatching its body through this
 project's own existing simple/grid table parser and requiring exactly
 one table to result — `:class:`/`:name:`/`:align:`/`:width:`/`:widths:`
 options, the title itself inline-parsed so it can carry markup or a
-dangling-markup warning of its own), and `list-table` (building a
+dangling-markup warning of its own), `list-table` (building a
 `<table>` from scratch out of a uniform two-level bullet list — rows,
-each a nested list of cells — plus `:header-rows:`/`:stub-columns:`;
-directive-level argument/option-syntax errors, e.g. a malformed
-`:widths:` value or an unknown option, are NOT validated for any
-directive, matching this project's own established scope boundary —
-see "Not yet ported" below), hyperlink
+each a nested list of cells — plus `:header-rows:`/`:stub-columns:`),
+and the nine generic ADMONITIONS — `attention`/`caution`/`danger`/
+`error`/`hint`/`important`/`note`/`tip`/`warning`, directive name
+matched case-INSENSITIVELY (`.. Note::`, `.. WARNING::` work the same as
+`.. note::`), each just wrapping its own content in a like-named node —
+plus the one non-generic `admonition` directive (a REQUIRED title
+argument becoming a `<title>`, auto-classed `admonition-<slug of the
+title>` unless `:class:` overrides it); `:class:`/`:name:` options work
+the same way real docutils' own generic option/content-block split does
+(`Body.parse_directive_block`, read directly): the option block is
+whatever TRAILING run of `:key: value` lines the directive's own body
+ends with, wherever that starts — not merely a leading run assumed to be
+at the very top, the simpler shape this project's `table`/`list-table`
+options still use, since no corpus case has needed the general form
+there — so real content is free to precede the options, and a role
+invocation elsewhere in that content is never mistaken for one.
+Directive-level argument/option-syntax errors, e.g. a malformed
+`:widths:` value or an unknown option key entirely, are NOT validated
+for any directive, matching this project's own established scope
+boundary — see "Not yet ported" below, hyperlink
 targets with reference resolution — including INDIRECT targets
 (`.. _a: b_`, whose value is itself another target's name, chased
 through however many hops until a real URI is reached; a cycle is left
