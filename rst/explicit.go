@@ -82,7 +82,7 @@ func gatherExplicitBody(lines []string, i int) ([]string, int) {
 // "self.parent += extra_message" shape — see the table/list-table
 // directives, tabledirective.go) needs more than one, and a role
 // registration (see parseDirective) needs zero.
-func (p *parser) parseExplicitMarkup(lines []string, i int) ([]doctree.Node, int) {
+func (p *parser) parseExplicitMarkup(lines []string, i int, parent *doctree.Element) ([]doctree.Node, int) {
 	line := lines[i]
 	if len(line) == 2 {
 		return []doctree.Node{doctree.NewElement(doctree.TagComment)}, i + 1
@@ -102,7 +102,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i int) ([]doctree.Node, int
 		return []doctree.Node{node}, next
 	}
 	if subName, subRest, ok := matchPipeLabel(rest); ok {
-		if node, next, ok := p.parseSubstitutionDef(lines, i, subName, subRest); ok {
+		if node, next, ok := p.parseSubstitutionDef(lines, i, subName, subRest, parent); ok {
 			return []doctree.Node{node}, next
 		}
 		// Malformed substitution definition: fall through to comment,
@@ -110,7 +110,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i int) ([]doctree.Node, int
 		// construct (explicit_construct's final `return self.comment(...)`).
 	}
 	if name, args, ok := matchDirectiveName(rest); ok {
-		return p.parseDirective(lines, i, name, args)
+		return p.parseDirective(lines, i, name, args, parent)
 	}
 	node, next := parseComment(lines, i, rest)
 	return []doctree.Node{node}, next
@@ -204,12 +204,12 @@ func matchPipeLabel(s string) (name, rest string, ok bool) {
 // structural capture parseDirective would). Returns ok=false for a
 // malformed definition (no embedded directive), matching docutils'
 // fallback to a plain comment in that case.
-func (p *parser) parseSubstitutionDef(lines []string, i int, name, directiveRest string) (doctree.Node, int, bool) {
+func (p *parser) parseSubstitutionDef(lines []string, i int, name, directiveRest string, parent *doctree.Element) (doctree.Node, int, bool) {
 	dirName, args, ok := matchDirectiveName(directiveRest)
 	if !ok {
 		return nil, 0, false
 	}
-	nodes, next := p.parseDirective(lines, i, dirName, args)
+	nodes, next := p.parseDirective(lines, i, dirName, args, parent)
 	// ".. |name| role:: ..." (parseDirective's own nil-returning case) or
 	// a table/list-table directive that produced more than one sibling
 	// node (an error, or a title-inline-markup message alongside the
@@ -270,7 +270,7 @@ func matchDirectiveName(rest string) (name, args string, ok bool) {
 // real docutils treats as a directive-level error this parser doesn't
 // generally validate for anyway), it falls back to the same structural
 // capture any other unimplemented directive gets.
-func (p *parser) parseDirective(lines []string, i int, name, args string) ([]doctree.Node, int) {
+func (p *parser) parseDirective(lines []string, i int, name, args string, parent *doctree.Element) ([]doctree.Node, int) {
 	body, next := gatherExplicitBody(lines, i)
 	if name == "raw" && p.opts.RawEnabled && args != "" {
 		el := doctree.NewElement(doctree.TagRaw)
@@ -308,6 +308,12 @@ func (p *parser) parseDirective(lines []string, i int, name, args string) ([]doc
 	}
 	if strings.EqualFold(name, "admonition") {
 		return p.runGenericAdmonitionDirective(lines, i, next, args, body), next
+	}
+	if strings.EqualFold(name, "topic") {
+		return p.runTopicOrSidebar(doctree.TagTopic, lines, i, next, args, body, parent), next
+	}
+	if strings.EqualFold(name, "sidebar") {
+		return p.runTopicOrSidebar(doctree.TagSidebar, lines, i, next, args, body, parent), next
 	}
 	el := doctree.NewElement(doctree.TagDirective)
 	el.SetAttr("name", name)

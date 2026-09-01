@@ -68,7 +68,15 @@ matched case-INSENSITIVELY (`.. Note::`, `.. WARNING::` work the same as
 `.. note::`), each just wrapping its own content in a like-named node —
 plus the one non-generic `admonition` directive (a REQUIRED title
 argument becoming a `<title>`, auto-classed `admonition-<slug of the
-title>` unless `:class:` overrides it); `:class:`/`:name:` options work
+title>` unless `:class:` overrides it), `topic` (a REQUIRED title
+argument), and `sidebar` (an OPTIONAL title argument, plus its own
+`:subtitle:` option — valid only alongside a title) — both with a real
+NESTING restriction real docutils itself enforces: a topic/sidebar is
+only valid directly inside a document or section (a topic ALSO directly
+inside a sidebar); anywhere else — a list item, a block quote, another
+topic — is an ERROR, checked against this parser's own notion of "the
+container currently being appended to", the same thing real docutils'
+own `state_machine.node` check means; `:class:`/`:name:` options work
 the same way real docutils' own generic option/content-block split does
 (`Body.parse_directive_block`, read directly): the option block is
 whatever TRAILING run of `:key: value` lines the directive's own body
@@ -178,7 +186,15 @@ escaping would corrupt hyperref's own `#`-marker convention).
 
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
 `lineblock.go`/`inline.go`/`table.go`/`gridtable.go` doc comments for
-the exact list and why): docutils' *standalone* PEP/RFC recognition —
+the exact list and why): the "ends without a blank line; unexpected
+unindent" WARNING real docutils' own `unindent_warning` produces for
+EVERY explicit-markup construct (a directive, footnote, citation, ...)
+that a following, insufficiently-indented line interrupts — this parser
+only has it for enumerated lists so far (parser.go, ported alongside
+v0.25.0's full enumerated-list work); a topic/sidebar containing a
+rejected nested directive, for instance, is missing this one diagnostic
+even though the rejection itself is correctly reported. Docutils'
+*standalone* PEP/RFC recognition —
 bare `pep-123`/`RFC 123` text with no `:PEP:`/`:RFC:` role markup at all
 (checked against `Parser().parse()` with default settings — docutils'
 own `pep_references`/`rfc_references` settings default to **off**, so
