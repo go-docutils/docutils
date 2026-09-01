@@ -8,8 +8,10 @@
 // lists, definition lists, line blocks (nested by relative indentation,
 // see lineblock.go), doctest blocks, block quotes, literal blocks,
 // comments, directives (captured structurally only, except "raw",
-// "table", and "list-table" — see Options and tabledirective.go — there
-// is still no general per-directive registry beyond those three), hyperlink
+// "table", "list-table" (see Options and tabledirective.go), and the
+// nine generic admonitions plus "admonition" itself (see
+// admonitions.go) — there is still no general per-directive registry
+// beyond those), hyperlink
 // targets with reference resolution (named, indirect, and anonymous —
 // see explicit.go), footnotes, citations, substitution definitions,
 // docinfo promotion, simple tables and GRID tables (see table.go and

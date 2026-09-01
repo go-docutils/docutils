@@ -110,9 +110,13 @@ func TestRender(t *testing.T) {
 			"<!-- a comment -->",
 		},
 		{
+			// "some-directive" is deliberately NOT one of this project's
+			// implemented directives (note/table/list-table/raw/role) —
+			// an earlier version of this test used ".. note::" here,
+			// which predates note becoming a real, implemented directive.
 			"directive renders as a labeled pre block, not silently dropped",
-			".. note::\n\n   content\n",
-			`<pre class="directive" data-directive="note">content</pre>`,
+			".. some-directive::\n\n   content\n",
+			`<pre class="directive" data-directive="some-directive">content</pre>`,
 		},
 		{
 			"line block renders as nested divs, one per line",

@@ -120,6 +120,16 @@ const (
 	TagDate               = "date"
 	TagCopyright          = "copyright"
 	TagTopic              = "topic"
+	TagAdmonition         = "admonition"
+	TagAttention          = "attention"
+	TagCaution            = "caution"
+	TagDanger             = "danger"
+	TagErrorAdmonition    = "error"
+	TagHint               = "hint"
+	TagImportant          = "important"
+	TagNote               = "note"
+	TagTip                = "tip"
+	TagWarningAdmonition  = "warning"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

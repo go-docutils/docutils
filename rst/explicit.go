@@ -299,6 +299,16 @@ func (p *parser) parseDirective(lines []string, i int, name, args string) ([]doc
 	if name == "list-table" {
 		return p.runListTableDirective(lines, i, next, args, body), next
 	}
+	// Directive names are matched case-INSENSITIVELY — real docutils'
+	// own directive registry does the same (directives.directive,
+	// states.py, read directly) — ".. Attention::"/".. WARNING::" work
+	// exactly like ".. attention::"/".. warning::".
+	if tag, ok := admonitionTags[strings.ToLower(name)]; ok {
+		return p.runAdmonitionDirective(tag, lines, i, next, args, body), next
+	}
+	if strings.EqualFold(name, "admonition") {
+		return p.runGenericAdmonitionDirective(lines, i, next, args, body), next
+	}
 	el := doctree.NewElement(doctree.TagDirective)
 	el.SetAttr("name", name)
 	if args != "" {
