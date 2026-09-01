@@ -131,6 +131,20 @@ func parseDirectiveBlock(combined []string, hasArgument bool) (argument string, 
 	for len(combined) > 0 && isBlankStr(combined[len(combined)-1]) {
 		combined = combined[:len(combined)-1]
 	}
+	// A single leading blank line — the directive's own line had nothing
+	// after "::" — is trimmed BEFORE scanning for the argument/content
+	// boundary (Body.parse_directive_block's own "if indented and not
+	// indented[0].strip(): indented.trim_start()", read directly): without
+	// this, an argument that starts wholly on the FOLLOWING line (no
+	// same-line text at all, e.g. ".. |x| image::\n   uri.png") was
+	// mistaken for a genuinely empty argument block, since combined[0]=""
+	// looks identical to a real blank-line separator otherwise. Latent
+	// until image's required-argument directive exposed it — no existing
+	// admonition/topic/table corpus case has an omittable argument that
+	// starts on a later line at all.
+	if len(combined) > 0 && isBlankStr(combined[0]) {
+		combined = combined[1:]
+	}
 
 	blankAt := -1
 	for idx, l := range combined {

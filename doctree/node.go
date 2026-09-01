@@ -132,6 +132,10 @@ const (
 	TagWarningAdmonition  = "warning"
 	TagSidebar            = "sidebar"
 	TagSubtitle           = "subtitle"
+	TagImage              = "image"
+	TagFigure             = "figure"
+	TagCaption            = "caption"
+	TagLegend             = "legend"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

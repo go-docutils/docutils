@@ -23,17 +23,17 @@ func TestSubstitutionReferenceAsHyperlink(t *testing.T) {
 		{
 			"named target resolves through the substitution's own name",
 			".. |sub| replace:: replacement text\n\n.. _sub: https://example.org/sub\n\nSee |sub|_ for more.\n",
-			"<document>\n    <substitution_definition arguments=\"replacement text\" name=\"replace\" substitution=\"sub\">\n    <target name=\"sub\" refuri=\"https://example.org/sub\">\n    <paragraph>\n        See \n        <reference refname=\"sub\" refuri=\"https://example.org/sub\">\n            <substitution_reference refname=\"sub\">\n                sub\n         for more.\n",
+			"<document>\n    <substitution_definition name=\"sub\">\n        replacement text\n    <target name=\"sub\" refuri=\"https://example.org/sub\">\n    <paragraph>\n        See \n        <reference refname=\"sub\" refuri=\"https://example.org/sub\">\n            <substitution_reference refname=\"sub\">\n                sub\n         for more.\n",
 		},
 		{
 			"doubled trailing underscore is an anonymous target by document-order position",
 			".. |sub| replace:: replacement text\n\nSee |sub|__ for more.\n\n.. __: https://example.org/anon\n",
-			"<document>\n    <substitution_definition arguments=\"replacement text\" name=\"replace\" substitution=\"sub\">\n    <paragraph>\n        See \n        <reference anonymous=\"true\" refuri=\"https://example.org/anon\">\n            <substitution_reference refname=\"sub\">\n                sub\n         for more.\n    <target anonymous=\"true\" refuri=\"https://example.org/anon\">\n",
+			"<document>\n    <substitution_definition name=\"sub\">\n        replacement text\n    <paragraph>\n        See \n        <reference anonymous=\"true\" refuri=\"https://example.org/anon\">\n            <substitution_reference refname=\"sub\">\n                sub\n         for more.\n    <target anonymous=\"true\" refuri=\"https://example.org/anon\">\n",
 		},
 		{
 			"a plain substitution reference with no trailing underscore is unaffected",
 			".. |sub| replace:: x\n\nplain |sub| no link.\n",
-			"<document>\n    <substitution_definition arguments=\"x\" name=\"replace\" substitution=\"sub\">\n    <paragraph>\n        plain \n        <substitution_reference refname=\"sub\">\n            sub\n         no link.\n",
+			"<document>\n    <substitution_definition name=\"sub\">\n        x\n    <paragraph>\n        plain \n        <substitution_reference refname=\"sub\">\n            sub\n         no link.\n",
 		},
 	}
 	for _, tc := range cases {
