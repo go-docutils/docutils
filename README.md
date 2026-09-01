@@ -51,11 +51,21 @@ relative indentation, matching docutils' own sub-stanza grouping),
 doctest blocks (kept verbatim, ">>>" prompts included), block
 quotes, literal blocks (`::`), comments, directives (captured
 structurally — name, arguments, raw content — never dispatched to
-per-directive semantics: there is no directive registry, with one
-exception — `raw`, `.. raw:: FORMAT`, whose content passes through
-completely unprocessed, tagged with its target format; see
-`Options.RawEnabled`, on by default matching real docutils' own
-default despite its confusingly-named `--no-raw` flag), hyperlink
+per-directive semantics, with three exceptions: `raw` (`.. raw::
+FORMAT`, whose content passes through completely unprocessed, tagged
+with its target format; see `Options.RawEnabled`, on by default matching
+real docutils' own default despite its confusingly-named `--no-raw`
+flag), `table` (`.. table:: TITLE`, dispatching its body through this
+project's own existing simple/grid table parser and requiring exactly
+one table to result — `:class:`/`:name:`/`:align:`/`:width:`/`:widths:`
+options, the title itself inline-parsed so it can carry markup or a
+dangling-markup warning of its own), and `list-table` (building a
+`<table>` from scratch out of a uniform two-level bullet list — rows,
+each a nested list of cells — plus `:header-rows:`/`:stub-columns:`;
+directive-level argument/option-syntax errors, e.g. a malformed
+`:widths:` value or an unknown option, are NOT validated for any
+directive, matching this project's own established scope boundary —
+see "Not yet ported" below), hyperlink
 targets with reference resolution — including INDIRECT targets
 (`.. _a: b_`, whose value is itself another target's name, chased
 through however many hops until a real URI is reached; a cycle is left
@@ -168,7 +178,15 @@ rewriting every OTHER unrecognized name to `problematic`, since that
 would be a real leniency REGRESSION for any document using a role this
 parser has simply never heard of (a Sphinx/extension role, say) rather
 than a gap filled — real docutils always errors there, this parser
-still doesn't, on purpose. Title-style consistency (a title style's LEVEL
+still doesn't, on purpose. Directive-level argument/option-syntax
+validation is likewise not implemented for ANY directive (an
+unresolvable role base, an invalid option value, a malformed directive
+argument list, a required argument missing entirely — real docutils
+raises a distinct diagnostic for each; this parser's own directives,
+`raw`/`table`/`list-table`, silently ignore an option they don't
+understand rather than erroring, matching the same leniency choice as
+the unknown-role case just above) — a real, general gap, not chased
+per-directive as each one gets implemented. Title-style consistency (a title style's LEVEL
 is fixed by first-seen order across the whole document; skipping more
 than one new level at once is an error) and section-title diagnostics
 (too-short overline/underline, missing/mismatched underline, incomplete

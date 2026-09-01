@@ -3,15 +3,17 @@
 //
 // SCOPE (v1 — see [[go-docutils-org]] for the plan): sections (over/under
 // lined titles), paragraphs, transitions, bullet lists, enumerated lists
-// (arabic + '.' suffix only), field lists, definition lists, line blocks
-// (nested by relative indentation, see lineblock.go), doctest blocks,
-// block quotes, literal blocks, comments, directives (captured
-// structurally only, except "raw", see Options — there is still no
-// per-directive registry beyond that one case), hyperlink targets with
-// reference resolution (named, indirect, and anonymous — see explicit.go),
-// footnotes, citations, substitution definitions, docinfo promotion,
-// simple tables and GRID tables (see table.go and gridtable.go), and the
-// inline markup in inline.go. Section titles (both overlined and
+// (all five of docutils' own sequences — arabic, loweralpha/upperalpha,
+// lowerroman/upperroman — in all three formats, see enum.go), field
+// lists, definition lists, line blocks (nested by relative indentation,
+// see lineblock.go), doctest blocks, block quotes, literal blocks,
+// comments, directives (captured structurally only, except "raw",
+// "table", and "list-table" — see Options and tabledirective.go — there
+// is still no general per-directive registry beyond those three), hyperlink
+// targets with reference resolution (named, indirect, and anonymous —
+// see explicit.go), footnotes, citations, substitution definitions,
+// docinfo promotion, simple tables and GRID tables (see table.go and
+// gridtable.go), and the inline markup in inline.go. Section titles (both overlined and
 // underline-only), their consistency-tracking (title_styles, real
 // docutils' check_subsection — a title style's LEVEL is fixed by the
 // order it's first seen in the whole document, and skipping more than one
@@ -235,9 +237,9 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if isExplicitMarkupLine(lines[i]) {
-			node, next := p.parseExplicitMarkup(lines, i)
-			if node != nil {
-				current.Append(node)
+			nodes, next := p.parseExplicitMarkup(lines, i)
+			for _, n := range nodes {
+				current.Append(n)
 			}
 			i = next
 			continue
@@ -417,9 +419,9 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if isExplicitMarkupLine(lines[i]) {
-			node, next := p.parseExplicitMarkup(lines, i)
-			if node != nil {
-				parent.Append(node)
+			nodes, next := p.parseExplicitMarkup(lines, i)
+			for _, n := range nodes {
+				parent.Append(n)
 			}
 			i = next
 			continue
