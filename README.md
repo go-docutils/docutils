@@ -90,7 +90,23 @@ followed, and everything remaining after becomes `<legend>`; a
 `.. class::`-produced `<pending>` node ahead of the caption is not
 reproduced — this project has no transform system and so no `<pending>`
 node at all — though a bare hyperlink target in that position still
-passes through correctly); `:class:`/`:name:` options work
+passes through correctly); `meta` (a run of field markers — reusing the
+SAME grammar every field list already does — each becoming a `<meta>`
+whose own attributes come from splitting the marker's own, backslash-
+unescaped NAME text on whitespace: the first token is either
+`attr=value` or a bare word, defaulting to `name="..."`; every token
+after the first MUST be `attr=value` or it's a real per-field ERROR;
+parsing stops at the first non-field-marker content line, and anything
+left unconsumed there makes the WHOLE directive one more ERROR on top
+of whatever fields already parsed. The distinctive part: NONE of a
+`meta` directive's own result nodes stay at their own lexical position —
+real docutils splices them straight into the document ROOT's children,
+at the front, however deeply the directive itself was nested; this
+project defers that same effect to a single post-pass at the end of
+parsing rather than mutating the tree mid-walk, careful not to hoist a
+meta node ahead of an as-yet-unpromoted leading field list, which would
+otherwise silently break docinfo promotion's own strict leading-position
+check); `:class:`/`:name:` options work
 the same way real docutils' own generic option/content-block split does
 (`Body.parse_directive_block`, read directly): the option block is
 whatever TRAILING run of `:key: value` lines the directive's own body

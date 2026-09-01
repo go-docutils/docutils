@@ -121,6 +121,16 @@ type parser struct {
 	// genuinely separate, much larger undertaking (see README/PR
 	// description), not a small extension of this fix.
 	currentLine int
+	// metaNodes accumulates every ".. meta::" directive's own result
+	// nodes (a real <meta>, or a diagnostic runMetaDirective itself
+	// produced), in document order, regardless of where in the source
+	// the directive actually appeared — real docutils' own Meta.run
+	// splices directly into the DOCUMENT ROOT's children at parse time
+	// (self.state.document[index:index] = ...), never leaving anything
+	// at the directive's own lexical position; this project defers the
+	// actual splice to hoistMetaNodes, run once at the end of Parse,
+	// rather than mutating doc mid-walk.
+	metaNodes []doctree.Node
 }
 
 // roleDef is one ".. role::" registration: base names the role it derives
@@ -163,6 +173,7 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	assignSectionTargets(doc)
 	resolveTargets(doc, p.msgCount)
 	resolveFootnoteNumbers(doc)
+	hoistMetaNodes(doc, p.metaNodes)
 	promoteDocInfo(doc)
 	return doc
 }

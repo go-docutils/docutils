@@ -570,6 +570,17 @@ func (p *parser) parseDirective(lines []string, i int, name, args string, parent
 	if strings.EqualFold(name, "figure") {
 		return p.runFigureDirective(lines, i, next, args, body), next
 	}
+	if strings.EqualFold(name, "meta") {
+		// Meta declares no arguments and no option_spec at all, so real
+		// docutils folds ANY same-line remainder into its own content
+		// rather than treating it as an argument — a same-line
+		// ".. meta:: :name: value" invocation is not corpus-tested and
+		// not implemented here; args is deliberately ignored, matching
+		// this project's own established "don't chase an untested,
+		// unlikely-in-practice shape" scope discipline elsewhere.
+		p.runMetaDirective(lines, i, body, i+1, strings.Join(lines[i:next], "\n"))
+		return nil, next
+	}
 	el := doctree.NewElement(doctree.TagDirective)
 	el.SetAttr("name", name)
 	if args != "" {
