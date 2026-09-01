@@ -130,6 +130,8 @@ const (
 	TagNote               = "note"
 	TagTip                = "tip"
 	TagWarningAdmonition  = "warning"
+	TagSidebar            = "sidebar"
+	TagSubtitle           = "subtitle"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils
