@@ -136,6 +136,7 @@ const (
 	TagFigure             = "figure"
 	TagCaption            = "caption"
 	TagLegend             = "legend"
+	TagMeta               = "meta"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils
