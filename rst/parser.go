@@ -35,6 +35,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/go-docutils/docutils/doctree"
 )
@@ -354,10 +355,11 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 		}
 		i = next
 		if literalNext {
-			if lb, next2, ok := tryLiteralBlock(lines, i); ok {
-				current.Append(lb)
-				i = next2
+			lbNodes, next2 := tryLiteralBlock(lines, i, 0)
+			for _, n := range lbNodes {
+				current.Append(n)
 			}
+			i = next2
 		}
 	}
 }
@@ -463,10 +465,11 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 		}
 		i = next
 		if literalNext {
-			if lb, next2, ok := tryLiteralBlock(lines, i); ok {
-				parent.Append(lb)
-				i = next2
+			lbNodes, next2 := tryLiteralBlock(lines, i, -1)
+			for _, n := range lbNodes {
+				parent.Append(n)
 			}
+			i = next2
 		}
 	}
 }
@@ -883,12 +886,28 @@ func trimTrailingSpace(s string) string {
 // (docutils.states.RSTState.paragraph) marks the following indented
 // block as a literal block rather than a block quote: literalNext is
 // true, and the trailing "::" is either dropped (if preceded by
-// whitespace) or collapsed to a single ":" (if attached to a word). A
-// paragraph that is exactly "::" produces no paragraph node at all
-// (returns nil, matching docutils). The returned messages are the
-// paragraph's own inline-markup failures (see parseInline's doc comment)
-// — the caller must attach them as the paragraph's siblings, matching
-// real docutils' Body.paragraph: "return [p] + messages".
+// whitespace) or collapsed to a single ":" (if attached to a word) — but
+// only when the "::" is not itself escaped: real docutils tests this
+// with "(?<!\\)(\\\\)*::$" (states.py, read directly), which requires an
+// EVEN number of backslashes (possibly zero) immediately before the
+// "::" — an odd count means the character right before the second colon
+// was escaped, so what looks like "::" is really a single real colon
+// preceded by an unrelated escaped backslash, and neither reduction nor
+// literalNext applies at all. A paragraph that is exactly "::" produces
+// no paragraph node at all (returns nil, matching docutils). The
+// returned messages are the paragraph's own inline-markup failures (see
+// parseInline's doc comment) plus, when a continuation line broke the
+// paragraph short because it was MORE indented than the first line (not
+// blank, not one of the other recognized-construct starts checked
+// below), an "Unexpected indentation." ERROR — real docutils' own
+// Text.text() calls get_text_block(flush_left=True), which raises
+// UnexpectedIndentationError for exactly this shape regardless of
+// whether the truncated paragraph happens to end in "::" (states.py,
+// read directly; the messages docutils' Text.text() adds are position-
+// independent of paragraph()'s own "::" handling, so this can combine
+// with literalNext freely) — the caller must attach all of these as the
+// paragraph's siblings, matching real docutils' Body.paragraph: "return
+// [p] + messages" plus Text.text()'s own "self.parent += msg".
 //
 // lineBase adds to i to produce the paragraph's absolute 1-indexed source
 // line for those messages' own "line" attribute — pass -1 when lines
@@ -898,11 +917,15 @@ func trimTrailingSpace(s string) string {
 func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *doctree.Element, messages []*doctree.Element, next int, literalNext bool) {
 	var text []string
 	j := i
+	indentBreak := false
 	for j < len(lines) {
 		if isBlankStr(lines[j]) {
 			break
 		}
 		if leadingSpaces(lines[j]) > 0 {
+			if j > i {
+				indentBreak = true
+			}
 			break
 		}
 		if j > i {
@@ -939,37 +962,187 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 		j++
 	}
 	data := strings.TrimRight(strings.Join(text, "\n"), " ")
-	if data == "::" {
-		return nil, nil, j, true
-	}
+	empty := false
 	if strings.HasSuffix(data, "::") {
-		literalNext = true
-		if len(data) >= 3 && (data[len(data)-3] == ' ' || data[len(data)-3] == '\n') {
-			data = strings.TrimRight(data[:len(data)-2], " ")
-		} else {
-			data = data[:len(data)-1]
+		n := 0
+		for n < len(data)-2 && data[len(data)-3-n] == '\\' {
+			n++
+		}
+		if n%2 == 0 {
+			literalNext = true
+			if data == "::" {
+				empty = true
+			} else if len(data) >= 3 && (data[len(data)-3] == ' ' || data[len(data)-3] == '\n') {
+				data = strings.TrimRight(data[:len(data)-2], " ")
+			} else {
+				data = data[:len(data)-1]
+			}
 		}
 	}
-	lineno := 0
-	if lineBase >= 0 {
-		lineno = i + lineBase + 1
+	var msgs []*doctree.Element
+	if !empty {
+		lineno := 0
+		if lineBase >= 0 {
+			lineno = i + lineBase + 1
+		}
+		var nodes []doctree.Node
+		nodes, msgs = p.parseInline(data, lineno)
+		para = doctree.NewElement(doctree.TagParagraph, nodes...)
 	}
-	nodes, msgs := p.parseInline(data, lineno)
-	para = doctree.NewElement(doctree.TagParagraph, nodes...)
+	if indentBreak {
+		msgs = append(msgs, sectionMessage("3", "ERROR", "Unexpected indentation.", msgLine(j, lineBase), ""))
+	}
 	return para, msgs, j, literalNext
 }
 
-// tryLiteralBlock consumes the indented block starting at lines[i] (if
-// any) as a literal block: raw text, not further parsed.
-func tryLiteralBlock(lines []string, i int) (*doctree.Element, int, bool) {
-	for i < len(lines) && isBlankStr(lines[i]) {
-		i++
+// msgLine converts a 0-indexed line position within the slice passed to
+// consumeParagraph/tryLiteralBlock into the document's absolute
+// 1-indexed source line for a system_message's "line" attribute — 0
+// (meaning "leave it unset", see sectionMessage) when lineBase is
+// negative, matching consumeParagraph's own established convention for
+// a rebased/nested context with no known absolute correspondence.
+func msgLine(pos, lineBase int) int {
+	if lineBase < 0 {
+		return 0
 	}
-	if i >= len(lines) || leadingSpaces(lines[i]) == 0 {
-		return nil, i, false
+	return pos + lineBase + 1
+}
+
+// tryLiteralBlock consumes whatever follows a paragraph that ended in an
+// unescaped "::" (docutils.states.Text.literal_block, read directly): an
+// indented block becomes a <literal_block> verbatim (its OWN minimum
+// indentation is stripped, not a fixed column — see
+// collectLiteralIndented — so relative indentation within the block, as
+// from a stray shallower or deeper line, survives as literal
+// whitespace), followed by an "ends without a blank line; unexpected
+// unindent." WARNING when the block was cut short by a non-blank,
+// unindented line rather than a blank one. When there is no indentation
+// at all, real docutils does not give up silently — it falls to
+// tryQuotedLiteralBlock, which is itself responsible for the "Literal
+// block expected; none found." warning when that also finds nothing.
+// Always returns at least one node: this is called unconditionally
+// whenever consumeParagraph reports literalNext, exactly as real
+// docutils' Text.text() unconditionally calls self.literal_block().
+func tryLiteralBlock(lines []string, i, lineBase int) ([]doctree.Node, int) {
+	block, _, blankFinish, next := collectLiteralIndented(lines, i)
+	for len(block) > 0 && isBlankStr(block[0]) {
+		block = block[1:]
 	}
-	indent := leadingSpaces(lines[i])
-	block, next := consumeIndentedBlock(lines, i, indent)
+	for len(block) > 0 && isBlankStr(block[len(block)-1]) {
+		block = block[:len(block)-1]
+	}
+	if len(block) == 0 {
+		return tryQuotedLiteralBlock(lines, next, lineBase)
+	}
 	lb := doctree.NewElement(doctree.TagLiteralBlock, &doctree.Text{Data: strings.Join(block, "\n")})
-	return lb, next, true
+	nodes := []doctree.Node{lb}
+	if !blankFinish {
+		nodes = append(nodes, sectionMessage("2", "WARNING",
+			"Literal block ends without a blank line; unexpected unindent.",
+			msgLine(next, lineBase), ""))
+	}
+	return nodes, next
+}
+
+// collectLiteralIndented gathers the indented block starting at lines[i]
+// for tryLiteralBlock — docutils.statemachine.StringList.get_indented
+// with no known indent for any line (read directly), the routine real
+// docutils uses for a literal block's body specifically, DISTINCT from
+// consumeIndentedBlock's fixed-column collection used for block quotes
+// and list items: a line only ends the block by being non-blank AND
+// having NO leading space at all (column 0) — any positive indentation,
+// even less than an earlier line's own, still belongs to the block. The
+// MINIMUM indentation seen across every non-blank line collected (not
+// just the first) is what gets stripped from all of them, so a single
+// shallower line inside an otherwise deeply-indented block pulls the
+// whole block's dedent in — the "wonky literal block" corpus case this
+// was built for. blankFinish reports whether the block was followed by a
+// blank line (or real EOF) rather than an abrupt unindented line.
+func collectLiteralIndented(lines []string, i int) (block []string, indent int, blankFinish bool, next int) {
+	end := i
+	known := -1
+	for end < len(lines) {
+		line := lines[end]
+		if line != "" && line[0] != ' ' {
+			blankFinish = end > i && isBlankStr(lines[end-1])
+			break
+		}
+		if stripped := strings.TrimLeft(line, " "); stripped != "" {
+			if li := len(line) - len(stripped); known == -1 || li < known {
+				known = li
+			}
+		}
+		end++
+	}
+	if end == len(lines) {
+		blankFinish = true
+	}
+	block = append([]string{}, lines[i:end]...)
+	if known > 0 {
+		for idx := range block {
+			if len(block[idx]) >= known {
+				block[idx] = block[idx][known:]
+			} else {
+				block[idx] = ""
+			}
+		}
+	} else {
+		known = 0
+	}
+	return block, known, blankFinish, end
+}
+
+// tryQuotedLiteralBlock implements docutils.states.QuotedLiteralBlock
+// (read directly), reached only once tryLiteralBlock has confirmed there
+// is no indented literal block at all: an unindented literal block whose
+// every line starts with the SAME arbitrary punctuation "quote"
+// character (docutils' own nonalphanum7bit set, isPunctChar here),
+// established by whichever character opens the first line — the
+// character itself is kept as literal content, not stripped. Ends at a
+// blank line (a clean finish, no diagnostic), an indented line
+// ("Unexpected indentation." ERROR — the same message and shape as
+// consumeParagraph's own, but this one is docutils' SEPARATE
+// QuotedLiteralBlock.indent, not Text.text()'s), or any other
+// non-matching line ("Inconsistent literal block quoting." ERROR) — in
+// both error cases the offending line is left UNCONSUMED (real docutils'
+// own previous_line()) so the caller's normal dispatch picks it up fresh
+// afterward (a block_quote or an ordinary paragraph, whichever its own
+// shape calls for). If the very first line has no quote character at
+// all, nothing is consumed and the sole diagnostic is "Literal block
+// expected; none found." — matching real docutils' own QuotedLiteralBlock.eof
+// when its context came up empty, including at genuine end of input.
+func tryQuotedLiteralBlock(lines []string, i, lineBase int) ([]doctree.Node, int) {
+	j := i
+	for j < len(lines) && isBlankStr(lines[j]) {
+		j++
+	}
+	if j >= len(lines) {
+		return []doctree.Node{sectionMessage("2", "WARNING", "Literal block expected; none found.", msgLine(j, lineBase), "")}, j
+	}
+	r, _ := utf8.DecodeRuneInString(lines[j])
+	if !isPunctChar(r) {
+		return []doctree.Node{sectionMessage("2", "WARNING", "Literal block expected; none found.", msgLine(j, lineBase), "")}, j
+	}
+	quote := string(r)
+	context := []string{lines[j]}
+	k := j + 1
+	for k < len(lines) {
+		if isBlankStr(lines[k]) {
+			break
+		}
+		if strings.HasPrefix(lines[k], quote) {
+			context = append(context, lines[k])
+			k++
+			continue
+		}
+		lb := doctree.NewElement(doctree.TagLiteralBlock, &doctree.Text{Data: strings.Join(context, "\n")})
+		msgText := "Inconsistent literal block quoting."
+		if leadingSpaces(lines[k]) > 0 {
+			msgText = "Unexpected indentation."
+		}
+		msg := sectionMessage("3", "ERROR", msgText, msgLine(k, lineBase), "")
+		return []doctree.Node{lb, msg}, k
+	}
+	lb := doctree.NewElement(doctree.TagLiteralBlock, &doctree.Text{Data: strings.Join(context, "\n")})
+	return []doctree.Node{lb}, k
 }
