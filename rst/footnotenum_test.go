@@ -34,7 +34,7 @@ func TestFootnoteNumbering(t *testing.T) {
 		{
 			"an explicit numeric footnote makes auto-numbering skip that number",
 			"See footnote [1]_, an auto footnote [#]_.\n\n.. [1] Manual.\n\n.. [#] Auto.\n",
-			"<document>\n    <paragraph>\n        See footnote \n        <footnote_reference refname=\"1\">\n            1\n        , an auto footnote \n        <footnote_reference auto=\"1\" refname=\"footnote-1\">\n            2\n        .\n    <footnote name=\"1\">\n        <label>\n            1\n        <paragraph>\n            Manual.\n    <footnote auto=\"1\" name=\"footnote-1\">\n        <label>\n            2\n        <paragraph>\n            Auto.\n",
+			"<document>\n    <paragraph>\n        See footnote \n        <footnote_reference refname=\"1\">\n            1\n        , an auto footnote \n        <footnote_reference auto=\"1\" refname=\"footnote-1\">\n            2\n        .\n    <footnote id=\"footnote-1\" name=\"1\">\n        <label>\n            1\n        <paragraph>\n            Manual.\n    <footnote auto=\"1\" name=\"footnote-1\">\n        <label>\n            2\n        <paragraph>\n            Auto.\n",
 		},
 		{
 			"a named auto footnote shares the same numbering sequence as unnamed ones",
