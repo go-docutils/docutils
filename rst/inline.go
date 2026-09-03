@@ -1258,7 +1258,18 @@ func hasPrefixAt(runes []rune, i int, s string) bool {
 // open/close pair with nothing else between (e.g. "(*)text").
 func validStartBoundary(runes []rune, i, openLen int) bool {
 	if i > 0 {
-		prev := runes[i-1]
+		// Unescaped for the character-class check only (never treated as
+		// a real delimiter itself — isEscapedRune's own separation
+		// already prevents that): real docutils' \x00-marker escaping
+		// keeps the ORIGINAL character intact right after the marker
+		// byte, so a lookbehind like this one sees a genuine space
+		// there for free; this project's own escapeRune representation
+		// shifts the character's rune value entirely instead, so the
+		// SAME "backslash-escaped space is a valid boundary" behavior
+		// (`m\ *a*`, a real, corpus-tested construct — every character-
+		// level marker in a row, each preceded by an escaped space)
+		// needs restoring it explicitly before the class checks below.
+		prev := unescapeRune(runes[i-1])
 		if !unicode.IsSpace(prev) && !isOpener(prev) && !isDelimiterChar(prev) {
 			return false
 		}
