@@ -77,6 +77,7 @@ const (
 	TagDefinitionList     = "definition_list"
 	TagDefinitionListItem = "definition_list_item"
 	TagTerm               = "term"
+	TagClassifier         = "classifier"
 	TagDefinition         = "definition"
 	TagLineBlock          = "line_block"
 	TagLine               = "line"

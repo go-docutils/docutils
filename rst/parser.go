@@ -360,8 +360,11 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if isDefinitionTermLine(lines, i) {
-			dl, next := p.parseDefinitionList(lines, i)
+			dl, dlMsgs, next := p.parseDefinitionList(lines, i, 0)
 			current.Append(dl)
+			for _, m := range dlMsgs {
+				current.Append(m)
+			}
 			i = next
 			continue
 		}
@@ -473,8 +476,11 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if isDefinitionTermLine(lines, i) {
-			dl, next := p.parseDefinitionList(lines, i)
+			dl, dlMsgs, next := p.parseDefinitionList(lines, i, -1)
 			parent.Append(dl)
+			for _, m := range dlMsgs {
+				parent.Append(m)
+			}
 			i = next
 			continue
 		}
