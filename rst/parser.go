@@ -110,17 +110,18 @@ type parser struct {
 	// — lineno is one value for the whole call, not tracked per-marker),
 	// confirmed against the foreign judge with a deliberately multi-line
 	// unclosed-emphasis paragraph, not assumed. Zero means "unknown":
-	// only parseDocument's own direct paragraph/title calls currently
+	// only parseDocument's own direct paragraph/title calls, and (as of
+	// v0.37.0) parseLineBlock when reached from parseDocument, currently
 	// supply it, since only there does the local line index still
 	// correspond to an absolute document position — every OTHER
 	// parseInline call site (a block quote's attribution, a field name,
-	// a definition term, a line block line, and any paragraph/title
-	// reached through parseBlockLines' nested recursion into a list
-	// item/block quote/field body/definition/table cell) runs over a
-	// rebased sub-slice of the original lines, whose absolute offset
-	// isn't threaded through the recursion at all — doing so is a
-	// genuinely separate, much larger undertaking (see README/PR
-	// description), not a small extension of this fix.
+	// a definition term, and any paragraph/title/line-block-line reached
+	// through parseBlockLines' nested recursion into a list item/block
+	// quote/field body/definition/table cell) runs over a rebased
+	// sub-slice of the original lines, whose absolute offset isn't
+	// threaded through the recursion at all — doing so is a genuinely
+	// separate, much larger undertaking (see README/PR description), not
+	// a small extension of this fix.
 	currentLine int
 	// metaNodes accumulates every ".. meta::" directive's own result
 	// nodes (a real <meta>, or a diagnostic runMetaDirective itself
@@ -257,7 +258,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if isLineBlockLine(lines[i]) {
-			lb, lbMsgs, next := p.parseLineBlock(lines, i)
+			lb, lbMsgs, next := p.parseLineBlock(lines, i, 0)
 			current.Append(lb)
 			for _, m := range lbMsgs {
 				current.Append(m)
@@ -440,7 +441,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if isLineBlockLine(lines[i]) {
-			lb, lbMsgs, next := p.parseLineBlock(lines, i)
+			lb, lbMsgs, next := p.parseLineBlock(lines, i, -1)
 			parent.Append(lb)
 			for _, m := range lbMsgs {
 				parent.Append(m)
@@ -960,6 +961,26 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 			// own forward lookahead fails) must not split a paragraph
 			// that was already underway — matches isDefinitionTermLine's
 			// identical reasoning just above in a sibling file.
+			//
+			// CORPUS-CONFIRMED DIVERGENCE, not yet fixed (v0.37.0): real
+			// docutils' own continuation-line gathering (Text.text's
+			// get_text_block(flush_left=True), states.py, read directly)
+			// checks ONLY blank-ness and indentation — never bullet/enum/
+			// field/doctest/line-block/table/transition shape at all. A
+			// continuation line that merely LOOKS like one of those
+			// (no blank line before it, so it's unambiguously still part
+			// of the SAME paragraph) should join the paragraph text, not
+			// split it — confirmed by two independent corpus fixtures now
+			// (test_character_level_inline_markup.py's
+			// markup_recognition_rules][4], a bullet-shaped continuation;
+			// test_line_blocks.py[line_blocks][10], a "|"-shaped one).
+			// Left unfixed this round: every check below was added and
+			// separately corpus-verified in its own earlier round, and
+			// this function is reached from both top-level and deeply
+			// nested contexts — removing them needs its own dedicated,
+			// isolated investigation to confirm none of those earlier
+			// fixtures actually depended on a shape-check firing
+			// mid-paragraph rather than at a genuine paragraph boundary.
 			if isBulletLine(lines[j]) || isEnumListStart(lines, j) || isExplicitMarkupLine(lines[j]) {
 				break
 			}
@@ -1049,7 +1070,7 @@ func msgLine(pos, lineBase int) int {
 // whenever consumeParagraph reports literalNext, exactly as real
 // docutils' Text.text() unconditionally calls self.literal_block().
 func tryLiteralBlock(lines []string, i, lineBase int) ([]doctree.Node, int) {
-	block, _, blankFinish, next := collectLiteralIndented(lines, i)
+	block, _, blankFinish, next := collectLiteralIndented(lines, i, false)
 	for len(block) > 0 && isBlankStr(block[0]) {
 		block = block[1:]
 	}
@@ -1070,20 +1091,28 @@ func tryLiteralBlock(lines []string, i, lineBase int) ([]doctree.Node, int) {
 }
 
 // collectLiteralIndented gathers the indented block starting at lines[i]
-// for tryLiteralBlock — docutils.statemachine.StringList.get_indented
-// with no known indent for any line (read directly), the routine real
-// docutils uses for a literal block's body specifically, DISTINCT from
-// consumeIndentedBlock's fixed-column collection used for block quotes
-// and list items: a line only ends the block by being non-blank AND
-// having NO leading space at all (column 0) — any positive indentation,
-// even less than an earlier line's own, still belongs to the block. The
-// MINIMUM indentation seen across every non-blank line collected (not
-// just the first) is what gets stripped from all of them, so a single
-// shallower line inside an otherwise deeply-indented block pulls the
-// whole block's dedent in — the "wonky literal block" corpus case this
-// was built for. blankFinish reports whether the block was followed by a
-// blank line (or real EOF) rather than an abrupt unindented line.
-func collectLiteralIndented(lines []string, i int) (block []string, indent int, blankFinish bool, next int) {
+// — docutils.statemachine.StringList.get_indented with no known indent
+// for any line (read directly), the routine real docutils uses for a
+// literal block's body, and (via a known first-line indent stripped
+// separately by the caller — see gatherFootnoteBody's and
+// parseLineBlock's own doc comments) for a footnote/citation/line-block-
+// line's continuation lines too. DISTINCT from consumeIndentedBlock's
+// fixed-column collection used for block quotes and list items: a line
+// only ends the block by being non-blank AND having NO leading space at
+// all (column 0) — any positive indentation, even less than an earlier
+// line's own, still belongs to the block. The MINIMUM indentation seen
+// across every non-blank line collected (not just the first) is what
+// gets stripped from all of them, so a single shallower line inside an
+// otherwise deeply-indented block pulls the whole block's dedent in —
+// the "wonky literal block" corpus case this was built for. blankFinish
+// reports whether the block was followed by a blank line (or real EOF)
+// rather than an abrupt unindented line. untilBlank additionally stops
+// collection AT a blank line (not including it) rather than continuing
+// through it — real docutils' own until_blank parameter, needed by a
+// line-block line's own continuation (a blank line always ends a line
+// block outright, never just separates two paragraphs within one <line>
+// the way it can within a literal block or footnote body).
+func collectLiteralIndented(lines []string, i int, untilBlank bool) (block []string, indent int, blankFinish bool, next int) {
 	end := i
 	known := -1
 	for end < len(lines) {
@@ -1096,6 +1125,9 @@ func collectLiteralIndented(lines []string, i int) (block []string, indent int, 
 			if li := len(line) - len(stripped); known == -1 || li < known {
 				known = li
 			}
+		} else if untilBlank {
+			blankFinish = true
+			break
 		}
 		end++
 	}

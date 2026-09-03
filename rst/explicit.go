@@ -98,7 +98,7 @@ func gatherExplicitBody(lines []string, i int) ([]string, int) {
 // "ends without a blank line; unexpected unindent" warning when it
 // isn't, ported at parseFootnoteOrCitation's own call site.
 func gatherFootnoteBody(lines []string, i int) (body []string, blankFinish bool, next int) {
-	body, _, blankFinish, next = collectLiteralIndented(lines, i+1)
+	body, _, blankFinish, next = collectLiteralIndented(lines, i+1, false)
 	return body, blankFinish, next
 }
 
