@@ -34,24 +34,45 @@ import (
 // the start of a line (":title:`x`") gets misread as a field marker whose
 // "name" swallows the backtick and keeps hunting for a later matching
 // colon — exactly the corpus failure this was caught from (verified
-// against the foreign judge, not assumed from the regex alone). The
-// pattern's own "(?<! )" (a space right before the closing colon also
-// disqualifies it) isn't implemented — no corpus case reached this
-// project needs it, and it interacts with backtracking in a way that's
-// not worth guessing at without one.
+// against the foreign judge, not assumed from the regex alone).
+//
+// Two more pieces of the SAME pattern, both corpus-verified this round
+// (test_field_lists.py's own edge-case fixture): "\\." (a backslash
+// followed by ANY character, consumed as ONE atomic unit) means an
+// escaped colon — “ \: “ — is ALWAYS name content, never a candidate
+// close at all, regardless of what follows it; this needs its own check
+// since the loop below would otherwise reach the escaped colon on its
+// very next character and mistake it for a real one. And "(?<! )" — a
+// space immediately before the closing colon disqualifies THIS colon as
+// a close; since neither remaining alternative in the pattern can then
+// consume it either (a colon followed by a space can't be "ordinary
+// name content" — that alternative explicitly excludes a colon followed
+// by space/backtick/EOL), the whole match fails outright, matching the
+// backtick case just below it — not "keep scanning for a later colon,"
+// since nothing in the pattern lets this character be skipped over.
 func matchFieldMarker(line string) (name string, contentCol int, ok bool) {
 	if len(line) < 2 || line[0] != ':' || line[1] == ':' || line[1] == ' ' {
 		return "", 0, false
 	}
 	for j := 1; j < len(line); j++ {
+		if line[j] == '\\' && j+1 < len(line) {
+			j++ // the loop's own j++ advances past the escaped character too
+			continue
+		}
 		if line[j] != ':' {
 			continue
 		}
 		if j+1 == len(line) {
+			if line[j-1] == ' ' {
+				return "", 0, false
+			}
 			return line[1:j], j + 1, true
 		}
 		switch line[j+1] {
 		case ' ':
+			if line[j-1] == ' ' {
+				return "", 0, false
+			}
 			return line[1:j], j + 2, true
 		case '`':
 			return "", 0, false
@@ -60,8 +81,24 @@ func matchFieldMarker(line string) (name string, contentCol int, ok bool) {
 	return "", 0, false
 }
 
-func (p *parser) parseFieldList(lines []string, i int) (*doctree.Element, int) {
+// parseFieldList returns the built <field_list> plus, when the list is
+// interrupted by a non-blank line that isn't itself a new field marker,
+// a sibling "Field list ends without a blank line; unexpected
+// unindent." WARNING — the same shared "chain a whole run of items
+// through one nested parse, warn once at the very end" shape
+// definition lists (v0.38.0), footnotes/citations (v0.35.0), and line
+// blocks (v0.37.0) already have; unlike line_block's own first-line-
+// based warning, this one uses the standard unindent_warning position
+// (the line right after the list's own last consumed content),
+// matching real docutils exactly.
+//
+// lineBase mirrors every other line-scanning function in this package —
+// see consumeParagraph's own doc comment — so a field name's own
+// inline-markup diagnostics carry a real absolute line number when
+// reached from top-level context (previously always 0/unknown).
+func (p *parser) parseFieldList(lines []string, i, lineBase int) (*doctree.Element, []*doctree.Element, int) {
 	fl := doctree.NewElement(doctree.TagFieldList)
+	bodyNext := i
 	for i < len(lines) {
 		name, col, ok := matchFieldMarker(lines[i])
 		if !ok {
@@ -72,8 +109,13 @@ func (p *parser) parseFieldList(lines []string, i int) (*doctree.Element, int) {
 			first = lines[i][col:]
 		}
 		bodyLines, next := gatherListItemLines(lines, i, col, first)
+		bodyNext = next
 		field := doctree.NewElement(doctree.TagField)
-		nameNodes, nameMsgs := p.parseInline(name, 0)
+		nameLineno := 0
+		if lineBase >= 0 {
+			nameLineno = i + lineBase + 1
+		}
+		nameNodes, nameMsgs := p.parseInline(name, nameLineno)
 		field.Append(doctree.NewElement(doctree.TagFieldName, nameNodes...))
 		body := doctree.NewElement(doctree.TagFieldBody)
 		// real docutils' Body.field: "field_body = nodes.field_body(...,
@@ -91,7 +133,13 @@ func (p *parser) parseFieldList(lines []string, i int) (*doctree.Element, int) {
 			i++
 		}
 	}
-	return fl, i
+	var messages []*doctree.Element
+	if len(fl.Children) > 0 && !(bodyNext >= len(lines) || isBlankStr(lines[bodyNext-1])) {
+		messages = append(messages, sectionMessage("2", "WARNING",
+			"Field list ends without a blank line; unexpected unindent.",
+			msgLine(bodyNext, lineBase), ""))
+	}
+	return fl, messages, i
 }
 
 // isDefinitionTermLine reports whether lines[i] opens a definition list

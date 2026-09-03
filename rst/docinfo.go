@@ -38,6 +38,19 @@ import (
 // alone: it still parses to a plain field_list nested inside the section,
 // which go-richdoc/rst's own README already documents as the "leading
 // field list" case it converts to Document.Meta.
+//
+// This whole function is the SAME "eager resolution vs. bare-parse
+// ground truth" divergence already established for hyperlink references
+// (resolveTargets) and auto-footnote numbering (resolveFootnoteNumbers):
+// DocInfo is itself a TRANSFORM, never applied to a bare `Parser().parse()`
+// — confirmed directly against the live reference implementation
+// (v0.39.0), not assumed — so the docutils testsuite corpus's own
+// ground truth NEVER shows a promoted <docinfo>, even when every field
+// is a recognized bibliographic name. Running it eagerly here, always,
+// is a deliberate choice for real-world usefulness (go-richdoc/rst's
+// own Document.Meta genuinely depends on it), not a bug to revert to
+// match the corpus — any leading field list at all will show as a
+// corpus mismatch (promoted here, plain there), and that's expected.
 func promoteDocInfo(doc *doctree.Element) {
 	if len(doc.Children) == 0 {
 		return

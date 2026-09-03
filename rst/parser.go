@@ -241,8 +241,11 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if _, _, ok := matchFieldMarker(lines[i]); ok {
-			fl, next := p.parseFieldList(lines, i)
+			fl, flMsgs, next := p.parseFieldList(lines, i, 0)
 			current.Append(fl)
+			for _, m := range flMsgs {
+				current.Append(m)
+			}
 			i = next
 			continue
 		}
@@ -427,8 +430,11 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if _, _, ok := matchFieldMarker(lines[i]); ok {
-			fl, next := p.parseFieldList(lines, i)
+			fl, flMsgs, next := p.parseFieldList(lines, i, -1)
 			parent.Append(fl)
+			for _, m := range flMsgs {
+				parent.Append(m)
+			}
 			i = next
 			continue
 		}
