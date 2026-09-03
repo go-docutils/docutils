@@ -355,12 +355,15 @@ parent at all (`if not msg.parent`, read directly) — an inline-markup
 message already has one the moment it's attached, so it is categorically
 excluded, unlike the dangling-reference/anonymous-mismatch messages
 (built via `document.reporter.error` with no tree insertion of their
-own, hence genuinely parentless). A `substitution_reference` ("`|x`" with no closing "`|`") routes through
-the identical real-docutils mechanism (`inline_obj`) yet never actually
-produces this warning in practice — checked against the foreign judge for
-several inputs, not assumed from reading the source alone — so this parser
-matches that observed behavior rather than second-guessing it with a
-warning real docutils itself doesn't emit.
+own, hence genuinely parentless). A `substitution_reference` ("`|x`" with
+no closing "`|`") routes through the identical real-docutils mechanism
+(`inline_obj`) and DOES produce this warning — v0.36.0 corrected an
+earlier version of this note, which claimed otherwise based on limited
+testing that happened not to exercise a substitution reference with no
+valid closing "`|`" anywhere in the text at all (`|sub|ref`, the closing
+"`|`" immediately followed by a word character); verified directly
+against the live reference implementation, not just the corpus, before
+trusting the correction.
 
 Whether a `*`/`**`/two-backtick/backquote/`|` counts as a genuine markup
 start- or end-string at all is docutils' own `start_string_prefix`/

@@ -90,6 +90,20 @@ func TestDumpMultipleAttrsSorted(t *testing.T) {
 	}
 }
 
+// TestDumpAttrBackslashNotDoubled guards against Dump's attribute
+// quoting reverting to Go's %q, which escapes every literal backslash
+// as "\\" — real docutils' own pseudoxml attribute quoting doesn't, and
+// a corpus case (an embedded-link phrase reference over an escaped
+// backslash) depends on the two matching exactly.
+func TestDumpAttrBackslashNotDoubled(t *testing.T) {
+	e := NewElement(TagReference)
+	e.SetAttr("refuri", `anonymous\call`)
+	want := "<reference refuri=\"anonymous\\call\">\n"
+	if got := Dump(e); got != want {
+		t.Errorf("Dump() = %q, want %q (a literal backslash in an attribute must not be doubled)", got, want)
+	}
+}
+
 func TestDumpMultilineText(t *testing.T) {
 	e := NewElement(TagParagraph, &Text{Data: "line one\nline two"})
 	want := "<paragraph>\n    line one\n    line two\n"

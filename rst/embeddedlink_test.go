@@ -91,6 +91,11 @@ func TestEmbeddedLinkPhraseReference(t *testing.T) {
 			"`no embedded alias (no preceding whitespace)<alias_>`__\n\n.. __: https://example.org/anon\n",
 			"<document>\n    <paragraph>\n        <reference anonymous=\"true\" name=\"no embedded alias (no preceding whitespace)<alias_>\" refuri=\"https://example.org/anon\">\n            no embedded alias (no preceding whitespace)<alias_>\n    <target anonymous=\"true\" refuri=\"https://example.org/anon\">\n",
 		},
+		{
+			"an escaped backslash inside an anonymous embedded URI stays a single literal backslash, in both the text and the refuri attribute",
+			"`<anonymous\\\\call>`__\n",
+			"<document>\n    <paragraph>\n        <reference name=\"anonymous\\call\" refuri=\"anonymous\\call\">\n            anonymous\\call\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -46,13 +46,39 @@ func dump(b *strings.Builder, n Node, depth int) {
 		b.WriteByte('<')
 		b.WriteString(v.Tag)
 		for _, k := range sortedKeys(v.Attrs) {
-			fmt.Fprintf(b, " %s=%q", k, v.Attrs[k])
+			fmt.Fprintf(b, " %s=%s", k, quoteAttr(v.Attrs[k]))
 		}
 		b.WriteString(">\n")
 		for _, c := range v.Children {
 			dump(b, c, depth+1)
 		}
 	}
+}
+
+// quoteAttr wraps s in double quotes, escaping only the double-quote
+// character itself (plus newline/tab for readability) — deliberately
+// NOT Go's %q, which also doubles every literal backslash; an attribute
+// value containing a real backslash (an escaped-backslash-in-a-URI
+// corpus case, verified against the foreign judge) needs to come out
+// exactly as it went in, matching real docutils' own pseudoxml
+// attribute quoting, which doesn't escape backslashes either.
+func quoteAttr(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 func sortedKeys(m map[string]string) []string {
