@@ -14,19 +14,22 @@ func TestInlineTarget(t *testing.T) {
 		want   string
 	}{
 		{
+			// docutils/rst v0.32.0+ — an inline internal target now also
+			// gets a slugified "id" attribute, matching every other
+			// target kind (previously only "name" was set).
 			"inline target keeps its visible text and a matching name attr",
 			"See the _`important term` defined here.\n",
-			"<document>\n    <paragraph>\n        See the \n        <target name=\"important term\">\n            important term\n         defined here.\n",
+			"<document>\n    <paragraph>\n        See the \n        <target id=\"important-term\" name=\"important term\">\n            important term\n         defined here.\n",
 		},
 		{
 			"a later reference to the same term resolves to a same-document anchor",
 			"See the _`important term` and later refer to `important term`_.\n",
-			"<document>\n    <paragraph>\n        See the \n        <target name=\"important term\">\n            important term\n         and later refer to \n        <reference name=\"important term\" refname=\"important term\" refuri=\"#important term\">\n            important term\n        .\n",
+			"<document>\n    <paragraph>\n        See the \n        <target id=\"important-term\" name=\"important term\">\n            important term\n         and later refer to \n        <reference name=\"important term\" refname=\"important term\" refuri=\"#important-term\">\n            important term\n        .\n",
 		},
 		{
 			"resolution is case-insensitive, same as any other reference name",
 			"_`Important Term` ... `important term`_.\n",
-			"<document>\n    <paragraph>\n        <target name=\"important term\">\n            Important Term\n         ... \n        <reference name=\"important term\" refname=\"important term\" refuri=\"#important term\">\n            important term\n        .\n",
+			"<document>\n    <paragraph>\n        <target id=\"important-term\" name=\"important term\">\n            Important Term\n         ... \n        <reference name=\"important term\" refname=\"important term\" refuri=\"#important-term\">\n            important term\n        .\n",
 		},
 	}
 	for _, tc := range cases {

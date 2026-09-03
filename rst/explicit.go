@@ -828,8 +828,16 @@ func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTarg
 			default:
 				// An inline internal target ("_`text`") carries no URI of
 				// its own — it IS the destination, a same-document anchor
-				// a reference resolves to by pointing at its own id.
-				direct[name] = "#" + name
+				// a reference resolves to by pointing at its own SLUGIFIED
+				// id (tryInlineTarget's own "id" attribute, matching every
+				// other target kind), falling back to the raw name only in
+				// the vanishingly rare case makeID produces an empty slug
+				// (e.g. a name with no ASCII alphanumeric content at all).
+				id := el.Attr("id")
+				if id == "" {
+					id = name
+				}
+				direct[name] = "#" + id
 			}
 		}
 	}

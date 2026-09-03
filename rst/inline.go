@@ -1004,7 +1004,9 @@ func tryInlineTarget(runes []rune, i int) (doctree.Node, int, bool) {
 		return nil, 0, false
 	}
 	el := doctree.NewElement(doctree.TagTarget, &doctree.Text{Data: content})
-	el.SetAttr("name", normalizeName(content))
+	name := normalizeName(content)
+	el.SetAttr("name", name)
+	el.SetAttr("id", makeID(name))
 	return el, (closeAt + closeLen) - i, true
 }
 

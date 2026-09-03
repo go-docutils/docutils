@@ -232,8 +232,12 @@ opposed to the block-level `.. _name: uri` hyperlink target above,
 docutils' own target pattern in `Inliner.patterns`). Unlike a
 block-level target, this one keeps its content as visible text and
 carries no URI of its own — a reference resolving to one now resolves
-to a same-document anchor (`#name`) instead, which both writers render
-with a real anchor point (HTML `<a id="name">text</a>`; LaTeX
+to a same-document anchor (`#slug`, the target's own SLUGIFIED `id`
+attribute, `docutils/rst` v0.32.0+ — matching every other target kind;
+before that this parser only gave it a `name`, and same-document
+anchors carried whatever raw, unslugified text the name itself
+happened to be, spaces and all) instead, which both writers render
+with a real anchor point (HTML `<a id="slug">text</a>`; LaTeX
 `\hypertarget`/`\hyperlink`, not `\href` — a `#`-prefixed refuri routes
 to the internal-link path specifically, since `\href`'s usual URL
 escaping would corrupt hyperref's own `#`-marker convention).
