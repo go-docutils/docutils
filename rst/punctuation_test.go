@@ -140,6 +140,21 @@ func TestInlineMarkupBoundaries(t *testing.T) {
 			"<document>\n    <paragraph>\n        <emphasis>\n            emphasis\n        (closing delimiters)\n",
 		},
 		{
+			// docutils/rst v0.33.0+ — real docutils' own \x00-marker
+			// escaping keeps the escaped character itself intact right
+			// after the marker byte, so a start-boundary lookbehind sees
+			// a genuine space there for free; this parser's own
+			// escapeRune representation shifts the rune value entirely
+			// instead, so validStartBoundary needs to unescape a
+			// neighboring rune before its own character-class checks —
+			// found chasing a real corpus case where FOUR consecutive
+			// character-level markers, each preceded by an escaped
+			// space, failed to be recognized as markup at all.
+			"a backslash-escaped space right BEFORE the start-string is also a valid boundary, and is dropped from the text",
+			"m\\ *a*\\ **r**\\ ``k``\\ `u`:title:\\p\n",
+			"<document>\n    <paragraph>\n        m\n        <emphasis>\n            a\n        <strong>\n            r\n        <literal>\n            k\n        <title_reference>\n            u\n        p\n",
+		},
+		{
 			"a backslash-escaped space right before the start-string is NOT a valid boundary on its own (still needs whitespace/opener/delimiter behind that)",
 			"\\*args or * (escaped, whitespace behind start-string)\n",
 			"<document>\n    <paragraph>\n        *args or * (escaped, whitespace behind start-string)\n",

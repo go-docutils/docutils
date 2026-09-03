@@ -409,21 +409,28 @@ instead of stripping them — the ONLY marker with this behavior:
 which (`nodes.unescape`, read directly) puts the literal backslash back
 rather than dropping it, so `` ``\literal`` `` keeps its own visible
 backslash (`\literal`) where every other construct (emphasis, strong,
-a role's own interpreted text, ...) would silently drop it. An escaped
-character that would otherwise complete a MULTI-CHARACTER close
-delimiter (an escaped first backtick immediately followed by a second,
-real one — `` ``text\`` `` — real docutils' `\x00`-substitution still
-counts the escaped character's own identity toward the "``" pair, only
-suppressing the backslash from the final text) is a known, NOT yet
-ported gap: this parser's own escaped-rune representation
-(`escapeRune`/`isEscapedRune` in `inline.go`) makes an escaped character
-unrecognizable as itself to any literal-rune comparison, which also
-affects general marker start-boundary recognition immediately after a
-backslash-escaped space (`m\ *a*` — the escaped space should count as
-valid preceding whitespace for `*a*` to open at all, same underlying
-cause) — confirmed against the foreign judge, deliberately NOT fixed in
-this round: it touches boundary-matching code shared by every marker
-type, not a single self-contained call site.
+a role's own interpreted text, ...) would silently drop it. General marker start-boundary recognition immediately after a
+backslash-escaped space or newline (`m\ *a*\ **r**\ ``k``\ `u`:title:` —
+each construct's own escaped-space prefix now counts as valid preceding
+whitespace, `docutils/rst` v0.33.0+) IS ported —
+`validStartBoundary` unescapes a neighboring rune before its own
+character-class checks, the same "real docutils' `\x00`-substitution
+keeps the ORIGINAL character intact for structural matching" principle
+`joinEmbeddedURI` already relies on for embedded links (v0.31.0). An
+escaped character that would otherwise complete a MULTI-CHARACTER
+CLOSE delimiter specifically (an escaped first backtick immediately
+followed by a second, real one — `` ``text\`` `` — real docutils'
+`\x00`-substitution still counts the escaped character's own identity
+toward the "``" pair, only suppressing the backslash from the final
+text) remains a known, NOT yet ported gap: unlike the start-boundary
+fix (a single-rune lookbehind, straightforward to unescape), a close
+search needs to treat ONE escaped rune as if it were TWO characters
+(docutils' own `\x00` marker byte plus the original character,
+occupying two string positions there — this parser's `escapeRune`
+collapses both into one rune) to correctly recover the restored
+backslash in the surrounding text, not merely recognize the character
+identity — deliberately not attempted without dedicated time to get
+that representational mismatch right.
 
 Every `<system_message>` this parser builds now carries `level`/`type`
 (constants per message kind — inline-markup-time messages are always
