@@ -121,7 +121,7 @@ func (p *parser) parseInline(text string, lineno int) ([]doctree.Node, []*doctre
 			i += consumed
 			continue
 		}
-		if node, consumed, ok := tryInlineTarget(runes, i); ok {
+		if node, consumed, ok := p.tryInlineTarget(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
@@ -260,20 +260,37 @@ var markers = []marker{
 // whether a match was found. Once a marker's open string AND start
 // boundary both match, real docutils commits to that one construct — its
 // compiled regex dispatches once, with no "try the next alternative"
-// fallback — so a close-string failure past that point ends the loop with
-// a <problematic> (markupProblematic) rather than falling through to try
-// unrelated markers, EXCEPT for substitution_reference ("|"), which real
-// docutils routes through the exact same inline_obj machinery but —
-// checked against the foreign judge, not assumed, since "|" is common
-// ordinary punctuation an unconditional warning would false-positive on
-// constantly — never actually reaches a warning for this project's own
-// tested inputs; a real, narrow divergence this parser accepts rather
-// than second-guess.
+// fallback — so a close-string failure past that point ends the loop
+// with a <problematic> (markupProblematic) rather than falling through
+// to try unrelated markers, INCLUDING substitution_reference ("|"):
+// verified against the foreign judge ("|sub|ref", no closing "|" with a
+// valid boundary anywhere) that real docutils DOES warn there too — an
+// earlier version of this parser special-cased substitution_reference
+// out of this rule based on more limited testing that happened not to
+// exercise this exact shape; that divergence was wrong, not a real
+// leniency choice, and is corrected here.
+//
+// The "**"-vs-"*" ambiguity gets its own explicit precedence check,
+// separate from markers' own list order: real docutils' compiled
+// regex alternation lists `\*\*` before `\*(?!\*)` — the negative
+// lookahead means a lone "*" NEVER even attempts to match when it's
+// actually the start of a "**" run, regardless of whether "**" itself
+// goes on to satisfy its own start boundary. Iterating markers in order
+// and simply `continue`-ing past a boundary failure gets this wrong: at
+// "(**)", "**"'s own boundary correctly rejects (quoted_start — an
+// empty parenthesized pair), but the loop would otherwise fall through
+// and let "*" (single) match at the SAME position, silently reinterpreting
+// an invalid two-character attempt as a valid shorter one — something
+// real docutils' regex, having committed to "**" as the only candidate
+// for these two characters, never does.
 func (p *parser) tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 	for _, m := range markers {
 		ol := len([]rune(m.open))
 		if !hasPrefixAt(runes, i, m.open) {
 			continue
+		}
+		if m.tag == doctree.TagEmphasis && hasPrefixAt(runes, i, "**") {
+			return nil, 0, false
 		}
 		if !validStartBoundary(runes, i, ol) {
 			continue
@@ -295,9 +312,6 @@ func (p *parser) tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 			closeAt, closeLen, ok = findClose(runes, i+ol, m.open)
 		}
 		if !ok {
-			if m.tag == doctree.TagSubstitutionRef {
-				continue
-			}
 			return p.markupProblematic(m.tag, m.open), ol, true
 		}
 		// literal's content is backslash-RESTORED, not stripped — real
@@ -988,7 +1002,16 @@ func tryBareReference(runes []rune, i int) (doctree.Node, int, bool) {
 // keeps its content as visible text (docutils: <target ids="..."
 // names="...">text</target>) — the name a reference resolves against comes
 // from that text, normalized the same way as any other reference name.
-func tryInlineTarget(runes []rune, i int) (doctree.Node, int, bool) {
+// A start-string with no valid end-string (the closing backquote found,
+// but not itself followed by a valid end boundary — e.g. “ _`this`_ “,
+// where the trailing "_" right after the close is neither whitespace
+// nor a closer/delimiter, so real docutils keeps searching for a LATER
+// close that never comes) becomes a <problematic> with the "Inline
+// target start-string without end-string." warning, the same
+// commit-once behavior tryMarker's own non-substitution branch already
+// has — this used to return "no match" silently instead, leaving the
+// whole construct as unremarked plain text.
+func (p *parser) tryInlineTarget(runes []rune, i int) (doctree.Node, int, bool) {
 	if runes[i] != '_' || i+1 >= len(runes) || runes[i+1] != '`' {
 		return nil, 0, false
 	}
@@ -997,7 +1020,7 @@ func tryInlineTarget(runes []rune, i int) (doctree.Node, int, bool) {
 	}
 	closeAt, closeLen, ok := findClose(runes, i+2, "`")
 	if !ok {
-		return nil, 0, false
+		return p.markupProblematic("target", "_`"), 2, true
 	}
 	content := unescapeRunes(runes[i+2 : closeAt])
 	if content == "" {
@@ -1191,11 +1214,19 @@ func tryFootnoteRef(runes []rune, i int) (doctree.Node, int, bool) {
 		return nil, 0, false
 	}
 	total := end + 2 - i
-	if end+2 < len(runes) {
-		next := runes[end+2]
-		if !unicode.IsSpace(next) && !unicode.IsPunct(next) {
-			return nil, 0, false
-		}
+	if end+2 < len(runes) && !isValidEndBoundaryChar(runes[end+2]) {
+		// Real docutils' end_string_suffix, same as every other
+		// construct's own close (findClose/
+		// validEndBoundaryAfterOptionalUnderscores) — this used to be a
+		// blanket unicode.IsPunct check, which wrongly accepted an
+		// OPENER like '[' right after the closing "_" (unicode.IsPunct
+		// doesn't distinguish openers from closers the way
+		// punctuation_chars does), letting an adjacent "[label]_[other]_"
+		// run resolve each bracket independently instead of correctly
+		// rejecting every one of them (a corpus-verified real-world
+		// shape: several footnote/citation references with no
+		// separating whitespace at all).
+		return nil, 0, false
 	}
 
 	var el *doctree.Element
@@ -1287,6 +1318,19 @@ func validStartBoundary(runes []rune, i, openLen int) bool {
 	return true
 }
 
+// isValidEndBoundaryChar reports whether r may immediately follow a
+// closing delimiter under docutils' end_string_suffix — end-of-text
+// (checked separately by every caller, since that needs an index bound,
+// not a rune), whitespace, a CLOSING-DELIMITER, a DELIMITER, or a
+// CLOSER, and an escaped rune (already excluded from ever matching as a
+// real delimiter itself, so it's always safe here) — never an OPENER or
+// an ordinary character. Shared by findClose,
+// validEndBoundaryAfterOptionalUnderscores, and tryFootnoteRef, which
+// each independently need the exact same check.
+func isValidEndBoundaryChar(r rune) bool {
+	return unicode.IsSpace(r) || isClosingDelimiter(r) || isDelimiterChar(r) || isCloser(r) || isEscapedRune(r)
+}
+
 // findClose scans forward from `from` for the next occurrence of `open`
 // (the close-string is the same characters as the open-string in reST)
 // satisfying docutils' end_string_suffix: not immediately preceded by
@@ -1307,11 +1351,8 @@ func findClose(runes []rune, from int, open string) (int, int, bool) {
 		if unicode.IsSpace(prev) {
 			continue
 		}
-		if j+ol < len(runes) {
-			next := runes[j+ol]
-			if !unicode.IsSpace(next) && !isClosingDelimiter(next) && !isDelimiterChar(next) && !isCloser(next) && !isEscapedRune(next) {
-				continue
-			}
+		if j+ol < len(runes) && !isValidEndBoundaryChar(runes[j+ol]) {
+			continue
 		}
 		return j, ol, true
 	}
@@ -1408,8 +1449,7 @@ func validEndBoundaryAfterOptionalUnderscores(runes []rune, at int) bool {
 		if pos >= len(runes) {
 			return true
 		}
-		next := runes[pos]
-		if unicode.IsSpace(next) || isClosingDelimiter(next) || isDelimiterChar(next) || isCloser(next) || isEscapedRune(next) {
+		if isValidEndBoundaryChar(runes[pos]) {
 			return true
 		}
 	}

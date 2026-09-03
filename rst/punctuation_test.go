@@ -164,6 +164,17 @@ func TestInlineMarkupBoundaries(t *testing.T) {
 			"see `Section`_ for details\n\nSection\n=======\n",
 			"<document>\n    <paragraph>\n        see \n        <reference name=\"Section\" refname=\"section\" refuri=\"#section\">\n            Section\n         for details\n    <section id=\"section\" name=\"section\">\n        <title>\n            Section\n",
 		},
+		{
+			// docutils/rst v0.36.0+ — real docutils' regex alternation
+			// tries "**" before "*(?!\*)": once "**" is the character-level
+			// candidate at a position, an invalid start boundary for IT
+			// (here, quoted_start — "(**)" is an empty parenthesized pair)
+			// means the whole two characters are just ordinary text, never
+			// a fallback retry as a single "*" using the SAME position.
+			"a quoted (sandwiched, empty) '**' pair is plain text, not reinterpreted as a shorter single '*' attempt",
+			"(**strong**) but not (**) or '(** '\n",
+			"<document>\n    <paragraph>\n        (\n        <strong>\n            strong\n        ) but not (**) or '(** '\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

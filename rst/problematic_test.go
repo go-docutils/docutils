@@ -80,9 +80,9 @@ func TestUnclosedInlineMarkupBecomesProblematic(t *testing.T) {
 			"<document>\n    <paragraph>\n        Two unclosed: \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            *\n        first and \n        <problematic id=\"problematic-2\" refid=\"system-message-2\">\n            **\n        second here.\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline emphasis start-string without end-string.\n    <system_message backref=\"problematic-2\" id=\"system-message-2\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline strong start-string without end-string.\n",
 		},
 		{
-			"an unclosed substitution reference stays plain text, no warning at all",
+			"an unclosed substitution reference becomes problematic too, same as every other marker",
 			"unclosed |sub here\n",
-			"<document>\n    <paragraph>\n        unclosed |sub here\n",
+			"<document>\n    <paragraph>\n        unclosed \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            |\n        sub here\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline substitution_reference start-string without end-string.\n",
 		},
 		{
 			"a role-prefixed unclosed backquote still ends up byte-identical to real docutils",
