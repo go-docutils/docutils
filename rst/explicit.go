@@ -108,15 +108,35 @@ func gatherFootnoteBody(lines []string, i int) (body []string, blankFinish bool,
 // "self.parent += extra_message" shape — see the table/list-table
 // directives, tabledirective.go) needs more than one, and a role
 // registration (see parseDirective) needs zero.
-func (p *parser) parseExplicitMarkup(lines []string, i int, parent *doctree.Element) ([]doctree.Node, int) {
+//
+// A bare ".." (exactly 2 characters, nothing else on the line) is only
+// an immediately-empty comment when the FOLLOWING line is itself blank
+// or EOF — real docutils' own Body.comment checks
+// `self.state_machine.is_next_line_blank()` before taking that
+// shortcut, states.py read directly. When something non-blank follows
+// (indented or not — a real corpus case: a bare ".." then an indented
+// paragraph, a hyperlink-target-looking line, a citation-looking line,
+// or a substitution-looking line, none of which get re-interpreted as
+// their own construct), it falls through to the SAME general comment
+// path a ".. " marker with no same-line content uses — a bare ".."
+// was previously ALWAYS treated as an empty comment, wrongly leaving
+// its own body to be picked up by the outer dispatch loop as an
+// unrelated, WRONGLY RE-PARSED sibling construct.
+//
+// lineBase mirrors every other line-scanning function in this package —
+// see consumeParagraph's own doc comment.
+func (p *parser) parseExplicitMarkup(lines []string, i, lineBase int, parent *doctree.Element) ([]doctree.Node, int) {
 	line := lines[i]
 	if len(line) == 2 {
-		return []doctree.Node{doctree.NewElement(doctree.TagComment)}, i + 1
+		if i+1 >= len(lines) || isBlankStr(lines[i+1]) {
+			return []doctree.Node{doctree.NewElement(doctree.TagComment)}, i + 1
+		}
+		return p.parseComment(lines, i, lineBase, "")
 	}
 	rest := line[3:]
 
 	if label, labelRest, ok := matchBracketLabel(rest); ok {
-		return p.parseFootnoteOrCitation(lines, i, label, labelRest)
+		return p.parseFootnoteOrCitation(lines, i, lineBase, label, labelRest)
 	}
 	if strings.HasPrefix(rest, "__:") {
 		node, next := parseAnonymousTarget(lines, i, rest[3:])
@@ -137,8 +157,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i int, parent *doctree.Elem
 	if name, args, ok := matchDirectiveName(rest); ok {
 		return p.parseDirective(lines, i, name, args, parent)
 	}
-	node, next := parseComment(lines, i, rest)
-	return []doctree.Node{node}, next
+	return p.parseComment(lines, i, lineBase, rest)
 }
 
 // matchBracketLabel recognizes "[label] rest" at the start of s — the
@@ -186,7 +205,7 @@ func matchBracketLabel(s string) (label, rest string, ok bool) {
 // generic wrapper, which applies this uniformly to every explicit
 // construct, not just footnotes/citations, though only this call site
 // ports it so far).
-func (p *parser) parseFootnoteOrCitation(lines []string, i int, label, firstLineRest string) ([]doctree.Node, int) {
+func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label, firstLineRest string) ([]doctree.Node, int) {
 	body, blankFinish, next := gatherFootnoteBody(lines, i)
 	content := append([]string{firstLineRest}, body...)
 	for len(content) > 0 && isBlankStr(content[len(content)-1]) {
@@ -221,7 +240,7 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i int, label, firstLine
 	if len(content) > 0 {
 		p.parseBlockLines(content, el)
 	} else {
-		el.Append(sectionMessage("2", "WARNING", contentKind+" content expected.", next+1, ""))
+		el.Append(sectionMessage("2", "WARNING", contentKind+" content expected.", msgLine(next, lineBase), ""))
 	}
 	nodes := []doctree.Node{el}
 	// Real docutils chains a whole RUN of explicit-markup constructs
@@ -234,7 +253,7 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i int, label, firstLine
 	stoppedOnExplicitMarkup := next < len(lines) && isExplicitMarkupLine(lines[next])
 	if !blankFinish && !stoppedOnExplicitMarkup {
 		nodes = append(nodes, sectionMessage("2", "WARNING",
-			"Explicit markup ends without a blank line; unexpected unindent.", next+1, ""))
+			"Explicit markup ends without a blank line; unexpected unindent.", msgLine(next, lineBase), ""))
 	}
 	return nodes, next
 }
@@ -660,8 +679,24 @@ func (p *parser) parseDirective(lines []string, i int, name, args string, parent
 	return []doctree.Node{el}, next
 }
 
-func parseComment(lines []string, i int, rest string) (doctree.Node, int) {
-	body, next := gatherExplicitBody(lines, i)
+// parseComment ports Body.comment (states.py, read directly): like
+// footnote/citation, a comment's body uses
+// get_first_known_indented(match.end()) — gatherFootnoteBody, reused
+// here verbatim (the SAME mechanism, not gatherExplicitBody's fixed
+// 3-column floor, which this used to call and which required the body
+// to start on a SEPARATE line at least 3 columns deep; a comment's own
+// body has no such floor, any positive indent counts) — trailing blank
+// entries are trimmed before joining (real docutils' own "while
+// indented and not indented[-1].strip(): indented.trim_end()"), since
+// unlike a footnote/citation's body — which gets re-parsed, so a
+// trailing blank line is a harmless no-op — a comment's body is stored
+// as raw, verbatim text and a leftover trailing blank would show up as
+// a real trailing newline in it.
+func (p *parser) parseComment(lines []string, i, lineBase int, rest string) ([]doctree.Node, int) {
+	body, blankFinish, next := gatherFootnoteBody(lines, i)
+	for len(body) > 0 && isBlankStr(body[len(body)-1]) {
+		body = body[:len(body)-1]
+	}
 	text := strings.TrimSpace(rest)
 	if len(body) > 0 {
 		if text != "" {
@@ -669,10 +704,19 @@ func parseComment(lines []string, i int, rest string) (doctree.Node, int) {
 		}
 		text += strings.Join(body, "\n")
 	}
+	var el *doctree.Element
 	if text == "" {
-		return doctree.NewElement(doctree.TagComment), next
+		el = doctree.NewElement(doctree.TagComment)
+	} else {
+		el = doctree.NewElement(doctree.TagComment, &doctree.Text{Data: text})
 	}
-	return doctree.NewElement(doctree.TagComment, &doctree.Text{Data: text}), next
+	nodes := []doctree.Node{el}
+	stoppedOnExplicitMarkup := next < len(lines) && isExplicitMarkupLine(lines[next])
+	if !blankFinish && !stoppedOnExplicitMarkup {
+		nodes = append(nodes, sectionMessage("2", "WARNING",
+			"Explicit markup ends without a blank line; unexpected unindent.", msgLine(next, lineBase), ""))
+	}
+	return nodes, next
 }
 
 // parseHyperlinkTarget recognizes ".. _name: uri", where uri may

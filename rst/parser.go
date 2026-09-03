@@ -280,7 +280,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if isExplicitMarkupLine(lines[i]) {
-			nodes, next := p.parseExplicitMarkup(lines, i, current)
+			nodes, next := p.parseExplicitMarkup(lines, i, 0, current)
 			for _, n := range nodes {
 				current.Append(n)
 			}
@@ -469,7 +469,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if isExplicitMarkupLine(lines[i]) {
-			nodes, next := p.parseExplicitMarkup(lines, i, parent)
+			nodes, next := p.parseExplicitMarkup(lines, i, -1, parent)
 			for _, n := range nodes {
 				parent.Append(n)
 			}

@@ -248,18 +248,19 @@ the exact list and why): the "ends without a blank line; unexpected
 unindent" WARNING real docutils' own `unindent_warning` produces for
 EVERY explicit-markup construct (a directive, footnote, citation, ...)
 that a following, insufficiently-indented line interrupts — this parser
-has it for enumerated lists (parser.go, v0.25.0), footnotes and
-citations (explicit.go's `parseFootnoteOrCitation`, v0.35.0 — including
-the one real subtlety: two adjacent explicit-markup constructs with no
-blank line between them are NOT an abrupt unindent at all, real
-docutils chains a whole run of them through one nested state machine
-and only warns once that chain is broken by something that ISN'T
-itself another explicit-markup line, `Body.explicit_list`, read
-directly), and literal blocks (parser.go's `tryLiteralBlock`, v0.34.0);
-a topic/sidebar containing a rejected nested directive, or a hyperlink
-target/comment/directive interrupted the same way, is still missing
-this one diagnostic even though the rejection itself is correctly
-reported. Docutils'
+has it for enumerated lists (parser.go, v0.25.0), footnotes, citations,
+and comments (explicit.go's `parseFootnoteOrCitation`/`parseComment`,
+v0.35.0/v0.40.0 — including the one real subtlety: two adjacent
+explicit-markup constructs with no blank line between them are NOT an
+abrupt unindent at all, real docutils chains a whole run of them
+through one nested state machine and only warns once that chain is
+broken by something that ISN'T itself another explicit-markup line,
+`Body.explicit_list`, read directly), literal blocks (parser.go's
+`tryLiteralBlock`, v0.34.0), line blocks, definition lists, and field
+lists (v0.37.0/v0.38.0/v0.39.0); a topic/sidebar containing a rejected
+nested directive, or a hyperlink target/directive interrupted the same
+way, is still missing this one diagnostic even though the rejection
+itself is correctly reported. Docutils'
 *standalone* PEP/RFC recognition —
 bare `pep-123`/`RFC 123` text with no `:PEP:`/`:RFC:` role markup at all
 (checked against `Parser().parse()` with default settings — docutils'
