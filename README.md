@@ -161,7 +161,17 @@ role, `title_reference`), named/anonymous references both bare (`x_`,
 `x__`) and backtick-quoted (`` `x`_ ``, `` `x`__ ``) including an
 embedded URI or indirect-name target (`` `text <https://example.com>`_
 ``, `` `text <alias_>`_ ``, with `mailto:` auto-prefixing for an
-embedded email address), interpreted text with a role, prefix
+embedded email address; a real multi-line target — the marker itself
+starting on a later physical line, or its own value wrapping across
+one, both real, corpus-tested shapes — joins with all REAL whitespace
+inside it stripped entirely, while a backslash-escaped space/newline
+there becomes exactly one literal space instead; omitting the display
+text (`` `<uri>`_ ``) reuses the URI/alias itself as both display text
+and the target's own name; a NAMED (single `_`) reference like this
+also emits a real `<target>` sibling, so another reference elsewhere to
+the same display text can resolve to it too — an ANONYMOUS (`__`) one
+never does, resolving directly off its own refuri/refname instead of
+joining document-order anonymous-target matching), interpreted text with a role, prefix
 (`` :role:`x` ``) or suffix (`` `x`:role: ``), for docutils' built-in
 GENERIC roles (`emphasis`, `strong`, `literal`, `subscript`/`sub`,
 `superscript`/`sup`, `title-reference`/`title`/`t`,
@@ -253,7 +263,13 @@ rewriting every OTHER unrecognized name to `problematic`, since that
 would be a real leniency REGRESSION for any document using a role this
 parser has simply never heard of (a Sphinx/extension role, say) rather
 than a gap filled — real docutils always errors there, this parser
-still doesn't, on purpose. Directive-level argument/option-syntax
+still doesn't, on purpose. Standalone URI recognition (no backtick
+quoting or trailing `_` needed at all, `inline.go`) only matches a
+"scheme://" (double-slash) form — real docutils' own URI pattern also
+accepts a bare "scheme:path" with no "//" at all (`mailto:`, `news:`,
+`urn:` and friends), not yet ported; the SAME schemes work fine as an
+EMBEDDED URI inside a phrase reference (`` `text <mailto:x@y.com>`_
+``), where this limitation doesn't apply. Directive-level argument/option-syntax
 validation is likewise not implemented for ANY directive (an
 unresolvable role base, an invalid option value, a malformed directive
 argument list, a required argument missing entirely — real docutils

@@ -35,7 +35,7 @@ func TestDanglingReferenceBecomesProblematic(t *testing.T) {
 		{
 			"a resolved reference is unaffected, no trailing section at all",
 			"A real one: `Python <https://python.org>`_.\n",
-			"<document>\n    <paragraph>\n        A real one: \n        <reference name=\"Python\" refuri=\"https://python.org\">\n            Python\n        .\n",
+			"<document>\n    <paragraph>\n        A real one: \n        <reference name=\"Python\" refuri=\"https://python.org\">\n            Python\n        <target id=\"python\" name=\"python\" refuri=\"https://python.org\">\n        .\n",
 		},
 	}
 	for _, tc := range cases {

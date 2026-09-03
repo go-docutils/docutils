@@ -44,9 +44,16 @@ func TestRender(t *testing.T) {
 			"<p>Sample:</p><pre><code>code here</code></pre>",
 		},
 		{
+			// docutils/rst v0.31.0+ — a named phrase reference with an
+			// embedded URI now also emits the implicit <target> sibling
+			// real docutils creates alongside it (so another reference
+			// to "Python" elsewhere could resolve to the same URI) — an
+			// empty id-only anchor here, the same shape this writer's
+			// own TagTarget case already gives a block-level hyperlink
+			// target with no content.
 			"reference with resolved refuri",
 			"See `Python <https://python.org>`_ now.\n",
-			`<p>See <a href="https://python.org">Python</a> now.</p>`,
+			`<p>See <a href="https://python.org">Python</a><a id="python"></a> now.</p>`,
 		},
 		{
 			"bare reference with no target becomes problematic text plus a trailing system-messages section",
