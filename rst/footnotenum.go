@@ -47,6 +47,18 @@ func footnoteSymbolLabel(index int) string {
 // definition's synthetic name and label, textual order (verified against
 // real docutils: this holds regardless of whether definitions appear
 // before or after their references, same as anonymous targets).
+//
+// This is the SAME "eager resolution vs. bare-parse ground truth"
+// divergence already established for hyperlink references
+// (resolveTargets, explicit.go's own doc comment): real docutils' own
+// Footnotes transform runs AFTER parsing, so a bare `Parser().parse()`
+// (the docutils testsuite corpus's own ground truth) shows an
+// auto-numbered/auto-symbol footnote and its reference completely
+// UNRESOLVED — no `<label>` at all, no visible number, no refname/id
+// beyond a plain positional one — confirmed against
+// test_footnotes.py[auto_numbered_footnotes]/[auto_symbol_footnotes]
+// (v0.35.0's own footnote-body-diagnostics round): a genuine,
+// deliberate, already-precedented divergence, not a bug to chase.
 func resolveFootnoteNumbers(doc *doctree.Element) {
 	var numericDefs, symbolDefs []*doctree.Element
 	collectAutoFootnoteDefs(doc, &numericDefs, &symbolDefs)

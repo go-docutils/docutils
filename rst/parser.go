@@ -132,6 +132,31 @@ type parser struct {
 	// actual splice to hoistMetaNodes, run once at the end of Parse,
 	// rather than mutating doc mid-walk.
 	metaNodes []doctree.Node
+	// fallbackIDCounters backs explicitTargetID's per-tag positional
+	// fallback ("footnote-1", "footnote-2", ...) — real docutils'
+	// Node.document.set_id, read directly: an explicit target whose own
+	// name can't become a valid id (make_id requires starting with a
+	// letter, so a purely-numeric footnote label like "1" produces
+	// nothing usable) falls back to a running counter scoped to the
+	// element's own tag name, never the raw name itself.
+	fallbackIDCounters map[string]int
+}
+
+// explicitTargetID returns the id an explicit target (a footnote,
+// citation, or hyperlink target — currently only footnote.go/
+// explicit.go's footnote/citation dispatch calls this) should carry: the
+// name's own slug (makeID) when that produces something valid, else a
+// positional fallback under tag ("footnote-1", "citation-1", ...) — see
+// fallbackIDCounters' own doc comment.
+func (p *parser) explicitTargetID(tag, name string) string {
+	if id := makeID(name); id != "" {
+		return id
+	}
+	if p.fallbackIDCounters == nil {
+		p.fallbackIDCounters = map[string]int{}
+	}
+	p.fallbackIDCounters[tag]++
+	return tag + "-" + strconv.Itoa(p.fallbackIDCounters[tag])
 }
 
 // roleDef is one ".. role::" registration: base names the role it derives

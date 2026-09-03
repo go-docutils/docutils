@@ -76,6 +76,32 @@ func gatherExplicitBody(lines []string, i int) ([]string, int) {
 	return consumeIndentedBlock(lines, j, indent)
 }
 
+// gatherFootnoteBody collects a footnote or citation's continuation
+// lines — real docutils' Body.footnote/Body.citation both call
+// get_first_known_indented(match.end()) (states.py, read directly),
+// DISTINCT from gatherExplicitBody's fixed 3-column floor used for
+// comments/directives/substitutions: a footnote's own body has no
+// minimum indent requirement at all, and no fixed dedent column either
+// — any positive indentation counts, and the TRUE MINIMUM across every
+// continuation line (not just the first) is what gets stripped, exactly
+// like collectLiteralIndented (the same underlying
+// docutils.statemachine.StringList.get_indented, unknown indent for
+// every line but the first, which parseFootnoteOrCitation's own
+// firstLineRest already carries dedented). A real corpus case
+// (".. [2] text\n  less-indented continuation") needs exactly this: the
+// old fixed-3-column gatherExplicitBody rejected the shallower
+// continuation outright, leaving it to spin off as an unrelated
+// block_quote sibling instead of joining the footnote's own paragraph.
+// blankFinish reports whether the body was followed by a blank line (or
+// real EOF) rather than an abrupt unindented line — real docutils'
+// Body.explicit_markup wraps EVERY explicit construct in the same
+// "ends without a blank line; unexpected unindent" warning when it
+// isn't, ported at parseFootnoteOrCitation's own call site.
+func gatherFootnoteBody(lines []string, i int) (body []string, blankFinish bool, next int) {
+	body, _, blankFinish, next = collectLiteralIndented(lines, i+1)
+	return body, blankFinish, next
+}
+
 // parseExplicitMarkup returns every sibling node one explicit-markup
 // construct produces — almost always exactly one, but a directive that
 // builds its own diagnostics as SIBLINGS (real docutils' own
@@ -90,8 +116,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i int, parent *doctree.Elem
 	rest := line[3:]
 
 	if label, labelRest, ok := matchBracketLabel(rest); ok {
-		node, next := p.parseFootnoteOrCitation(lines, i, label, labelRest)
-		return []doctree.Node{node}, next
+		return p.parseFootnoteOrCitation(lines, i, label, labelRest)
 	}
 	if strings.HasPrefix(rest, "__:") {
 		node, next := parseAnonymousTarget(lines, i, rest[3:])
@@ -137,15 +162,39 @@ func matchBracketLabel(s string) (label, rest string, ok bool) {
 // parseFootnoteOrCitation classifies a bracket-labeled explicit-markup
 // block: "*" or a "#"-prefixed or all-digit label is a footnote
 // (auto-symbol / auto-numbered / manually numbered); anything else is a
-// citation, docutils' footnote vs. citation split.
-func (p *parser) parseFootnoteOrCitation(lines []string, i int, label, firstLineRest string) (doctree.Node, int) {
-	body, next := gatherExplicitBody(lines, i)
+// citation, docutils' footnote vs. citation split. The manually-numbered
+// footnote and citation cases get a real "id" attribute (docutils'
+// note_explicit_target/set_id, via explicitTargetID — see its own doc
+// comment) — auto footnotes/symbols are deliberately left untouched:
+// their eventual id/label/numbering is real docutils' Footnotes
+// TRANSFORM, not something Body.footnote itself does, and this project
+// already runs a drastically-simplified version of that same transform
+// eagerly at parse time (footnotenum.go's resolveFootnoteNumbers) rather
+// than matching the corpus's own bare (pre-transform) parse — a
+// deliberate, previously-confirmed divergence (the SAME "eager
+// resolution vs. bare-parse ground truth" confound already established
+// for hyperlink references), not something this fix reopens.
+//
+// Two diagnostics real docutils gives EVERY footnote/citation
+// (states.py's Body.footnote/Body.citation, plus the shared
+// Body.explicit_markup wrapper, all read directly) are ported here: an
+// empty body ("Footnote content expected."/"Citation content
+// expected.", nested INSIDE the element, right after its label) and a
+// body that ends on a non-blank unindented line rather than a blank one
+// ("Explicit markup ends without a blank line; unexpected unindent.", a
+// SIBLING of the element, not nested — matching real docutils' own
+// generic wrapper, which applies this uniformly to every explicit
+// construct, not just footnotes/citations, though only this call site
+// ports it so far).
+func (p *parser) parseFootnoteOrCitation(lines []string, i int, label, firstLineRest string) ([]doctree.Node, int) {
+	body, blankFinish, next := gatherFootnoteBody(lines, i)
 	content := append([]string{firstLineRest}, body...)
 	for len(content) > 0 && isBlankStr(content[len(content)-1]) {
 		content = content[:len(content)-1]
 	}
 
 	var el *doctree.Element
+	contentKind := "Footnote"
 	switch {
 	case label == "*":
 		el = doctree.NewElement(doctree.TagFootnote)
@@ -159,16 +208,35 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i int, label, firstLine
 	case isAllDigits(label):
 		el = doctree.NewElement(doctree.TagFootnote)
 		el.SetAttr("name", label)
+		el.SetAttr("id", p.explicitTargetID("footnote", label))
 		el.Append(doctree.NewElement(doctree.TagLabel, &doctree.Text{Data: label}))
 	default:
+		contentKind = "Citation"
 		el = doctree.NewElement(doctree.TagCitation)
-		el.SetAttr("name", normalizeName(label))
+		name := normalizeName(label)
+		el.SetAttr("name", name)
+		el.SetAttr("id", p.explicitTargetID("citation", name))
 		el.Append(doctree.NewElement(doctree.TagLabel, &doctree.Text{Data: label}))
 	}
 	if len(content) > 0 {
 		p.parseBlockLines(content, el)
+	} else {
+		el.Append(sectionMessage("2", "WARNING", contentKind+" content expected.", next+1, ""))
 	}
-	return el, next
+	nodes := []doctree.Node{el}
+	// Real docutils chains a whole RUN of explicit-markup constructs
+	// through one nested "Explicit" state machine (Body.explicit_list,
+	// read directly), which only raises this warning once the chain is
+	// broken by something that ISN'T itself another explicit-markup
+	// line — a body that stops abruptly right before a SIBLING ".. "
+	// construct (no blank line needed between two adjacent footnotes)
+	// is not abrupt at all, just the next construct starting.
+	stoppedOnExplicitMarkup := next < len(lines) && isExplicitMarkupLine(lines[next])
+	if !blankFinish && !stoppedOnExplicitMarkup {
+		nodes = append(nodes, sectionMessage("2", "WARNING",
+			"Explicit markup ends without a blank line; unexpected unindent.", next+1, ""))
+	}
+	return nodes, next
 }
 
 func isAllDigits(s string) bool {
