@@ -38,25 +38,31 @@ import (
 // has never heard of and isn't trying to validate against. Named/
 // anonymous reference both bare (x_, x__) and backtick-quoted (`x`_,
 // `x`__) including an embedded URI or indirect name-alias target (`text
-// <https://example.com>`_, `text <alias_>`_), substitution reference
-// (|x|), footnote/citation reference ([1]_ / [#]_ / [#name]_ / [*]_ /
-// [name]_), and backslash escapes; and standalone URI (scheme://...) and
-// email (user@host) recognition — no backtick quoting or trailing `_`
-// needed at all, matching docutils' implicit_inline fallback. Standalone
-// PEP/RFC recognition (pep-123, RFC 123 as bare TEXT, no :PEP:/:RFC: role
-// markup at all) is deliberately NOT implemented, and not merely
-// deferred: docutils' own pep_references/rfc_references settings default
-// to None (off) — verified against Parser().parse() on "pep-8, PEP 257,
-// RFC 2822" with default settings, which produced plain text, no
-// references at all. Implementing this unconditionally would make this
-// parser MORE aggressive than docutils' own default, a real divergence
-// rather than a gap filled. Also not implemented: the extra <target> sibling docutils
-// emits next to a resolved embedded-link reference (this parser sets
-// refuri/refname directly on the <reference> instead — reference
-// resolution still works the same way since resolveTargets matches by
-// name, it just doesn't produce that second node). Content between
-// markers is treated as plain text and is not re-parsed for further
-// inline markup, matching docutils' actual (not merely documented)
+// <https://example.com>`_, `text <alias_>`_ — a NAMED one also emits the
+// implicit <target> sibling real docutils creates alongside it, so
+// another reference to the same display text elsewhere can resolve to
+// it too; an ANONYMOUS one never does, resolving directly off its own
+// refuri/refname instead of joining document-order anonymous-target
+// matching — Inliner.phrase_ref, states.py, read directly), substitution
+// reference (|x|), footnote/citation reference ([1]_ / [#]_ / [#name]_ /
+// [*]_ / [name]_), and backslash escapes; and standalone URI
+// (scheme://...) and email (user@host) recognition — no backtick
+// quoting or trailing `_` needed at all, matching docutils' own
+// implicit_inline fallback (though only a "scheme://" URI is
+// recognized; a bare "scheme:path" with no "//" — mailto:, news:, and
+// friends outside backtick-quoted/embedded-link contexts — is a real,
+// separate, not-yet-ported gap, test_inline_markup.py's own
+// standalone_hyperlink group). Standalone PEP/RFC recognition (pep-123,
+// RFC 123 as bare TEXT, no :PEP:/:RFC: role markup at all) is
+// deliberately NOT implemented, and not merely deferred: docutils' own
+// pep_references/rfc_references settings default to None (off) —
+// verified against Parser().parse() on "pep-8, PEP 257, RFC 2822" with
+// default settings, which produced plain text, no references at all.
+// Implementing this unconditionally would make this parser MORE
+// aggressive than docutils' own default, a real divergence rather than
+// a gap filled. Content between markers is treated as plain text and is
+// not re-parsed for further inline markup, matching docutils' actual
+// (not merely documented)
 // behavior: nested inline markup does not match.
 //
 // parseInline also returns every <system_message> a start-string-without-
@@ -121,9 +127,9 @@ func (p *parser) parseInline(text string, lineno int) ([]doctree.Node, []*doctre
 			i += consumed
 			continue
 		}
-		if node, consumed, ok := p.tryInterpretedOrPhraseRef(runes, i); ok {
+		if nodes, consumed, ok := p.tryInterpretedOrPhraseRef(runes, i); ok {
 			flush()
-			out = append(out, node)
+			out = append(out, nodes...)
 			i += consumed
 			continue
 		}
@@ -396,10 +402,16 @@ func (p *parser) problematicMessage(level, msgType, rawtext, message string) *do
 // trailing underscore — docutils' DEFAULT role) or a `text`_ / `text`__
 // reference node (checking the text immediately after the closing
 // backquote for the trailing underscore(s)), and returns how many extra
-// runes that consumed.
-func referenceOrPhrase(content string, afterClose int, runes []rune) (*doctree.Element, int) {
+// runes that consumed. contentRunes is the STILL-ESCAPED form (before
+// the general unescapeRunes pass) — needed so splitEmbeddedLink can
+// apply the embedded-link-specific escape rule (Inliner.phrase_ref,
+// states.py, read directly): within an embedded <URI or alias>, an
+// escaped space/newline becomes a literal SPACE rather than being
+// dropped the way the general unescape rule drops it everywhere else.
+func referenceOrPhrase(contentRunes []rune, afterClose int, runes []rune) ([]doctree.Node, int) {
+	content := unescapeRunes(contentRunes)
 	if !(afterClose < len(runes) && runes[afterClose] == '_') {
-		return doctree.NewElement(doctree.TagTitleReference, &doctree.Text{Data: content}), 0
+		return []doctree.Node{doctree.NewElement(doctree.TagTitleReference, &doctree.Text{Data: content})}, 0
 	}
 	anonymous := false
 	extra := 1
@@ -407,59 +419,196 @@ func referenceOrPhrase(content string, afterClose int, runes []rune) (*doctree.E
 		anonymous = true
 		extra = 2
 	}
-	display, target, kind, hasEmbedded := splitEmbeddedLink(content)
+	display, kind, targetRunes, hasEmbedded := splitEmbeddedLink(contentRunes)
+
+	var targetValue string
+	if hasEmbedded {
+		if kind == "uri" {
+			targetValue = adjustEmbeddedURI(joinEmbeddedURI(targetRunes))
+		} else {
+			targetValue = normalizeName(unescapeRunes(targetRunes))
+		}
+	}
 	text := content
 	if hasEmbedded {
 		text = display
 	}
+	if hasEmbedded && text == "" {
+		// Omitted reference text ("`<uri>`_"/"`<alias_>`__"): the
+		// alias/URI text itself becomes the reference's own display
+		// text too (real docutils: "if not text: text = alias").
+		if kind == "uri" {
+			text = joinEmbeddedURI(targetRunes)
+		} else {
+			text = normalizeWhitespace(unescapeRunes(targetRunes))
+		}
+	}
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
 	el.SetAttr("name", normalizeWhitespace(text))
+
 	switch {
 	case hasEmbedded && kind == "uri":
-		el.SetAttr("refuri", target)
+		el.SetAttr("refuri", targetValue)
 	case hasEmbedded && kind == "name":
-		el.SetAttr("refname", normalizeName(target))
+		el.SetAttr("refname", targetValue)
 	case anonymous:
 		el.SetAttr("anonymous", "true")
 	default:
 		el.SetAttr("refname", normalizeName(text))
 	}
-	return el, extra
+
+	if !hasEmbedded || anonymous {
+		// A bare reference (no embedded link) or an ANONYMOUS ("__")
+		// one WITH an embedded link both skip the implicit-target
+		// sibling: real docutils only ever appends the target node in
+		// the singly-underscored (named) branch (Inliner.phrase_ref's
+		// own "if rawsource[-2:] == '__'" split, read directly) — an
+		// anonymous embedded-link reference resolves directly off its
+		// own refuri/refname, never through document-order anonymous-
+		// target matching the way a bare "text__" does.
+		return []doctree.Node{el}, extra
+	}
+
+	target := doctree.NewElement(doctree.TagTarget)
+	// Uses `text`, not `display`: when the reference text was omitted
+	// (the "if hasEmbedded && text == ''" fallback above), `display`
+	// itself stays empty — the target's own name must still be the
+	// resolved display text (real docutils: target['names'].append(
+	// normalize_name(unescaped)), computed AFTER that same fallback
+	// reassigns `unescaped`, read directly).
+	displayName := normalizeName(text)
+	target.SetAttr("name", displayName)
+	target.SetAttr("id", makeID(displayName))
+	if kind == "uri" {
+		target.SetAttr("refuri", targetValue)
+	} else {
+		target.SetAttr("refname", targetValue)
+	}
+	return []doctree.Node{el, target}, extra
 }
 
 // splitEmbeddedLink recognizes docutils' "embedded URI or alias" form
 // of a phrase reference: `display text <target>`_, where <target> is
-// either a URI (kind "uri") or, when it ends in "_" and doesn't look
-// like a URI, the name of another target defined elsewhere (kind
-// "name"). The "<" must be preceded by whitespace or start the string,
-// matching docutils' embedded_link pattern.
-func splitEmbeddedLink(content string) (display, target, kind string, ok bool) {
-	if !strings.HasSuffix(content, ">") {
-		return "", "", "", false
+// either a URI (kind "uri") or, when it ends in an UNESCAPED "_" and
+// doesn't look like a URI itself, the name of another target defined
+// elsewhere (kind "name"). Operates on runes still in escaped form
+// (escapeBackslashes' private-use-area encoding) so an escaped "<"/">"
+// is never mistaken for a real delimiter — unlike docutils' own
+// \x00-marker-based regex, this falls out for free from rune identity,
+// no separate "is this escaped" check needed. The "<" must be preceded
+// by one or more literal spaces/newlines, OR start the content, and NOT
+// be immediately followed by whitespace; the ">" must NOT be
+// immediately preceded by whitespace (docutils' embedded_link pattern,
+// read directly) — a multi-line phrase reference (the "<" landing right
+// after a real line-wrap newline, or the target text itself spanning a
+// line break) is a real, corpus-verified shape, not an edge case.
+func splitEmbeddedLink(contentRunes []rune) (display, kind string, targetRunes []rune, ok bool) {
+	if len(contentRunes) == 0 || contentRunes[len(contentRunes)-1] != '>' {
+		return "", "", nil, false
 	}
-	idx := strings.LastIndexByte(content, '<')
-	if idx < 0 || !(idx == 0 || content[idx-1] == ' ') {
-		return "", "", "", false
+	// A ">" immediately preceded by whitespace disqualifies the whole
+	// match (non_whitespace_escape_before) — real docutils also
+	// excludes an escaped char there, which (as above) can't arise
+	// from a plain '>' match on these runes anyway.
+	if len(contentRunes) >= 2 && unicode.IsSpace(contentRunes[len(contentRunes)-2]) {
+		return "", "", nil, false
 	}
-	target = content[idx+1 : len(content)-1]
-	if target == "" {
-		return "", "", "", false
+	idx := -1
+	for j := len(contentRunes) - 2; j >= 0; j-- {
+		if contentRunes[j] == '<' {
+			idx = j
+			break
+		}
 	}
-	display = strings.TrimRight(content[:idx], " ")
-	if strings.HasSuffix(target, "_") && !strings.Contains(target, "://") {
-		return display, target[:len(target)-1], "name", true
+	if idx < 0 {
+		return "", "", nil, false
 	}
-	if strings.Contains(target, "@") && !strings.Contains(target, "://") {
-		target = "mailto:" + target
+	if idx+1 < len(contentRunes)-1 && unicode.IsSpace(contentRunes[idx+1]) {
+		return "", "", nil, false
 	}
-	return display, target, "uri", true
+	before := idx
+	for before > 0 && unicode.IsSpace(contentRunes[before-1]) {
+		before--
+	}
+	if before > 0 && !unicode.IsSpace(contentRunes[before]) {
+		// Nothing but non-whitespace runs right up to "<" — no
+		// preceding space/newline and not the start of the content
+		// either, so this "<" doesn't open an embedded link at all
+		// (docutils: "no preceding whitespace" falls through to plain
+		// anonymous/bare-text handling instead).
+		return "", "", nil, false
+	}
+	targetRunes = contentRunes[idx+1 : len(contentRunes)-1]
+	if len(targetRunes) == 0 {
+		return "", "", nil, false
+	}
+	display = strings.TrimRight(unescapeRunes(contentRunes[:before]), " ")
+	last := targetRunes[len(targetRunes)-1]
+	if last == '_' && !looksLikeEmbeddedURIScheme(targetRunes) {
+		return display, "name", targetRunes[:len(targetRunes)-1], true
+	}
+	return display, "uri", targetRunes, true
+}
+
+// looksLikeEmbeddedURIScheme reports whether targetRunes starts with a
+// URI scheme ("letter (letter|digit|+|-|.)* :") — real docutils tests
+// the full aliastext against its own broad uri pattern to distinguish a
+// URI that happens to end in "_" from an alias name; this project's own
+// standalone-URI recognition (tryURIScheme) is already a simplification
+// of that same pattern, and no corpus case needs anything richer than a
+// scheme-prefix check here.
+func looksLikeEmbeddedURIScheme(runes []rune) bool {
+	if len(runes) == 0 || !unicode.IsLetter(runes[0]) {
+		return false
+	}
+	i := 1
+	for i < len(runes) && (unicode.IsLetter(runes[i]) || unicode.IsDigit(runes[i]) ||
+		runes[i] == '+' || runes[i] == '-' || runes[i] == '.') {
+		i++
+	}
+	return i < len(runes) && runes[i] == ':'
+}
+
+// joinEmbeddedURI mirrors phrase_ref's own "remove unescaped whitespace"
+// treatment of an embedded URI/email target (states.py's
+// split_escaped_whitespace + the per-part ”.join(part.split()), read
+// directly): split at escaped-whitespace-rune boundaries — an escaped
+// space/newline becomes exactly one literal space in the result — then
+// strip every OTHER (real) whitespace rune within each part entirely, a
+// line-wrap landing inside the "<...>" vanishing with no replacement.
+// Any other escape is restored to its literal character normally.
+func joinEmbeddedURI(targetRunes []rune) string {
+	var parts []string
+	var cur strings.Builder
+	for _, r := range targetRunes {
+		if isDroppedEscape(r) {
+			parts = append(parts, cur.String())
+			cur.Reset()
+			continue
+		}
+		if unicode.IsSpace(r) {
+			continue
+		}
+		cur.WriteRune(unescapeRune(r))
+	}
+	parts = append(parts, cur.String())
+	return strings.Join(parts, " ")
+}
+
+// adjustEmbeddedURI mirrors Inliner.adjust_uri: an embedded target that
+// looks like a bare email address gets "mailto:" prefixed.
+func adjustEmbeddedURI(uri string) string {
+	if strings.Contains(uri, "@") && !strings.Contains(uri, "://") {
+		return "mailto:" + uri
+	}
+	return uri
 }
 
 // tryInterpretedOrPhraseRef handles every backtick-quoted construct:
 // role-prefixed (:role:`x`), role-suffixed (`x`:role:), a plain phrase
 // reference or bare title_reference (referenceOrPhrase, no role at
 // all). docutils.parsers.rst.states.Inliner.interpreted_or_phrase_ref.
-func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) (doctree.Node, int, bool) {
+func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) ([]doctree.Node, int, bool) {
 	backtickAt := i
 	prefixRole := ""
 	if runes[i] == ':' {
@@ -502,7 +651,7 @@ func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) (doctree.Node, i
 			// against the foreign judge, not assumed.
 			return nil, 0, false
 		}
-		return p.markupProblematic("interpreted text or phrase reference", "`"), 1, true
+		return []doctree.Node{p.markupProblematic("interpreted text or phrase reference", "`")}, 1, true
 	}
 	contentRunes := runes[backtickAt+1 : closeAt]
 	if len(contentRunes) == 0 {
@@ -511,15 +660,15 @@ func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) (doctree.Node, i
 	afterClose := closeAt + closeLen
 
 	if prefixRole != "" {
-		return p.roleElement(prefixRole, contentRunes), afterClose - i, true
+		return []doctree.Node{p.roleElement(prefixRole, contentRunes)}, afterClose - i, true
 	}
 	if afterClose < len(runes) && runes[afterClose] == ':' {
 		if role, afterRole, ok := tryRoleName(runes, afterClose+1); ok {
-			return p.roleElement(role, contentRunes), afterRole - i, true
+			return []doctree.Node{p.roleElement(role, contentRunes)}, afterRole - i, true
 		}
 	}
-	el, extra := referenceOrPhrase(unescapeRunes(contentRunes), afterClose, runes)
-	return el, (afterClose - i) + extra, true
+	nodes, extra := referenceOrPhrase(contentRunes, afterClose, runes)
+	return nodes, (afterClose - i) + extra, true
 }
 
 // tryRoleName recognizes a ":name" immediately followed by a closing
@@ -911,6 +1060,11 @@ func isNameSepRune(r rune) bool {
 // Inliner.standalone_uri, tried only as a fallback once nothing else
 // matches (implicit_dispatch). No refname/"name" attribute is set here,
 // matching docutils: a standalone URI reference carries only refuri.
+// SCOPE: only a "scheme://" (double-slash) URI is recognized — real
+// docutils' own uri pattern also accepts a bare "scheme:path" with no
+// "//" at all (mailto:, news:, urn: and friends), a real, separate,
+// not-yet-ported gap (test_inline_markup.py's own standalone_hyperlink
+// group, not chased this round).
 func tryStandaloneURI(runes []rune, i int) (doctree.Node, int, bool) {
 	if !validStartBoundary(runes, i, 0) {
 		return nil, 0, false
@@ -921,6 +1075,13 @@ func tryStandaloneURI(runes []rune, i int) (doctree.Node, int, bool) {
 	return tryEmail(runes, i)
 }
 
+// tryURIScheme's own matched span is unescaped before use — a real,
+// previously-shipped bug (found chasing the phrase-reference corpus
+// work, unrelated to it): a backslash-escaped character inside a
+// standalone URI (rare, but corpus-tested — "http://x/\*content\*/y")
+// leaked its raw escapeRune-shifted codepoint straight into the visible
+// text/refuri, since escapeBackslashes' encoding is never meant to
+// survive into rendered output unresolved.
 func tryURIScheme(runes []rune, i int) (doctree.Node, int, bool) {
 	if !unicode.IsLetter(runes[i]) {
 		return nil, 0, false
@@ -948,7 +1109,7 @@ func tryURIScheme(runes []rune, i int) (doctree.Node, int, bool) {
 			return nil, 0, false
 		}
 	}
-	text := string(runes[i:end])
+	text := unescapeRunes(runes[i:end])
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
 	el.SetAttr("refuri", text)
 	return el, end - i, true
@@ -980,7 +1141,7 @@ func tryEmail(runes []rune, i int) (doctree.Node, int, bool) {
 			return nil, 0, false
 		}
 	}
-	text := string(runes[i:end])
+	text := unescapeRunes(runes[i:end])
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
 	el.SetAttr("refuri", "mailto:"+text)
 	return el, end - i, true
