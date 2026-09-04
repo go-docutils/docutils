@@ -226,7 +226,16 @@ a `class="..."` attribute on whatever element the role produces — a
 registered custom role's `<inline class="...">` is NOT the same shape as
 a totally unregistered role name, which still falls back to this
 parser's own invented `<inline role="name">` rather than docutils'
-error (see "Not yet ported" below), and
+error (see "Not yet ported" below). The `.. role::` DIRECTIVE itself
+(as opposed to a role it registers being used unrecognized later) does
+error on a malformed definition, matching `Role.run`: no content at all,
+content not matching the `NAME(BASE)` pattern, a `BASE` that isn't a
+recognized role name (an INFO plus an ERROR — a base that's itself a
+PREVIOUSLY `.. role::`-defined custom role is accepted, though the
+chain only ever resolves ONE level deep at use time, see `roleElement`'s
+own doc comment), and a `:class:`/argument-derived class name that
+can't become a valid identifier (a purely-numeric token, `make_id`'s
+own leading-digit stripping leaving nothing). And
 backslash escapes; standalone URI (`scheme://...`) and email
 (`user@host`) recognition — no backtick quoting or trailing `_` needed
 at all, e.g. plain `https://example.com` in running text becomes a

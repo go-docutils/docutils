@@ -639,9 +639,10 @@ func (p *parser) parseDirective(lines []string, i int, name, args string, parent
 		// element here, contradicting its own doc comment; caught only
 		// once ":code:"/PEP/RFC role support made the surrounding
 		// paragraph's own content correct enough for this stray sibling
-		// to become the ONLY remaining diff).
-		p.registerRole(args, body)
-		return nil, next
+		// to become the ONLY remaining diff) — UNLESS the definition
+		// itself is malformed, in which case Role.run raises a real
+		// diagnostic (registerRole's own doc comment).
+		return p.registerRole(lines, i, next, args, body), next
 	}
 	if name == "table" {
 		return p.runTableDirective(lines, i, next, args, body), next

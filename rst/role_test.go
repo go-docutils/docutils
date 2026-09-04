@@ -110,6 +110,80 @@ func TestRoleDirective(t *testing.T) {
 	}
 }
 
+// TestRoleDirectiveDiagnostics covers Role.run's five distinct ERROR/INFO
+// paths (read directly), none of which previously produced any diagnostic
+// at all — the whole ".. role::" definition just silently vanished,
+// registering nothing, the same way an ordinary malformed directive
+// argument does elsewhere in this parser (a deliberate leniency for
+// UNRECOGNIZED directive/role NAMES, documented in roleElement's own doc
+// comment — these five cases are different: the directive name IS
+// recognized, its own definition is what's malformed, which real
+// docutils always surfaces).
+func TestRoleDirectiveDiagnostics(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			"an unresolvable base role produces an INFO plus an ERROR, not a silent registration",
+			".. role:: custom(unknown-role)\n",
+			"<document>\n    <system_message level=\"1\" line=\"1\" type=\"INFO\">\n        <paragraph>\n            No role entry for \"unknown-role\" in module \"docutils.parsers.rst.languages.en\".\n            Trying \"unknown-role\" as canonical role name.\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Unknown interpreted text role \"unknown-role\".\n        <literal_block>\n            .. role:: custom(unknown-role)\n",
+		},
+		{
+			"an explicit :class: value that can't become a class name is an error naming the option",
+			".. role:: custom\n   :class: 1\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Error in \"role\" directive:\n            invalid option value: (option: \"class\"; value: '1')\n            cannot make \"1\" into a class name.\n        <literal_block>\n            .. role:: custom\n               :class: 1\n",
+		},
+		{
+			"a role NAME that can't become a class name (no :class: override) is an error naming the argument",
+			".. role:: 1\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Invalid argument for \"role\" directive:\n            cannot make \"1\" into a class name.\n        <literal_block>\n            .. role:: 1\n",
+		},
+		{
+			"an argument that doesn't match the NAME(BASE) pattern at all is an error",
+			".. role:: (error)\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            \"role\" directive arguments not valid role names: \"(error)\".\n        <literal_block>\n            .. role:: (error)\n",
+		},
+		{
+			"no content at all (neither same-line nor indented) is an error",
+			".. role::\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            \"role\" directive requires arguments on the first line.\n        <literal_block>\n            .. role::\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
+				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRoleDirectiveChainedBase guards a real regression risk introduced
+// alongside TestRoleDirectiveDiagnostics: base-role validation must ALSO
+// accept a base that's a PREVIOUSLY ".. role::"-defined custom role, not
+// just knownRoleNames' static built-in set — verified directly against
+// the foreign judge that real docutils' own definition-time lookup
+// (roles.role's "_roles" local-registry check comes before its language-
+// module fallback) accepts a chained base without any diagnostic at all.
+// This does NOT assert the chain resolves all the way through at USE
+// time (roleElement only ever checks ONE level of def.base against
+// roleTags directly, a pre-existing, deliberately out-of-scope
+// simplification documented in this file's own SCOPE note) — "widget"
+// falls back to the existing generic <inline role="widget"> shape the
+// same as any other base roleElement can't resolve, which is fine; what
+// this guards is that DEFINING "widget" doesn't itself produce a
+// spurious "Unknown interpreted text role" diagnostic it never should.
+func TestRoleDirectiveChainedBase(t *testing.T) {
+	src := ".. role:: gadget(strong)\n\n.. role:: widget(gadget)\n\nSee :widget:`x`.\n"
+	got := doctree.Dump(Parse(src))
+	if strings.Contains(got, "system_message") {
+		t.Errorf("Parse(%q) dump wrongly produced a diagnostic for a chained custom-role base:\n%s", src, got)
+	}
+}
+
 // TestInlineRawRolePreservesBackslashes guards a real bug: the shared
 // interpreted-text content path unescapes backslashes (reST's own escape
 // syntax, correct for every OTHER role), which would have silently eaten
