@@ -37,7 +37,7 @@ func TestEmbeddedLinkPhraseReference(t *testing.T) {
 		{
 			"a named embedded alias creates an indirect target sibling",
 			"`phrase reference <alias_>`_\n\n.. _alias: https://example.org\n",
-			"<document>\n    <paragraph>\n        <reference name=\"phrase reference\" refname=\"alias\" refuri=\"https://example.org\">\n            phrase reference\n        <target id=\"phrase-reference\" name=\"phrase reference\" refname=\"alias\">\n    <target name=\"alias\" refuri=\"https://example.org\">\n",
+			"<document>\n    <paragraph>\n        <reference name=\"phrase reference\" refname=\"alias\" refuri=\"https://example.org\">\n            phrase reference\n        <target id=\"phrase-reference\" name=\"phrase reference\" refname=\"alias\">\n    <target id=\"alias\" name=\"alias\" refuri=\"https://example.org\">\n",
 		},
 		{
 			"the embedded marker may start entirely on the next physical line",

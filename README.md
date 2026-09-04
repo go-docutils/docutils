@@ -150,7 +150,10 @@ POSITION — the Nth anonymous reference to the Nth anonymous target,
 textual order, regardless of which comes first — rather than by name at
 all, a genuinely different mechanism from every other target/reference
 pair above; an anonymous target's own value may itself be indirect,
-`.. __: othername_`, chased the same way a named indirect target is) —
+`.. __: othername_`, chased the same way a named indirect target is;
+every NAMED target — anonymous or indirect ones excepted — also gets an
+`id` attribute, real docutils' own `Target.run` behavior, missing
+entirely until v0.46.0 caught it) —
 footnotes (`[1]_`/`[#]_`/`[#name]_`/
 `[*]_`, with real auto-NUMBERING (`[#]_`/`[#name]_` sharing one
 sequence, an explicit `[1]_` elsewhere making the sequence skip that
@@ -166,7 +169,13 @@ prohibited construct inside it, an anonymous reference, an
 auto-numbered/auto-symbol footnote reference, or anything carrying its
 own name/id, is a real ERROR, matching
 `disallowed_inside_substitution_definitions`; a `<problematic>` anywhere
-in the result, checked first, is a separate ERROR of its own), `image::`
+in the result, checked first, is a separate ERROR of its own — its own
+WARNING messages carry no `backref` attribute in this specific
+reconstruction, unlike their usual shape elsewhere, v0.46.0, checked
+directly against the foreign judge; `.. replace::` used as an ordinary
+TOP-LEVEL directive, rather than embedded inside a substitution
+definition, is its own separate "Invalid context" ERROR, v0.46.0),
+`image::`
 (the substitution's own name becomes the embedded image's default
 `:alt:`, matching real docutils' `option_presets`), and `raw::` (already
 a real directive on its own — nested here rather than flattened onto

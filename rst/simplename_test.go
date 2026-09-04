@@ -39,12 +39,12 @@ func TestBareReferenceUnderscoredName(t *testing.T) {
 		{
 			"an underscore-separated name resolves as a whole, not split at the first underscore",
 			"See real_target_ here.\n\n.. _real_target: https://example.com\n",
-			"<document>\n    <paragraph>\n        See \n        <reference name=\"real_target\" refname=\"real_target\" refuri=\"https://example.com\">\n            real_target\n         here.\n    <target name=\"real_target\" refuri=\"https://example.com\">\n",
+			"<document>\n    <paragraph>\n        See \n        <reference name=\"real_target\" refname=\"real_target\" refuri=\"https://example.com\">\n            real_target\n         here.\n    <target id=\"real-target\" name=\"real_target\" refuri=\"https://example.com\">\n",
 		},
 		{
 			"an indirect target whose own name contains an underscore chases correctly",
 			"See chained_.\n\n.. _chained: real_target_\n.. _real_target: https://example.com/real\n",
-			"<document>\n    <paragraph>\n        See \n        <reference name=\"chained\" refname=\"chained\" refuri=\"https://example.com/real\">\n            chained\n        .\n    <target name=\"chained\" refname=\"real_target\">\n    <target name=\"real_target\" refuri=\"https://example.com/real\">\n",
+			"<document>\n    <paragraph>\n        See \n        <reference name=\"chained\" refname=\"chained\" refuri=\"https://example.com/real\">\n            chained\n        .\n    <target id=\"chained\" name=\"chained\" refname=\"real_target\">\n    <target id=\"real-target\" name=\"real_target\" refuri=\"https://example.com/real\">\n",
 		},
 	}
 	for _, tc := range cases {

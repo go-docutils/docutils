@@ -23,7 +23,7 @@ func TestSubstitutionReferenceAsHyperlink(t *testing.T) {
 		{
 			"named target resolves through the substitution's own name",
 			".. |sub| replace:: replacement text\n\n.. _sub: https://example.org/sub\n\nSee |sub|_ for more.\n",
-			"<document>\n    <substitution_definition name=\"sub\">\n        replacement text\n    <target name=\"sub\" refuri=\"https://example.org/sub\">\n    <paragraph>\n        See \n        <reference refname=\"sub\" refuri=\"https://example.org/sub\">\n            <substitution_reference refname=\"sub\">\n                sub\n         for more.\n",
+			"<document>\n    <substitution_definition name=\"sub\">\n        replacement text\n    <target id=\"sub\" name=\"sub\" refuri=\"https://example.org/sub\">\n    <paragraph>\n        See \n        <reference refname=\"sub\" refuri=\"https://example.org/sub\">\n            <substitution_reference refname=\"sub\">\n                sub\n         for more.\n",
 		},
 		{
 			"doubled trailing underscore is an anonymous target by document-order position",
