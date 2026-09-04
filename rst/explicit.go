@@ -167,8 +167,8 @@ func (p *parser) parseExplicitMarkup(lines []string, i, lineBase int, parent *do
 		node, next := p.parseHyperlinkTarget(lines, i, rest[1:])
 		return []doctree.Node{node}, next
 	}
-	if subName, subRest, ok := matchPipeLabel(rest); ok {
-		if nodes, next, ok := p.parseSubstitutionDef(lines, i, subName, subRest, parent); ok {
+	if subName, subRest, bodyStartIdx, ok := matchPipeLabelMultiline(lines, i, rest); ok {
+		if nodes, next, ok := p.parseSubstitutionDef(lines, i, bodyStartIdx, subName, subRest, parent); ok {
 			return nodes, next
 		}
 		// Malformed substitution definition: fall through to comment,
@@ -305,6 +305,40 @@ func matchPipeLabel(s string) (name, rest string, ok bool) {
 	return s[1:end], strings.TrimSpace(s[end+1:]), true
 }
 
+// matchPipeLabelMultiline extends matchPipeLabel for a "|name|" marker
+// whose closing "|" isn't on the SAME line as the opening one — real
+// docutils' Body.substitution_def (read directly) progressively
+// re-matches its own substitution pattern against the marker's growing
+// text, appending one more stripped, indented continuation line (joined
+// by a single space) each time the closing "|" isn't found yet, until
+// it is (or the block runs out, a malformed definition). bodyStartIdx
+// is i unchanged for the fast (single-line) path, or the index of the
+// LAST line consumed by the name when it spanned more than one — the
+// caller needs it to know where the embedded directive's own body
+// gathering should actually start (lines already consumed by the name
+// itself must not be re-offered to it as body content). Doesn't
+// replicate the escape-null handling real docutils' own escape2null
+// gives the closing "|" (a "\|" inside the name shouldn't close the
+// marker) — no corpus fixture combines that with a multi-line name.
+func matchPipeLabelMultiline(lines []string, i int, firstLineRest string) (name, directiveRest string, bodyStartIdx int, ok bool) {
+	if name, rest, ok := matchPipeLabel(firstLineRest); ok {
+		return name, rest, i, true
+	}
+	if len(firstLineRest) == 0 || firstLineRest[0] != '|' {
+		return "", "", 0, false
+	}
+	accumulated := firstLineRest[1:]
+	j := i + 1
+	for j < len(lines) && !isBlankStr(lines[j]) && leadingSpaces(lines[j]) > 0 {
+		accumulated += " " + strings.TrimSpace(lines[j])
+		if end := strings.IndexByte(accumulated, '|'); end >= 0 {
+			return strings.TrimSpace(accumulated[:end]), strings.TrimSpace(accumulated[end+1:]), j, true
+		}
+		j++
+	}
+	return "", "", 0, false
+}
+
 // parseSubstitutionDef recognizes ".. |name| directive:: args" (the
 // directive marker may start on a LATER body line entirely, when nothing
 // follows "|name|" on the definition's own first line — see block's
@@ -325,16 +359,17 @@ func matchPipeLabel(s string) (name, rest string, ok bool) {
 // embedded-directive-shaped line anywhere in its own body at all AND no
 // recognized body-text fallback either — matching docutils' own final
 // "return self.comment(...)" when even the substitution-marker pattern
-// itself never matches (case: no directive name at all right after
-// "|name|", not even on a later line — the marker's OWN name may still
-// legitimately span multiple physical lines in real docutils, a
-// narrower, separate gap this project does not implement: matchPipeLabel
-// only ever recognizes a "|name|" whose closing "|" sits on the SAME
-// line as ".. |").
-func (p *parser) parseSubstitutionDef(lines []string, i int, name, directiveRest string, parent *doctree.Element) ([]doctree.Node, int, bool) {
+// itself never matches. bodyStartIdx is i unchanged when the "|name|"
+// marker closed on its own first line, or a LATER index when
+// matchPipeLabelMultiline had to consume additional lines to find the
+// closing "|" — see that function's own doc comment; gatherExplicitBody
+// below is anchored there specifically so a line already consumed as
+// part of the (possibly multi-line) NAME is never re-offered to the
+// embedded directive as its own body content.
+func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name, directiveRest string, parent *doctree.Element) ([]doctree.Node, int, bool) {
 	lineno := i + 1
 	subname := normalizeWhitespace(name)
-	body, _, next := gatherExplicitBody(lines, i)
+	body, _, next := gatherExplicitBody(lines, bodyStartIdx)
 	blockText := strings.Join(lines[i:next], "\n")
 
 	// gatherExplicitBody's own body has already dropped the blank

@@ -127,6 +127,15 @@ func TestSubstitutionEmbeddedDirectives(t *testing.T) {
 			"<document>\n    <paragraph>\n        Trailing spaces should not be significant:\n    <substitution_definition name=\"symbol\">\n        <image alt=\"symbol\" uri=\"symbol.png\">\n",
 		},
 		{
+			// docutils/rst v0.50.0+ — the marker's own NAME may itself
+			// span multiple physical lines (matchPipeLabelMultiline,
+			// explicit.go), a real, separate gap from the embedded
+			// directive's own argument continuing on a later line above.
+			"the substitution marker's own NAME may itself span multiple physical lines",
+			".. |very long substitution text,\n   split across lines| image:: symbol.png\n",
+			"<document>\n    <substitution_definition name=\"very long substitution text, split across lines\">\n        <image alt=\"very long substitution text, split across lines\" uri=\"symbol.png\">\n",
+		},
+		{
 			"substitutions support case differences (case-sensitive, unlike a hyperlink target's name)",
 			"Substitutions support case differences:\n\n.. |eacute| replace:: é\n.. |Eacute| replace:: É\n",
 			"<document>\n    <paragraph>\n        Substitutions support case differences:\n    <substitution_definition name=\"eacute\">\n        é\n    <substitution_definition name=\"Eacute\">\n        É\n",
