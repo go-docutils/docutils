@@ -51,29 +51,43 @@ func isExplicitMarkupLine(s string) bool {
 	return len(s) == 2 || s[2] == ' '
 }
 
-// gatherExplicitBody collects the body of an explicit-markup construct:
-// an optional leading blank line, then a block indented >= 3 columns
-// (dedented), continuing across blank lines until a genuine dedent.
-// The dedent amount is the FIRST body line's own actual indentation —
-// docutils' own StringList.get_indented, read directly, uses whatever
-// that first line's real indent is (a directive's own argument, if any,
-// carries no bearing on it), not a fixed assumption tied to the ".. "
-// marker's own 3-column width; a real corpus case (".. table::\n    "
-// ":width: ...", 4 columns, no argument on the directive's own line)
-// needs exactly this, not the 3 this project previously hardcoded.
+// gatherExplicitBody collects the body of an explicit-markup construct
+// — a directive, substitution definition, or (via the generic fallback
+// capture) any other explicit-markup line — the SAME way
+// gatherFootnoteBody already does for footnotes/citations/comments:
+// real docutils' own directive dispatch (RSTState.run_directive, states.py,
+// read directly) calls get_first_known_indented(match.end()) too, with
+// NO minimum-indent floor at all — any positive indentation counts, and
+// the TRUE MINIMUM across every continuation line (not just the first)
+// is what gets stripped, exactly like collectLiteralIndented. This used
+// to require the first body line be indented >=3 columns before
+// recognizing a body at all — a floor with no basis in real docutils
+// (confirmed directly in run_directive's own source, not assumed), and
+// wrong for the corpus's own real-world style: a directive whose
+// options/content are indented by only 2 columns (".. code::\n  :class:
+// x\n\n  content") was rejected outright, its body left for the OUTER
+// dispatch to wrongly re-parse as unrelated top-level content — exactly
+// the same class of bug gatherFootnoteBody was built to fix for
+// footnotes in the first place. Leading AND trailing blank body lines
+// are trimmed (matching the previous consumeIndentedBlock-based
+// implementation's own behavior, which every existing caller here
+// already depends on — unlike gatherFootnoteBody's own callers, which
+// don't need this since their content gets re-parsed and blank lines
+// there are harmless no-ops): a blank line right after the marker,
+// before the real indented block, is now COLLECTED by
+// collectLiteralIndented (unlike the old skip-ahead-before-collecting
+// loop) and must be trimmed back off explicitly, or it leaks into the
+// body as a spurious leading blank — caught immediately by this
+// project's own existing "raw" directive tests, not the corpus.
 func gatherExplicitBody(lines []string, i int) ([]string, int) {
-	j := i + 1
-	for j < len(lines) && isBlankStr(lines[j]) {
-		j++
+	body, _, _, next := collectLiteralIndented(lines, i+1, false)
+	for len(body) > 0 && isBlankStr(body[0]) {
+		body = body[1:]
 	}
-	if j >= len(lines) {
-		return nil, i + 1
+	for len(body) > 0 && isBlankStr(body[len(body)-1]) {
+		body = body[:len(body)-1]
 	}
-	indent := leadingSpaces(lines[j])
-	if indent < 3 {
-		return nil, i + 1
-	}
-	return consumeIndentedBlock(lines, j, indent)
+	return body, next
 }
 
 // gatherFootnoteBody collects a footnote or citation's continuation
@@ -656,6 +670,9 @@ func (p *parser) parseDirective(lines []string, i int, name, args string, parent
 	}
 	if strings.EqualFold(name, "figure") {
 		return p.runFigureDirective(lines, i, next, args, body), next
+	}
+	if strings.EqualFold(name, "code") {
+		return p.runCodeDirective(lines, i, next, args, body), next
 	}
 	if strings.EqualFold(name, "meta") {
 		// Meta declares no arguments and no option_spec at all, so real
