@@ -659,6 +659,12 @@ func (p *parser) parseDirective(lines []string, i int, name, args string, parent
 	if strings.EqualFold(name, "admonition") {
 		return p.runGenericAdmonitionDirective(lines, i, next, args, body), next
 	}
+	if strings.EqualFold(name, "compound") {
+		return p.runAdmonitionOrGeneric(doctree.TagCompound, "", lines, i, next, args, body), next
+	}
+	if strings.EqualFold(name, "container") {
+		return p.runContainerDirective(lines, i, next, args, body), next
+	}
 	if strings.EqualFold(name, "topic") {
 		return p.runTopicOrSidebar(doctree.TagTopic, lines, i, next, args, body, parent), next
 	}
@@ -970,9 +976,22 @@ func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTarg
 			}
 		}
 	}
-	if el.Tag == doctree.TagSection {
-		// A section title is an implicit hyperlink target — see
-		// assignSectionTargets, which sets name/id before this pass runs.
+	if el.Tag != doctree.TagFootnote && el.Tag != doctree.TagCitation {
+		// ANY directive/section carrying both a "name" and an "id" is an
+		// implicit same-document hyperlink target, not just explicit
+		// <target> elements or section titles — real docutils' own
+		// Directive.add_name (states.py, read directly) calls
+		// document.note_explicit_target for EVERY directive that accepts
+		// a :name: option (note, table, code, container, ... — verified
+		// directly against the foreign judge across several of them, not
+		// just container, which is what surfaced this), registering the
+		// node itself as a target, not just decorating it with an id/name
+		// attribute pair. Footnotes/citations are excluded: they set
+		// "name" for their own numbering/labeling purposes (footnotenum.go)
+		// via an entirely separate resolution path (resolveFootnoteNumbers),
+		// not because real docutils excludes them — this project has never
+		// corpus-tested a plain `` `label`_ `` reference to a footnote's
+		// own name, so folding them in here is unverified and left alone.
 		// No duplicate-name precedence rule against an explicit <target>
 		// sharing the same name: real docutils diagnoses that as a
 		// duplicate-name warning, a diagnostic this project already
