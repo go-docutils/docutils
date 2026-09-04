@@ -209,3 +209,79 @@ func TestRawRoleDisabledFallsBackToGeneric(t *testing.T) {
 		t.Errorf("disabled raw role did not fall back to the generic inline shape:\n%s", got)
 	}
 }
+
+// TestRoleNameGrammar pins the role name to docutils' own `simplename`
+// (states.py: the role group is `(?P<role>:%(simplename)s:)?`). This used
+// to scan only letters, digits and "-", so any role name containing ".",
+// "_", "+" or ":" was missed entirely and left as plain text beside a bare
+// <title_reference>. Every case here was checked against the reference
+// implementation for RECOGNITION; the resulting node is this parser's own
+// deliberate lenient <inline role="..."> rather than real docutils'
+// unknown-role <problematic> (see README), which is why these assert the
+// role NAME rather than a full dump.
+func TestRoleNameGrammar(t *testing.T) {
+	cases := []struct{ source, wantRole string }{
+		{":very.long-role_name:`interpreted`\n", "very.long-role_name"},
+		{":a+b:`x`\n", "a+b"},
+		// scanSimpleName is greedy over ":" too, matching real docutils:
+		// ":a:b:`x`" is the SINGLE role "a:b", not the role "a".
+		{":a:b:`x`\n", "a:b"},
+		{":a_b:`x`\n", "a_b"},
+	}
+	for _, tc := range cases {
+		got := doctree.Dump(Parse(tc.source))
+		want := `<inline role="` + tc.wantRole + `">`
+		if !strings.Contains(got, want) {
+			t.Errorf("Parse(%q) did not produce %s:\n%s", tc.source, want, got)
+		}
+	}
+}
+
+// TestRolePositionDiagnostics covers the two SYNTAX errors docutils raises
+// in Inliner.interpreted_or_phrase_ref before it ever resolves the role:
+// a role in both positions at once, and a role combined with a reference
+// suffix. Neither depends on the role being known -- each was verified
+// against the reference for :emphasis:, a perfectly ordinary built-in --
+// which is why these carry no unknown-role INFO/ERROR even though this
+// parser deliberately never emits those (README). Previously the suffix
+// was silently dropped as leftover plain text.
+func TestRolePositionDiagnostics(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			"a known role in both positions is a syntax error, not two roles",
+			":emphasis:`x`:emphasis:\n",
+			"<document>\n    <paragraph>\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            :emphasis:`x`:emphasis:\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Multiple roles in interpreted text (both prefix and suffix present; only one allowed).\n",
+		},
+		{
+			"an unknown role in both positions reports the SAME syntax error, with no unknown-role message",
+			":role:`interpreted`:role:\n",
+			"<document>\n    <paragraph>\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            :role:`interpreted`:role:\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Multiple roles in interpreted text (both prefix and suffix present; only one allowed).\n",
+		},
+		{
+			"a role prefix plus a reference suffix names the prefix position",
+			":emphasis:`x`_\n",
+			"<document>\n    <paragraph>\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            :emphasis:`x`_\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Mismatch: both interpreted text role prefix and reference suffix.\n",
+		},
+		{
+			"a role suffix plus a reference suffix names the suffix position",
+			"`x`:emphasis:_\n",
+			"<document>\n    <paragraph>\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            `x`:emphasis:_\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Mismatch: both interpreted text role suffix and reference suffix.\n",
+		},
+		{
+			"a role in ONE position with no reference suffix is still an ordinary role",
+			":emphasis:`x`\n",
+			"<document>\n    <paragraph>\n        <emphasis>\n            x\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := doctree.Dump(Parse(tc.source)); got != tc.want {
+				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
+			}
+		})
+	}
+}
