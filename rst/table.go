@@ -259,7 +259,7 @@ func (p *parser) buildSimpleTable(block []string) (*doctree.Element, bool) {
 			if cell.morecols > 0 {
 				entry.SetAttr("morecols", strconv.Itoa(cell.morecols))
 			}
-			p.parseBlockLines(trimTrailingBlankLines(cell.lines), entry)
+			p.parseBlockLines(trimTrailingBlankLines(cell.lines), entry, -1)
 			rowEl.Append(entry)
 		}
 		if headBodySep >= 0 && row[0].lineOffset < headBodySep {

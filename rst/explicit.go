@@ -79,15 +79,22 @@ func isExplicitMarkupLine(s string) bool {
 // loop) and must be trimmed back off explicitly, or it leaks into the
 // body as a spurious leading blank — caught immediately by this
 // project's own existing "raw" directive tests, not the corpus.
-func gatherExplicitBody(lines []string, i int) ([]string, int) {
-	body, _, _, next := collectLiteralIndented(lines, i+1, false)
+// blankFinish (added when topics/sidebars needed the same "Explicit
+// markup ends without a blank line" diagnostic footnotes/citations/line
+// blocks/definition lists/field lists/comments already have — see
+// stoppedOnExplicitMarkup's own established pattern) is collectLiteralIndented's
+// own return value, UNCHANGED by the leading/trailing blank-trim below
+// (trimming which lines are INCLUDED in body doesn't change whether the
+// block as a whole ended on a blank line).
+func gatherExplicitBody(lines []string, i int) ([]string, bool, int) {
+	body, _, blankFinish, next := collectLiteralIndented(lines, i+1, false)
 	for len(body) > 0 && isBlankStr(body[0]) {
 		body = body[1:]
 	}
 	for len(body) > 0 && isBlankStr(body[len(body)-1]) {
 		body = body[:len(body)-1]
 	}
-	return body, next
+	return body, blankFinish, next
 }
 
 // gatherFootnoteBody collects a footnote or citation's continuation
@@ -169,7 +176,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i, lineBase int, parent *do
 		// construct (explicit_construct's final `return self.comment(...)`).
 	}
 	if name, args, ok := matchDirectiveName(rest); ok {
-		return p.parseDirective(lines, i, name, args, parent)
+		return p.parseDirective(lines, i, lineBase, name, args, parent)
 	}
 	return p.parseComment(lines, i, lineBase, rest)
 }
@@ -252,7 +259,7 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label,
 		el.Append(doctree.NewElement(doctree.TagLabel, &doctree.Text{Data: label}))
 	}
 	if len(content) > 0 {
-		p.parseBlockLines(content, el)
+		p.parseBlockLines(content, el, -1)
 	} else {
 		el.Append(sectionMessage("2", "WARNING", contentKind+" content expected.", msgLine(next, lineBase), ""))
 	}
@@ -327,7 +334,7 @@ func matchPipeLabel(s string) (name, rest string, ok bool) {
 func (p *parser) parseSubstitutionDef(lines []string, i int, name, directiveRest string, parent *doctree.Element) ([]doctree.Node, int, bool) {
 	lineno := i + 1
 	subname := normalizeWhitespace(name)
-	body, next := gatherExplicitBody(lines, i)
+	body, _, next := gatherExplicitBody(lines, i)
 	blockText := strings.Join(lines[i:next], "\n")
 
 	// gatherExplicitBody's own body has already dropped the blank
@@ -620,8 +627,8 @@ func matchDirectiveName(rest string) (name, args string, ok bool) {
 // real docutils treats as a directive-level error this parser doesn't
 // generally validate for anyway), it falls back to the same structural
 // capture any other unimplemented directive gets.
-func (p *parser) parseDirective(lines []string, i int, name, args string, parent *doctree.Element) ([]doctree.Node, int) {
-	body, next := gatherExplicitBody(lines, i)
+func (p *parser) parseDirective(lines []string, i, lineBase int, name, args string, parent *doctree.Element) ([]doctree.Node, int) {
+	body, blankFinish, next := gatherExplicitBody(lines, i)
 	if name == "raw" && p.opts.RawEnabled && args != "" {
 		el := doctree.NewElement(doctree.TagRaw)
 		el.SetAttr("format", strings.ToLower(strings.Join(strings.Fields(args), " ")))
@@ -667,10 +674,10 @@ func (p *parser) parseDirective(lines []string, i int, name, args string, parent
 		return p.runContainerDirective(lines, i, next, args, body), next
 	}
 	if strings.EqualFold(name, "topic") {
-		return p.runTopicOrSidebar(doctree.TagTopic, lines, i, next, args, body, parent), next
+		return p.runTopicOrSidebar(doctree.TagTopic, lines, i, lineBase, next, args, body, blankFinish, parent), next
 	}
 	if strings.EqualFold(name, "sidebar") {
-		return p.runTopicOrSidebar(doctree.TagSidebar, lines, i, next, args, body, parent), next
+		return p.runTopicOrSidebar(doctree.TagSidebar, lines, i, lineBase, next, args, body, blankFinish, parent), next
 	}
 	if strings.EqualFold(name, "image") {
 		return p.runImageDirective(lines, i, next, args, body, ""), next
@@ -751,7 +758,7 @@ func (p *parser) parseComment(lines []string, i, lineBase int, rest string) ([]d
 // set instead of "refuri", and resolveTargets chases through it to find
 // the final URI.
 func parseHyperlinkTarget(lines []string, i int, rest string) (doctree.Node, int) {
-	body, next := gatherExplicitBody(lines, i)
+	body, _, next := gatherExplicitBody(lines, i)
 	name, uri := rest, ""
 	if idx := strings.IndexByte(rest, ':'); idx >= 0 {
 		name = rest[:idx]
@@ -788,7 +795,7 @@ func parseHyperlinkTarget(lines []string, i int, rest string) (doctree.Node, int
 // rather than docutils' own refid-to-the-target-itself fallback, which
 // depends on error-reporting machinery not implemented here).
 func parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int) {
-	body, next := gatherExplicitBody(lines, i)
+	body, _, next := gatherExplicitBody(lines, i)
 	uri := strings.TrimSpace(rest)
 	for _, l := range body {
 		uri += strings.TrimSpace(l)

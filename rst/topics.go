@@ -21,18 +21,52 @@ import (
 // same current container, so no separate context-tracking is needed.
 
 // runTopicOrSidebar implements Topic.run/Sidebar.run together — tag is
-// doctree.TagTopic or doctree.TagSidebar.
-func (p *parser) runTopicOrSidebar(tag string, lines []string, i, next int, args string, body []string, parent *doctree.Element) []doctree.Node {
-	lineno := i + 1
+// doctree.TagTopic or doctree.TagSidebar. lineBase/blankFinish are the
+// same threading convention every other explicit-markup handler in this
+// package already has (see parseComment/parseFootnoteOrCitation): lineBase
+// for msgLine's own absolute-line computation, blankFinish for the
+// "Explicit markup ends without a blank line; unexpected unindent."
+// warning — both were MISSING here specifically (topics/sidebars predate
+// the lineBase convention, v0.27.0/v0.28.0), the "worth a dedicated
+// round" gap this file's own README already flagged as recurring
+// (v0.23.0's code_parsing][0], confirmed to also affect nested topic/
+// sidebar ERROR messages in v0.28.0) — closed this round by threading
+// lineBase all the way from parseExplicitMarkup through parseDirective
+// into here, AND (new this round) computing a REAL lineBase for this
+// function's own recursive p.parseBlockLines(content, ...) call instead
+// of parseBlockLines' usual "-1, no known correspondence" default: since
+// content is a pure SUFFIX of combined below (this directive always
+// requires hasArgument=true, so parseDirectiveBlock's fold-back branch
+// never runs — see its own doc comment), combined[idx] corresponds
+// EXACTLY to lines[i+idx] for every idx (a straightforward consequence
+// of combined's own construction: one line in, one line out, no
+// reordering or skipping beyond the front/back trims that only ever
+// affect combined's own edges, never an interior index) — so content's
+// own absolute line-0 offset is simply i + (len(combined)-len(content)).
+func (p *parser) runTopicOrSidebar(tag string, lines []string, i, lineBase, next int, args string, body []string, blankFinish bool, parent *doctree.Element) []doctree.Node {
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 
+	// The SAME "ends without a blank line" warning every other explicit
+	// construct already carries (see stoppedOnExplicitMarkup's own
+	// established pattern) — real docutils' Body.explicit_markup wraps
+	// EVERY explicit construct in it uniformly, not just the rejected-
+	// nesting case below, so it's collected once here and appended to
+	// whatever this function ultimately returns, on every path.
+	var warnings []doctree.Node
+	stoppedOnExplicitMarkup := next < len(lines) && isExplicitMarkupLine(lines[next])
+	if !blankFinish && !stoppedOnExplicitMarkup {
+		warnings = append(warnings, sectionMessage("2", "WARNING",
+			"Explicit markup ends without a blank line; unexpected unindent.", msgLine(next, lineBase), ""))
+	}
+
 	if parent.Tag != doctree.TagDocument && parent.Tag != doctree.TagSection && parent.Tag != doctree.TagSidebar {
-		return []doctree.Node{sectionMessage("3", "ERROR",
-			"The \""+tag+"\" directive may not be used within topics or body elements.", lineno, blockText)}
+		return append([]doctree.Node{sectionMessage("3", "ERROR",
+			"The \""+tag+"\" directive may not be used within topics or body elements.", lineno, blockText)}, warnings...)
 	}
 	if tag == doctree.TagSidebar && parent.Tag == doctree.TagSidebar {
-		return []doctree.Node{sectionMessage("3", "ERROR",
-			`The "sidebar" directive may not be used within a sidebar element.`, lineno, blockText)}
+		return append([]doctree.Node{sectionMessage("3", "ERROR",
+			`The "sidebar" directive may not be used within a sidebar element.`, lineno, blockText)}, warnings...)
 	}
 
 	blanks := 0
@@ -46,20 +80,24 @@ func (p *parser) runTopicOrSidebar(tag string, lines []string, i, next int, args
 	}
 	combined = append(combined, body...)
 	argument, options, content := parseDirectiveBlock(combined, true)
+	contentLineBase := -1
+	if lineBase >= 0 {
+		contentLineBase = i + (len(combined) - len(content)) + lineBase
+	}
 
 	if tag == doctree.TagTopic && argument == "" {
-		return []doctree.Node{sectionMessage("3", "ERROR",
-			"Error in \""+tag+"\" directive:\n1 argument(s) required, 0 supplied.", lineno, blockText)}
+		return append([]doctree.Node{sectionMessage("3", "ERROR",
+			"Error in \""+tag+"\" directive:\n1 argument(s) required, 0 supplied.", lineno, blockText)}, warnings...)
 	}
 	if tag == doctree.TagSidebar {
 		if _, hasSubtitle := options["subtitle"]; hasSubtitle && argument == "" {
-			return []doctree.Node{sectionMessage("3", "ERROR",
-				`The "subtitle" option may not be used without a title.`, lineno, blockText)}
+			return append([]doctree.Node{sectionMessage("3", "ERROR",
+				`The "subtitle" option may not be used without a title.`, lineno, blockText)}, warnings...)
 		}
 	}
 	if len(content) == 0 || allBlank(content) {
-		return []doctree.Node{sectionMessage("3", "ERROR",
-			`Content block expected for the "`+tag+`" directive; none found.`, lineno, blockText)}
+		return append([]doctree.Node{sectionMessage("3", "ERROR",
+			`Content block expected for the "`+tag+`" directive; none found.`, lineno, blockText)}, warnings...)
 	}
 
 	el := doctree.NewElement(tag)
@@ -85,11 +123,12 @@ func (p *parser) runTopicOrSidebar(tag string, lines []string, i, next int, args
 			}
 		}
 	}
-	p.parseBlockLines(content, el)
+	p.parseBlockLines(content, el, contentLineBase)
 
 	out := []doctree.Node{el}
 	for _, m := range titleMsgs {
 		out = append(out, m)
 	}
+	out = append(out, warnings...)
 	return out
 }

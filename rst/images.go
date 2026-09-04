@@ -326,7 +326,7 @@ func (p *parser) runFigureDirective(lines []string, i, next int, args string, bo
 
 	if len(content) > 0 && !allBlank(content) {
 		tmp := doctree.NewElement("")
-		p.parseBlockLines(content, tmp)
+		p.parseBlockLines(content, tmp, -1)
 		captionIdx := -1
 		for j, c := range tmp.Children {
 			ce, ok := c.(*doctree.Element)

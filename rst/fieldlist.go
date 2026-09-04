@@ -125,7 +125,7 @@ func (p *parser) parseFieldList(lines []string, i, lineBase int) (*doctree.Eleme
 		for _, m := range nameMsgs {
 			body.Append(m)
 		}
-		p.parseBlockLines(bodyLines, body)
+		p.parseBlockLines(bodyLines, body, -1)
 		field.Append(body)
 		fl.Append(field)
 		i = next
@@ -352,7 +352,7 @@ func (p *parser) parseDefinitionList(lines []string, i, lineBase int) (*doctree.
 					`Interpreted as a definition list item.`,
 				msgLine(i+1, lineBase), ""))
 		}
-		p.parseBlockLines(block, def)
+		p.parseBlockLines(block, def, -1)
 		item.Append(def)
 		dl.Append(item)
 		i = next
