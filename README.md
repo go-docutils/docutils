@@ -296,7 +296,11 @@ the exact list and why): the "ends without a blank line; unexpected
 unindent" WARNING real docutils' own `unindent_warning` produces for
 EVERY explicit-markup construct (a directive, footnote, citation, ...)
 that a following, insufficiently-indented line interrupts — this parser
-has it for enumerated lists (parser.go, v0.25.0), footnotes, citations,
+has it for enumerated lists (parser.go, v0.25.0), bullet lists
+(parser.go's `parseBulletList`, v0.47.0 — a genuinely missing case, not
+just a wording gap: real docutils treats a DIFFERENT bullet character
+as an outright stop, never a continuation, the same way ordinary text
+does), footnotes, citations,
 and comments (explicit.go's `parseFootnoteOrCitation`/`parseComment`,
 v0.35.0/v0.40.0 — including the one real subtlety: two adjacent
 explicit-markup constructs with no blank line between them are NOT an

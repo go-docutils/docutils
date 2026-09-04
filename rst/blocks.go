@@ -2,6 +2,7 @@ package rst
 
 import (
 	"strings"
+	"unicode/utf8"
 )
 
 func isBlankStr(s string) bool { return strings.TrimSpace(s) == "" }
@@ -59,8 +60,15 @@ func isBulletLine(s string) bool {
 	return len(r) == 1 || r[1] == ' '
 }
 
+// bulletContentColumn returns the BYTE offset where a bullet list item's
+// own content starts — the bullet marker itself (isBulletChar's own
+// UNICODE bullets, "•"/"‣"/"⁃", are multi-byte in UTF-8, not just the
+// ASCII "-"/"+"/"*") plus any spaces after it. Byte offset, not a rune
+// count, since every caller slices the line with Go's own byte-indexed
+// string slicing.
 func bulletContentColumn(line string) int {
-	j := 1
+	_, size := utf8.DecodeRuneInString(line)
+	j := size
 	for j < len(line) && line[j] == ' ' {
 		j++
 	}
