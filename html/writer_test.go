@@ -112,6 +112,16 @@ func TestRender(t *testing.T) {
 			`<p>A \(x &lt; y\) term.</p>`,
 		},
 		{
+			// The DISPLAY-math counterpart: real docutils' own html5
+			// writer emits MathML here instead, which would need a
+			// TeX→MathML converter this project deliberately doesn't
+			// carry — docutils' own math_output=MathJax setting produces
+			// exactly this shape.
+			"math DIRECTIVE renders with the MathJax display delimiters",
+			".. math::\n\n   x < y\n",
+			`<div>\[x &lt; y\]</div>`,
+		},
+		{
 			"comment renders as an HTML comment",
 			".. a comment\n",
 			"<!-- a comment -->",

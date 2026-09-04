@@ -109,6 +109,7 @@ const (
 	TagOptionArgument     = "option_argument"
 	TagDescription        = "description"
 	TagMath               = "math"
+	TagMathBlock          = "math_block"
 	TagDocinfo            = "docinfo"
 	TagAuthor             = "author"
 	TagAuthors            = "authors"

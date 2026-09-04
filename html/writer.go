@@ -216,6 +216,18 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		// script loaded still shows readable TeX source instead of a
 		// broken widget — this writer has no CSS/JS dependency to add.
 		b.WriteString(`\(` + escapeText(doctree.AsText(el)) + `\)`)
+	case doctree.TagMathBlock:
+		// The DISPLAY-math counterpart of the inline case above — same
+		// MathJax-delimiter convention (\[...\]) and the same reasoning.
+		// Real docutils' own html5 writer emits MathML here by default
+		// instead, which needs a whole TeX→MathML converter this project
+		// deliberately doesn't carry (the same category of omission as
+		// the code directive's own Pygments highlighting); docutils' own
+		// math_output=MathJax setting produces exactly this shape.
+		// Without this case a <math_block> fell through to the generic
+		// renderChildren default: its TeX source came out as ordinary
+		// prose, with no delimiters for MathJax to find at all.
+		b.WriteString(`<div>\[` + escapeText(doctree.AsText(el)) + `\]</div>`)
 	case doctree.TagInline:
 		attrs := ""
 		if role := el.Attr("role"); role != "" {

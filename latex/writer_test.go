@@ -33,6 +33,15 @@ func TestRenderContains(t *testing.T) {
 			[]string{`$x^2 + y_1$`},
 		},
 		{
+			// equation* matches real docutils' own latex2e writer output
+			// for a math_block exactly — verified against it directly
+			// rather than assumed, since $$...$$ and \[...\] would both
+			// have been plausible guesses.
+			"math DIRECTIVE renders as an unnumbered display-math environment",
+			".. math::\n\n   x^2 + y_1\n",
+			[]string{"\\begin{equation*}\nx^2 + y_1\n\\end{equation*}"},
+		},
+		{
 			"nested sections use increasing-depth commands",
 			"Top\n===\n\nSub\n---\n",
 			[]string{`\section{Top}`, `\subsection{Sub}`},
