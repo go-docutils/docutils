@@ -426,7 +426,7 @@ func (p *parser) gridTableFromCells(cells []gridCell, rowseps, colseps map[int]b
 			if pc.morerows > 0 {
 				entry.SetAttr("morerows", strconv.Itoa(pc.morerows))
 			}
-			p.parseBlockLines(trimTrailingBlankLines(pc.lines), entry)
+			p.parseBlockLines(trimTrailingBlankLines(pc.lines), entry, -1)
 			rowEl.Append(entry)
 		}
 		if headBodySepRow >= 0 && rn < headRows {

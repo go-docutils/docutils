@@ -101,7 +101,7 @@ func (p *parser) runAdmonitionOrGeneric(tag, requireArg string, lines []string, 
 			el.SetAttr("class", "admonition-"+makeID(argument))
 		}
 	}
-	p.parseBlockLines(content, el)
+	p.parseBlockLines(content, el, -1)
 
 	out := []doctree.Node{el}
 	for _, m := range titleMsgs {

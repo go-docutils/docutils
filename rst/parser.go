@@ -398,8 +398,14 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 
 // parseBlockLines parses body elements that may NOT contain sections
 // (docutils: nested_parse sets match_titles=False for any node besides
-// document/section — i.e. inside list items and block quotes).
-func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
+// document/section — i.e. inside list items and block quotes). lineBase
+// is the SAME threading convention every other line-scanning function in
+// this package uses (see consumeParagraph's own doc comment): -1 when
+// the caller has no real absolute correspondence to give (a list item,
+// a block quote, ...), or a real non-negative value when it does (a
+// topic/sidebar's own content, see runTopicOrSidebar) — most existing
+// callers still pass -1 unchanged; only topics.go computes a real one.
+func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBase int) {
 	i := 0
 	for i < len(lines) {
 		if isBlankStr(lines[i]) {
@@ -430,7 +436,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if _, _, ok := matchFieldMarker(lines[i]); ok {
-			fl, flMsgs, next := p.parseFieldList(lines, i, -1)
+			fl, flMsgs, next := p.parseFieldList(lines, i, lineBase)
 			parent.Append(fl)
 			for _, m := range flMsgs {
 				parent.Append(m)
@@ -450,7 +456,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if isLineBlockLine(lines[i]) {
-			lb, lbMsgs, next := p.parseLineBlock(lines, i, -1)
+			lb, lbMsgs, next := p.parseLineBlock(lines, i, lineBase)
 			parent.Append(lb)
 			for _, m := range lbMsgs {
 				parent.Append(m)
@@ -469,7 +475,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if isExplicitMarkupLine(lines[i]) {
-			nodes, next := p.parseExplicitMarkup(lines, i, -1, parent)
+			nodes, next := p.parseExplicitMarkup(lines, i, lineBase, parent)
 			for _, n := range nodes {
 				parent.Append(n)
 			}
@@ -482,7 +488,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			continue
 		}
 		if isDefinitionTermLine(lines, i) {
-			dl, dlMsgs, next := p.parseDefinitionList(lines, i, -1)
+			dl, dlMsgs, next := p.parseDefinitionList(lines, i, lineBase)
 			parent.Append(dl)
 			for _, m := range dlMsgs {
 				parent.Append(m)
@@ -490,11 +496,12 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 			i = next
 			continue
 		}
-		// lineBase -1: parseBlockLines runs over a rebased sub-slice in
-		// every caller (a list item, block quote, field body, definition
-		// — see parser.currentLine's doc comment), so i has no known
-		// absolute-document correspondence here.
-		para, paraMsgs, next, literalNext := p.consumeParagraph(lines, i, -1)
+		// lineBase: most callers pass -1 (parseBlockLines runs over a
+		// rebased sub-slice — a list item, block quote, field body,
+		// definition — see parser.currentLine's doc comment — with no
+		// known absolute-document correspondence there); topics.go is the
+		// one caller that can compute a real value for its own content.
+		para, paraMsgs, next, literalNext := p.consumeParagraph(lines, i, lineBase)
 		if para != nil {
 			parent.Append(para)
 			for _, m := range paraMsgs {
@@ -503,7 +510,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element) {
 		}
 		i = next
 		if literalNext {
-			lbNodes, next2 := tryLiteralBlock(lines, i, -1)
+			lbNodes, next2 := tryLiteralBlock(lines, i, lineBase)
 			for _, n := range lbNodes {
 				parent.Append(n)
 			}
@@ -579,7 +586,7 @@ func (p *parser) parseBulletList(lines []string, i int) (*doctree.Element, int) 
 		}
 		itemLines, next := gatherListItemLines(lines, i, col, first)
 		item := doctree.NewElement(doctree.TagListItem)
-		p.parseBlockLines(itemLines, item)
+		p.parseBlockLines(itemLines, item, -1)
 		list.Append(item)
 		i = next
 		for i < len(lines) && isBlankStr(lines[i]) {
@@ -637,7 +644,7 @@ func (p *parser) parseEnumeratedList(lines []string, i int) (*doctree.Element, [
 		}
 		itemLines, next := gatherListItemLines(lines, i, col, first)
 		item := doctree.NewElement(doctree.TagListItem)
-		p.parseBlockLines(itemLines, item)
+		p.parseBlockLines(itemLines, item, -1)
 		list.Append(item)
 		// gatherListItemLines only ever stops at EOF or a genuine
 		// non-blank, insufficiently-indented line — any blank lines

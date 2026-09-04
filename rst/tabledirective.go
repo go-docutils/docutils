@@ -245,7 +245,7 @@ func (p *parser) runTableDirective(lines []string, i, next int, args string, bod
 	title, titleMsgs := p.parseTableTitle(args, lineno)
 
 	container := doctree.NewElement(doctree.TagDocument)
-	p.parseBlockLines(content, container)
+	p.parseBlockLines(content, container, -1)
 	table, ok := singleChildOfTag(container, doctree.TagTable)
 	if !ok {
 		return []doctree.Node{sectionMessage("3", "ERROR",
@@ -292,7 +292,7 @@ func (p *parser) runListTableDirective(lines []string, i, next int, args string,
 	title, titleMsgs := p.parseTableTitle(args, lineno)
 
 	container := doctree.NewElement(doctree.TagDocument)
-	p.parseBlockLines(content, container)
+	p.parseBlockLines(content, container, -1)
 	outerList, ok := singleChildOfTag(container, doctree.TagBulletList)
 	if !ok {
 		return []doctree.Node{sectionMessage("3", "ERROR",

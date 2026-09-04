@@ -286,11 +286,21 @@ abrupt unindent at all, real docutils chains a whole run of them
 through one nested state machine and only warns once that chain is
 broken by something that ISN'T itself another explicit-markup line,
 `Body.explicit_list`, read directly), literal blocks (parser.go's
-`tryLiteralBlock`, v0.34.0), line blocks, definition lists, and field
-lists (v0.37.0/v0.38.0/v0.39.0); a topic/sidebar containing a rejected
-nested directive, or a hyperlink target/directive interrupted the same
-way, is still missing this one diagnostic even though the rejection
-itself is correctly reported. Docutils'
+`tryLiteralBlock`, v0.34.0), line blocks, definition lists, field
+lists (v0.37.0/v0.38.0/v0.39.0), and topics/sidebars (`topics.go`,
+v0.44.0 — including a NESTED topic/sidebar's own rejection diagnostic,
+which used to always report `line="1"` regardless of its real position
+in the document, an index local to the outer topic/sidebar's own
+rebased content rather than the real document; `runTopicOrSidebar`'s
+own doc comment has the derivation for computing a real absolute line
+for topic/sidebar content specifically). A bare hyperlink target or
+generic directive interrupted the same way is still missing this one
+diagnostic even though the construct itself is correctly captured, and
+still always reports a placeholder line number when nested (the
+broader "any nested directive gets a real absolute line number, not
+just topic/sidebar" undertaking — parser.go's own `parseBlockLines`
+now threads a real `lineBase` when its caller can compute one, but
+topics.go is still the only caller that does). Docutils'
 *standalone* PEP/RFC recognition —
 bare `pep-123`/`RFC 123` text with no `:PEP:`/`:RFC:` role markup at all
 (checked against `Parser().parse()` with default settings — docutils'

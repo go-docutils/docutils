@@ -40,7 +40,7 @@ func (p *parser) parseBlockQuotes(lines []string, i int) ([]*doctree.Element, in
 	for len(indented) > 0 {
 		bqLines, attrLines, remaining := splitAttribution(indented)
 		bq := doctree.NewElement(doctree.TagBlockQuote)
-		p.parseBlockLines(bqLines, bq)
+		p.parseBlockLines(bqLines, bq, -1)
 		out = append(out, bq)
 		if attrLines != nil {
 			text := joinTrimmed(attrLines)

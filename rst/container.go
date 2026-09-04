@@ -51,6 +51,6 @@ func (p *parser) runContainerDirective(lines []string, i, next int, args string,
 		el.SetAttr("name", name)
 		el.SetAttr("id", makeID(name))
 	}
-	p.parseBlockLines(content, el)
+	p.parseBlockLines(content, el, -1)
 	return []doctree.Node{el}
 }

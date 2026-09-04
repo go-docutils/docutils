@@ -194,7 +194,7 @@ func (p *parser) parseOptionList(lines []string, i int) (el *doctree.Element, ne
 			group.Append(optionNode(opt))
 		}
 		desc := doctree.NewElement(doctree.TagDescription)
-		p.parseBlockLines(bodyLines, desc)
+		p.parseBlockLines(bodyLines, desc, -1)
 		item := doctree.NewElement(doctree.TagOptionListItem, group, desc)
 		ol.Append(item)
 		i = n
