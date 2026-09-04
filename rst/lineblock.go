@@ -159,6 +159,103 @@ func nestLineBlockSegment(parent *doctree.Element, items []lbLine) {
 	flush()
 }
 
+// runLineBlockDirective implements the legacy ".. line-block::" directive
+// (directives.body.LineBlock, read directly) — deprecated in favor of the
+// bare "| " syntax parseLineBlock already handles, but real docutils
+// still supports it, and it exists for exactly the shape that syntax
+// can't: content that itself contains blank lines or indentation the "|"
+// marker can't carry. :class:/:name: options, no argument at all (same
+// shape as compound/the generic admonitions — same-line text folds into
+// content's own first line, parseDirectiveBlock(combined, false)).
+//
+// UNLIKE the bare "| " syntax, each content line is inline-parsed
+// INDEPENDENTLY (never joined across a wrap the way a "|"-marked line's
+// own continuation lines are) — LineBlock.run's own per-line
+// self.state.inline_text(line_text.strip(), ...) call, read directly:
+// this is WHY corpus fixture line_blocks][2]'s "*may not span\nmultiple
+// lines*" produces an unclosed-emphasis warning on the first line and
+// plain literal text on the second, rather than resolving as one
+// wrapped emphasis span. Nesting reuses nestLineBlockSegment verbatim
+// (the exact same "shallowest indent in a segment stays flat, deeper
+// runs nest" algorithm the bare syntax already has, LineBlock.run's own
+// nest_line_block_lines call, read directly) — each line's own indent is
+// its leading-whitespace count BEFORE stripping, a blank line's indent
+// left unknown (-1) and inherited from the previous line exactly like
+// parseLineBlock's own convention.
+//
+// Each line's own absolute lineno (needed for its inline-markup
+// diagnostics) is derived the same way topics.go's own contentLineBase
+// is (see that function's own doc comment for the "combined[idx]
+// corresponds to lines[i+idx]" reasoning) — verified correct for this
+// directive's own no-options corpus case specifically; WITH options
+// present, parseDirectiveBlock's fold-back cuts the option lines back
+// out of content, breaking that simple correspondence, not corpus-
+// tested here so left unhandled (lineno falls back to unknown, 0).
+func (p *parser) runLineBlockDirective(lines []string, i, lineBase, next int, args string, body []string) []doctree.Node {
+	lineno := i + 1
+	blockText := strings.Join(lines[i:next], "\n")
+	directiveName := "line-block"
+
+	blanks := 0
+	for j := i + 1; j < len(lines) && isBlankStr(lines[j]); j++ {
+		blanks++
+	}
+	combined := make([]string, 0, 1+blanks+len(body))
+	combined = append(combined, args)
+	for k := 0; k < blanks; k++ {
+		combined = append(combined, "")
+	}
+	combined = append(combined, body...)
+	_, options, content := parseDirectiveBlock(combined, false)
+
+	if len(content) == 0 || allBlank(content) {
+		return []doctree.Node{sectionMessage("3", "ERROR",
+			`Content block expected for the "`+directiveName+`" directive; none found.`, lineno, blockText)}
+	}
+
+	contentLineBase := -1
+	if lineBase >= 0 && len(options) == 0 {
+		contentLineBase = i + (len(combined) - len(content)) + lineBase
+	}
+
+	el := doctree.NewElement(doctree.TagLineBlock)
+	if v, ok := options["class"]; ok {
+		el.SetAttr("class", strings.Join(classOption(v), " "))
+	}
+	if v, ok := options["name"]; ok && v != "" {
+		name := normalizeName(v)
+		el.SetAttr("name", name)
+		el.SetAttr("id", makeID(name))
+	}
+
+	var items []lbLine
+	var messages []doctree.Node
+	for k, lineText := range content {
+		lineno := msgLine(k, contentLineBase)
+		trimmed := strings.TrimSpace(lineText)
+		indent := -1
+		if trimmed != "" {
+			indent = len(lineText) - len(strings.TrimLeft(lineText, " "))
+		}
+		contentNodes, contentMsgs := p.parseInline(trimmed, lineno)
+		items = append(items, lbLine{doctree.NewElement(doctree.TagLine, contentNodes...), indent})
+		for _, m := range contentMsgs {
+			messages = append(messages, m)
+		}
+	}
+	if len(items) > 0 && items[0].indent < 0 {
+		items[0].indent = 0
+	}
+	for k := 1; k < len(items); k++ {
+		if items[k].indent < 0 {
+			items[k].indent = items[k-1].indent
+		}
+	}
+	nestLineBlockSegment(el, items)
+
+	return append([]doctree.Node{el}, messages...)
+}
+
 func isDoctestLine(s string) bool {
 	return strings.HasPrefix(s, ">>>") && (len(s) == 3 || s[3] == ' ')
 }

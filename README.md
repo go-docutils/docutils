@@ -275,7 +275,13 @@ document, reusing the SAME base-role validation `.. role::` already
 has (an unresolvable name is the identical INFO+ERROR pair); a bare
 `.. default-role::` with no argument at all RESETS it back to real
 docutils' own standard default, `title-reference` — `DefaultRole.run`,
-`misc.py`, read directly. And
+`misc.py`, read directly. `.. line-block::` (the legacy directive form
+of a line block, deprecated in favor of the bare `| ` syntax below but
+still supported — `:class:`/`:name:` options, content required; unlike
+the bare syntax, each content line is inline-parsed INDEPENDENTLY,
+never joined across a wrap, so markup can't span two lines the way it
+can there — reuses the bare syntax's own nesting algorithm verbatim,
+`LineBlock.run`, `body.py`, read directly). And
 backslash escapes; standalone URI (`scheme://...`) and email
 (`user@host`) recognition — no backtick quoting or trailing `_` needed
 at all, e.g. plain `https://example.com` in running text becomes a
