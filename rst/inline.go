@@ -676,34 +676,80 @@ func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) ([]doctree.Node,
 	}
 	afterClose := closeAt + closeLen
 
-	if prefixRole != "" {
-		return []doctree.Node{p.roleElement(prefixRole, contentRunes)}, afterClose - i, true
-	}
+	// A role may appear as a prefix or a suffix, never both. docutils'
+	// end pattern matches the closing backquote, an OPTIONAL suffix role,
+	// and an OPTIONAL reference suffix ("_"/"__") in one go, then rejects
+	// the two illegal combinations before resolving the role at all —
+	// which is why neither diagnostic below carries the unknown-role
+	// messages this parser deliberately doesn't emit (README): they are
+	// SYNTAX errors, reported for a perfectly well-known role too,
+	// checked directly against the reference for :emphasis: in every
+	// position.
+	suffixRole, end := "", afterClose
 	if afterClose < len(runes) && runes[afterClose] == ':' {
 		if role, afterRole, ok := tryRoleName(runes, afterClose+1); ok {
-			return []doctree.Node{p.roleElement(role, contentRunes)}, afterRole - i, true
+			suffixRole, end = role, afterRole
 		}
 	}
+	if prefixRole != "" && suffixRole != "" {
+		return []doctree.Node{p.problematicMessage("2", "WARNING", string(runes[i:end]),
+			"Multiple roles in interpreted text (both prefix and suffix present; only one allowed).")}, end - i, true
+	}
+
+	// docutils tests rawsource[-1:] == "_", so a reference suffix after a
+	// role — in EITHER position — is the "Mismatch" warning rather than a
+	// phrase reference. The message names the position the role was in.
+	if role, position := prefixRole+suffixRole, positionOfRole(prefixRole, suffixRole); role != "" {
+		if refEnd, isRef := scanReferenceSuffix(runes, end); isRef {
+			return []doctree.Node{p.problematicMessage("2", "WARNING", string(runes[i:refEnd]),
+				"Mismatch: both interpreted text role "+position+" and reference suffix.")}, refEnd - i, true
+		}
+		return []doctree.Node{p.roleElement(role, contentRunes)}, end - i, true
+	}
+
 	nodes, extra := p.referenceOrPhrase(contentRunes, afterClose, runes)
 	return nodes, (afterClose - i) + extra, true
+}
+
+// positionOfRole names which side the role was found on, for the
+// "Mismatch: both interpreted text role %s and reference suffix."
+// message. Exactly one of the two is ever non-empty by the time this is
+// called — the both-present case is the separate warning above.
+func positionOfRole(prefixRole, suffixRole string) string {
+	if prefixRole != "" {
+		return "prefix"
+	}
+	return "suffix"
+}
+
+// scanReferenceSuffix reports whether a reference suffix ("_" or "__")
+// starts at i, returning the index right after it.
+func scanReferenceSuffix(runes []rune, i int) (int, bool) {
+	if i >= len(runes) || runes[i] != '_' {
+		return i, false
+	}
+	if i+1 < len(runes) && runes[i+1] == '_' {
+		return i + 2, true
+	}
+	return i + 1, true
 }
 
 // tryRoleName recognizes a ":name" immediately followed by a closing
 // ":" starting at `from` (the position right after the opening ":"),
 // returning the role name and the position right after the closing ":".
+// A role name is docutils' own `simplename` (states.py: the role group is
+// `(?P<role>:%(simplename)s:)?`), NOT the letters/digits/hyphen subset an
+// earlier version of this scanned for: ".", "_", "+" and ":" are all
+// legal too, so ":very.long-role_name:`x`" used to be missed entirely and
+// left as plain text with a bare <title_reference> beside it. scanSimpleName
+// is greedy over ":" as well, which is what real docutils does — ":a:b:`x`"
+// is the single role "a:b", not "a" — verified against the reference.
 func tryRoleName(runes []rune, from int) (name string, after int, ok bool) {
-	j := from
-	for j < len(runes) && isRoleNameChar(runes[j]) {
-		j++
-	}
+	j := scanSimpleName(runes, from)
 	if j == from || j >= len(runes) || runes[j] != ':' {
 		return "", 0, false
 	}
 	return string(runes[from:j]), j + 1, true
-}
-
-func isRoleNameChar(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-'
 }
 
 // roleTags maps docutils' built-in role canonical/alias names

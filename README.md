@@ -394,7 +394,23 @@ rewriting every OTHER unrecognized name to `problematic`, since that
 would be a real leniency REGRESSION for any document using a role this
 parser has simply never heard of (a Sphinx/extension role, say) rather
 than a gap filled — real docutils always errors there, this parser
-still doesn't, on purpose. Standalone URI recognition (no backtick
+still doesn't, on purpose. **That leniency covers the role being
+UNRECOGNIZED, not the role markup being malformed**: the two syntax
+errors docutils raises in `interpreted_or_phrase_ref` *before* it
+resolves the role at all ARE ported (v0.54.0+) — a role in both
+positions at once (`` :a:`x`:b: ``,
+`"Multiple roles in interpreted text (both prefix and suffix present;
+only one allowed)."`) and a role combined with a reference suffix
+(`` :a:`x`_ ``, `"Mismatch: both interpreted text role prefix and
+reference suffix."`, the message naming whichever position the role was
+in). Both were verified against the reference for `:emphasis:`, an
+ordinary built-in, so neither depends on the role being unknown; the
+suffix used to be silently dropped as leftover plain text. A role NAME
+is docutils' own `simplename`, so `.`, `_`, `+` and `:` are all legal in
+it (`` :very.long-role_name:`x` ``, and `` :a:b:`x` `` is greedily the
+single role `a:b`) — this used to scan letters/digits/`-` only, missing
+such a role entirely and leaving it as plain text beside a bare
+`<title_reference>`. Standalone URI recognition (no backtick
 quoting or trailing `_` needed at all, `inline.go`) only matches a
 "scheme://" (double-slash) form — real docutils' own URI pattern also
 accepts a bare "scheme:path" with no "//" at all (`mailto:`, `news:`,
