@@ -422,9 +422,12 @@ func (p *parser) problematicMessage(level, msgType, rawtext, message string) *do
 // states.py, read directly): within an embedded <URI or alias>, an
 // escaped space/newline becomes a literal SPACE rather than being
 // dropped the way the general unescape rule drops it everywhere else.
-func referenceOrPhrase(contentRunes []rune, afterClose int, runes []rune) ([]doctree.Node, int) {
+func (p *parser) referenceOrPhrase(contentRunes []rune, afterClose int, runes []rune) ([]doctree.Node, int) {
 	content := unescapeRunes(contentRunes)
 	if !(afterClose < len(runes) && runes[afterClose] == '_') {
+		if p.defaultRole != "" {
+			return []doctree.Node{p.roleElement(p.defaultRole, contentRunes)}, 0
+		}
 		return []doctree.Node{doctree.NewElement(doctree.TagTitleReference, &doctree.Text{Data: content})}, 0
 	}
 	anonymous := false
@@ -681,7 +684,7 @@ func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) ([]doctree.Node,
 			return []doctree.Node{p.roleElement(role, contentRunes)}, afterRole - i, true
 		}
 	}
-	nodes, extra := referenceOrPhrase(contentRunes, afterClose, runes)
+	nodes, extra := p.referenceOrPhrase(contentRunes, afterClose, runes)
 	return nodes, (afterClose - i) + extra, true
 }
 

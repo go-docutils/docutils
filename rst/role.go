@@ -49,6 +49,33 @@ var knownRoleNames = map[string]bool{
 	"uri": true, "uri-reference": true, "url": true,
 }
 
+// isKnownRoleName reports whether name is either one of the built-in
+// roles (knownRoleNames) or a PREVIOUSLY ".. role::"-defined custom role
+// in this document — the same two-stage check registerRole's own base-
+// role validation already needed (roles.role's local-registry-then-
+// language-module lookup, read directly), reused by ".. default-role::"
+// below for the identical validation.
+func (p *parser) isKnownRoleName(name string) bool {
+	lower := strings.ToLower(name)
+	_, chained := p.roles[lower]
+	return knownRoleNames[lower] || chained
+}
+
+// unknownRoleDiagnostics is the INFO+ERROR pair real docutils' roles.role
+// produces for a name neither this project nor real docutils has ever
+// heard of (read directly) — shared between ".. role::"'s own base-role
+// validation and ".. default-role::"'s argument validation, both of
+// which reach the exact same lookup.
+func unknownRoleDiagnostics(name string, lineno int, blockText string) []doctree.Node {
+	return []doctree.Node{
+		sectionMessage("1", "INFO",
+			"No role entry for \""+name+"\" in module \"docutils.parsers.rst.languages.en\".\nTrying \""+name+"\" as canonical role name.",
+			lineno, ""),
+		sectionMessage("3", "ERROR",
+			`Unknown interpreted text role "`+name+`".`, lineno, blockText),
+	}
+}
+
 // parseRoleArgs recognizes "NAME(BASE)" or bare "NAME" — the ".. role::"
 // directive's own argument, docutils' argument_pattern
 // (`simplename\s*(\(\s*simplename\s*\)\s*)?`).
@@ -131,18 +158,8 @@ func (p *parser) registerRole(lines []string, i, next int, args string, body []s
 			`"role" directive arguments not valid role names: "`+strings.TrimSpace(argsLine)+`".`, lineno, blockText)}
 	}
 
-	if base != "" {
-		lowerBase := strings.ToLower(base)
-		_, chained := p.roles[lowerBase]
-		if !knownRoleNames[lowerBase] && !chained {
-			return []doctree.Node{
-				sectionMessage("1", "INFO",
-					"No role entry for \""+base+"\" in module \"docutils.parsers.rst.languages.en\".\nTrying \""+base+"\" as canonical role name.",
-					lineno, ""),
-				sectionMessage("3", "ERROR",
-					`Unknown interpreted text role "`+base+`".`, lineno, blockText),
-			}
-		}
+	if base != "" && !p.isKnownRoleName(base) {
+		return unknownRoleDiagnostics(base, lineno, blockText)
 	}
 
 	def := roleDef{base: strings.ToLower(base)}
@@ -254,4 +271,30 @@ func classOptionStrict(s string) (classes []string, failed string, ok bool) {
 		classes = append(classes, id)
 	}
 	return classes, "", true
+}
+
+// runDefaultRoleDirective implements DefaultRole.run (misc.py, read
+// directly): ".. default-role:: NAME" changes what BARE interpreted text
+// (“ `text` “, no explicit role prefix, no trailing hyperlink
+// underscore) resolves to for the rest of the document — read by
+// referenceOrPhrase via p.defaultRole. A bare ".. default-role::" (no
+// argument at all) RESETS it back to real docutils' own standard
+// default (title-reference) rather than leaving whatever was set before.
+// The argument is expected on the SAME line only (every corpus fixture
+// has it there; optional_arguments=1/final_argument_whitespace=False
+// means it's a single token anyway, so no multi-line body-gathering is
+// needed the way admonitions/topic/sidebar's own REQUIRED arguments do).
+func (p *parser) runDefaultRoleDirective(lines []string, i, next int, args string) []doctree.Node {
+	roleName := strings.TrimSpace(args)
+	if roleName == "" {
+		p.defaultRole = ""
+		return nil
+	}
+	if !p.isKnownRoleName(roleName) {
+		lineno := i + 1
+		blockText := strings.Join(lines[i:next], "\n")
+		return unknownRoleDiagnostics(roleName, lineno, blockText)
+	}
+	p.defaultRole = strings.ToLower(roleName)
+	return nil
 }
