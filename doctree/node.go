@@ -140,6 +140,7 @@ const (
 	TagMeta               = "meta"
 	TagContainer          = "container"
 	TagCompound           = "compound"
+	TagRubric             = "rubric"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

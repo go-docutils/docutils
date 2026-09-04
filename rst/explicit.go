@@ -688,6 +688,12 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 	if strings.EqualFold(name, "code") {
 		return p.runCodeDirective(lines, i, next, args, body), next
 	}
+	if strings.EqualFold(name, "rubric") {
+		return p.runRubricDirective(lines, i, next, args, body), next
+	}
+	if strings.EqualFold(name, "parsed-literal") {
+		return p.runParsedLiteralDirective(lines, i, next, args, body), next
+	}
 	if strings.EqualFold(name, "meta") {
 		// Meta declares no arguments and no option_spec at all, so real
 		// docutils folds ANY same-line remainder into its own content

@@ -226,7 +226,16 @@ a `class="..."` attribute on whatever element the role produces — a
 registered custom role's `<inline class="...">` is NOT the same shape as
 a totally unregistered role name, which still falls back to this
 parser's own invented `<inline role="name">` rather than docutils'
-error (see "Not yet ported" below). The `.. role::` DIRECTIVE itself
+error (see "Not yet ported" below); `rubric` (a REQUIRED single-line-or-
+final-argument-whitespace argument, inline-parsed directly into the
+`<rubric>` node itself — no wrapping `<title>`, unlike topic/admonition
+— `:class:`/`:name:` options; unlike every other directive here, Rubric
+declares no content at all, so a real indented body is a genuine
+"no content permitted" ERROR, not silently ignored); `parsed-literal`
+(a `<literal_block>` whose content IS inline-parsed, unlike an ordinary
+literal block — the whole joined content parsed in ONE call, so markup
+spanning multiple physical lines still resolves as a single node,
+matching real docutils' own `inline_text` call exactly). The `.. role::` DIRECTIVE itself
 (as opposed to a role it registers being used unrecognized later) does
 error on a malformed definition, matching `Role.run`: no content at all,
 content not matching the `NAME(BASE)` pattern, a `BASE` that isn't a
