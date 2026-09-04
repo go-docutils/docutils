@@ -105,7 +105,13 @@ documented for the inline `:code:` role below: content here is always
 treated the way real docutils itself treats an unhighlightable
 language, matching every corpus fixture's own default-settings output,
 none of which exercise a language that would actually highlight
-differently); `meta` (a run of field markers — reusing the
+differently); `container` (an OPTIONAL argument, possibly spanning
+several lines joined with a space, becomes the node's own classes —
+NOT a `:class:` option, `container` only recognizes `:name:` — content
+REQUIRED, parsed as ordinary body elements); `compound` (no argument
+at all — same-line text after `::` folds into the directive's own
+FIRST content line, exactly like the nine generic admonitions —
+`:class:`/`:name:` options, content REQUIRED); `meta` (a run of field markers — reusing the
 SAME grammar every field list already does — each becoming a `<meta>`
 whose own attributes come from splitting the marker's own, backslash-
 unescaped NAME text on whitespace: the first token is either

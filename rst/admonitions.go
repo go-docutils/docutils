@@ -177,7 +177,25 @@ func parseDirectiveBlock(combined []string, hasArgument bool) (argument string, 
 
 	content = rest
 	if len(argBlock) > 0 && !hasArgument {
-		content = append(append([]string{}, argBlock...), rest...)
+		// Body.parse_directive_block's own fold-back is "arg_block +
+		// indented[i:]" (read directly) — indented[i:], NOT indented[i+1:],
+		// starting AT the blank-line separator itself rather than past it,
+		// so the separator survives the fold as a real paragraph break
+		// between the same-line argument text and whatever follows it.
+		// combined[blankAt+1:] (rest, above) already dropped that line for
+		// the has-argument path, where it's correctly discarded — but
+		// reusing "rest" here instead of re-deriving it from blankAt would
+		// silently drop the same separator a second time, merging two
+		// paragraphs into one (test_compound.py[2]'s own same-line-argument-
+		// plus-blank-plus-second-paragraph shape, the first fixture in this
+		// package to exercise a blank line inside the folded, no-argument
+		// case at all — every existing admonition/topic caller's own corpus
+		// coverage happens to never have one there).
+		if blankAt >= 0 {
+			content = append(append([]string{}, argBlock...), combined[blankAt:]...)
+		} else {
+			content = append([]string{}, argBlock...)
+		}
 		argBlock = nil
 	}
 	for len(content) > 0 && isBlankStr(content[0]) {
