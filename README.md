@@ -90,7 +90,22 @@ followed, and everything remaining after becomes `<legend>`; a
 `.. class::`-produced `<pending>` node ahead of the caption is not
 reproduced — this project has no transform system and so no `<pending>`
 node at all — though a bare hyperlink target in that position still
-passes through correctly); `meta` (a run of field markers — reusing the
+passes through correctly); `code` (an OPTIONAL language argument
+becomes a class alongside the fixed `code` one — even for a language
+this parser will never actually highlight, see below — plus
+`:class:`/`:name:`/`:number-lines:` options; `:number-lines:` is fully
+ported, independent of lexical analysis: a leading `<inline class="ln">`
+line-number marker, right-padded to the width of the LAST line number,
+before the content and after every embedded newline. Real docutils
+additionally runs the content through Pygments for syntax coloring
+(per-token `<inline class="...">` spans) unless the document's own
+`syntax_highlight` setting is `"none"` — not ported here, the same
+"no Pygments equivalent and never will" scope boundary already
+documented for the inline `:code:` role below: content here is always
+treated the way real docutils itself treats an unhighlightable
+language, matching every corpus fixture's own default-settings output,
+none of which exercise a language that would actually highlight
+differently); `meta` (a run of field markers — reusing the
 SAME grammar every field list already does — each becoming a `<meta>`
 whose own attributes come from splitting the marker's own, backslash-
 unescaped NAME text on whitespace: the first token is either
