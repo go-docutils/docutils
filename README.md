@@ -161,7 +161,13 @@ number) and auto-SYMBOL assignment (`[*]_`, docutils' own fixed
 ten-symbol sequence, doubling/tripling/... once it wraps: `**`, `††`,
 ...) — both matched to their references by document-order position
 when unnamed, same mechanism as anonymous targets above), citations
-(`[CITE2002]_`, never auto-numbered), substitution definitions/references
+(`[CITE2002]_`, never auto-numbered — the bracketed label is VALIDATED
+against docutils' own dispatch patterns, `[0-9]+|#|#simplename|\*` for a
+footnote and a bare `simplename` for a citation, so a line like
+`.. [citation label with spaces] text` is not a citation at all but
+falls through to the explicit-markup comment fallback, v0.53.0+; when
+two names slug to the same id, the later one is disambiguated with an
+incrementing `-N` suffix, docutils' `create_id`), substitution definitions/references
 (`|name|` — the marker's own NAME may itself span multiple physical
 lines, real docutils progressively re-matching its own substitution
 pattern against the growing text until the closing `|` is found
@@ -364,7 +370,15 @@ still always reports a placeholder line number when nested (the
 broader "any nested directive gets a real absolute line number, not
 just topic/sidebar" undertaking — parser.go's own `parseBlockLines`
 now threads a real `lineBase` when its caller can compute one, but
-topics.go is still the only caller that does). Docutils'
+topics.go is still the only caller that does). A diagnostic about a
+construct's own missing content names the LAST LINE THE BLOCK CONSUMED,
+which for a blank-terminated block is the blank line itself; since
+docutils consumes and counts trailing blank lines too (`.. [c]\n\n`
+reports line 2, `.. [c]\n\n\n` reports line 3), `splitLines` drops only
+ONE trailing empty element — the artifact of the final newline, exactly
+Python's `str.splitlines()` — rather than every trailing blank as it
+used to (v0.53.0; stripping them all cancelled an off-by-one, so these
+line numbers had been coming out right for the wrong reason). Docutils'
 *standalone* PEP/RFC recognition —
 bare `pep-123`/`RFC 123` text with no `:PEP:`/`:RFC:` role markup at all
 (checked against `Parser().parse()` with default settings — docutils'

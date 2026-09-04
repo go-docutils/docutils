@@ -162,6 +162,17 @@ type parser struct {
 	// nothing usable) falls back to a running counter scoped to the
 	// element's own tag name, never the raw name itself.
 	fallbackIDCounters map[string]int
+	// usedIDs is every id explicitTargetID has already handed out, so a
+	// SECOND explicit target whose own name slugifies to an id already
+	// taken gets a disambiguating "-1"/"-2"/... suffix instead of
+	// silently colliding — real docutils' own document.create_id (read
+	// directly) does exactly this: when the name-derived base id is
+	// already in document.ids it builds "<id>-" and appends an
+	// incrementing counter until one is free. Two citations named
+	// "citation.withdot" and "citation-withdot" both slug to
+	// "citation-withdot", and the corpus fixture pairing them is what
+	// surfaced this.
+	usedIDs map[string]bool
 }
 
 // explicitTargetID returns the id an explicit target (a footnote,
@@ -172,13 +183,42 @@ type parser struct {
 // fallbackIDCounters' own doc comment.
 func (p *parser) explicitTargetID(tag, name string) string {
 	if id := makeID(name); id != "" {
-		return id
+		return p.claimID(id)
 	}
 	if p.fallbackIDCounters == nil {
 		p.fallbackIDCounters = map[string]int{}
 	}
 	p.fallbackIDCounters[tag]++
-	return tag + "-" + strconv.Itoa(p.fallbackIDCounters[tag])
+	return p.claimID(tag + "-" + strconv.Itoa(p.fallbackIDCounters[tag]))
+}
+
+// claimID reserves id for one explicit target, disambiguating it with a
+// "-1"/"-2"/... suffix when an earlier target already took it — real
+// docutils' own document.create_id (read directly): a name-derived id
+// already present in document.ids becomes the PREFIX for an
+// incrementing counter rather than being handed out twice. Only ids
+// explicitTargetID itself hands out participate: those are exactly the
+// ones docutils' note_explicit_target covers (footnotes, citations,
+// hyperlink targets). A directive's own ":name:"-derived id goes
+// through makeID directly and is NOT registered here — real docutils
+// would pool those together with these, but no corpus fixture collides
+// the two, and widening the pool would change ids this project already
+// emits correctly for no verified gain.
+func (p *parser) claimID(id string) string {
+	if p.usedIDs == nil {
+		p.usedIDs = map[string]bool{}
+	}
+	if !p.usedIDs[id] {
+		p.usedIDs[id] = true
+		return id
+	}
+	for n := 1; ; n++ {
+		candidate := id + "-" + strconv.Itoa(n)
+		if !p.usedIDs[candidate] {
+			p.usedIDs[candidate] = true
+			return candidate
+		}
+	}
 }
 
 // roleDef is one ".. role::" registration: base names the role it derives

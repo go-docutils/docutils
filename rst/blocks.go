@@ -204,7 +204,15 @@ func consumeIndentedBlock(lines []string, i, indent int) ([]string, int) {
 func splitLines(source string) []string {
 	source = strings.ReplaceAll(source, "\r\n", "\n")
 	lines := strings.Split(source, "\n")
-	for len(lines) > 0 && lines[len(lines)-1] == "" {
+	// Drop only ONE trailing empty element: the artifact of a final newline.
+	// This is exactly Python's str.splitlines(), which docutils' string2lines
+	// is built on. Genuine trailing blank lines must survive, because the
+	// state machine consumes them and reports them in diagnostics: docutils
+	// puts "Citation content expected." on line 2 for ".. [c]\n\n" and on
+	// line 3 for ".. [c]\n\n\n" — the last line consumed, blank or not.
+	// Stripping them all used to cancel an off-by-one elsewhere, so those
+	// diagnostics came out right for the wrong reason.
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
 	return lines

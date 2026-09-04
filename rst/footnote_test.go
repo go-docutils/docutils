@@ -67,6 +67,32 @@ func TestFootnoteAndCitationBodies(t *testing.T) {
 			"An empty citation raises a warning:\n\n.. [note]\n\n",
 			"<document>\n    <paragraph>\n        An empty citation raises a warning:\n    <citation id=\"note\" name=\"note\">\n        <label>\n            note\n        <system_message level=\"2\" line=\"4\" type=\"WARNING\">\n            <paragraph>\n                Citation content expected.\n",
 		},
+		{
+			// The message names the LAST LINE CONSUMED, which is the blank line
+			// terminating the block -- not the marker, and not the paragraph
+			// that follows. The case above reports line 4 for the same reason:
+			// its trailing blank line is consumed too, which is why splitLines
+			// must not strip trailing blanks.
+			"an empty citation blames the blank line that ended it, not the paragraph after it",
+			".. [c]\n\nNot part of the citation.\n",
+			"<document>\n    <citation id=\"c\" name=\"c\">\n        <label>\n            c\n        <system_message level=\"2\" line=\"2\" type=\"WARNING\">\n            <paragraph>\n                Citation content expected.\n    <paragraph>\n        Not part of the citation.\n",
+		},
+		{
+			// docutils create_id: when a name-derived id is already taken, it
+			// appends "-" and an incrementing counter. Both of these names slug
+			// to "citation-withdot", so the second must be disambiguated.
+			"two citations whose names slug to the same id get distinct ids",
+			".. [citation.withdot] one\n\n.. [citation-withdot] two\n",
+			"<document>\n    <citation id=\"citation-withdot\" name=\"citation.withdot\">\n        <label>\n            citation.withdot\n        <paragraph>\n            one\n    <citation id=\"citation-withdot-1\" name=\"citation-withdot\">\n        <label>\n            citation-withdot\n        <paragraph>\n            two\n",
+		},
+		{
+			// A bracketed label that is neither a footnote label nor a
+			// simplename is not a citation at all: it falls through to the
+			// explicit-markup comment fallback, exactly as in docutils.
+			"a bracketed phrase that is not a valid label stays a comment",
+			".. [citation label with spaces] this is not a citation\n",
+			"<document>\n    <comment>\n        [citation label with spaces] this is not a citation\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

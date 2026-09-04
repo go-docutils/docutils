@@ -196,7 +196,55 @@ func matchBracketLabel(s string) (label, rest string, ok bool) {
 	if end+1 < len(s) && s[end+1] != ' ' {
 		return "", "", false
 	}
+	if !isValidBracketLabel(s[1:end]) {
+		return "", "", false
+	}
 	return s[1:end], strings.TrimSpace(s[end+1:]), true
+}
+
+// isValidBracketLabel reports whether label is one real docutils would
+// actually accept between the brackets of a footnote or citation
+// marker: the UNION of its own two dispatch patterns (Body.explicit's
+// constructs table, read directly) —
+//
+//	footnote: [0-9]+  |  "#"  |  "#"<simplename>  |  "*"
+//	citation: <simplename>
+//
+// where simplename is the same `(?:(?!_)\w)+(?:[-._+:](?:(?!_)\w)+)*`
+// grammar scanSimpleName already implements for inline names: runs of
+// alphanumerics joined by single "-._+:" separators.
+//
+// Anything else — spaces, inline markup, an empty label — matches
+// NEITHER construct, so real docutils falls all the way through its
+// explicit-markup dispatch to the final comment fallback rather than
+// inventing a citation out of it. This project used to accept ANY text
+// up to the closing bracket, silently turning a line like
+// ".. [citation label with spaces] this isn't a citation" into a real
+// <citation> whose own body was that disclaimer — an over-acceptance
+// bug the corpus fixture that names itself "this isn't a citation"
+// exists precisely to catch. Returning false here lands such a line on
+// parseExplicitMarkup's own already-present comment fallback, no new
+// branch needed.
+func isValidBracketLabel(label string) bool {
+	if label == "*" || label == "#" {
+		return true
+	}
+	name := label
+	if strings.HasPrefix(label, "#") {
+		name = label[1:]
+	}
+	return isSimpleName(name)
+}
+
+// isSimpleName reports whether the WHOLE of s is one docutils
+// simplename — scanSimpleName (inline.go) scans a prefix, so this is
+// just "did it consume everything".
+func isSimpleName(s string) bool {
+	if s == "" {
+		return false
+	}
+	r := []rune(s)
+	return scanSimpleName(r, 0) == len(r)
 }
 
 // parseFootnoteOrCitation classifies a bracket-labeled explicit-markup
@@ -261,7 +309,20 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label,
 	if len(content) > 0 {
 		p.parseBlockLines(content, el, -1)
 	} else {
-		el.Append(sectionMessage("2", "WARNING", contentKind+" content expected.", msgLine(next, lineBase), ""))
+		// next-1, NOT next: this warning carries the line the construct
+		// itself ENDED on (the last line it actually consumed), where
+		// the "ends without a blank line" one below carries the line
+		// that INTERRUPTED it — two different questions that happen to
+		// share the same `next`. Verified against the foreign judge
+		// across all three shapes: blank-line-terminated (".. [c]\n\nX\n"
+		// → the blank, line 2), EOF-terminated (".. [c]\n" → the marker
+		// itself, line 1), and abruptly interrupted (".. [c]\nX\n" →
+		// again the marker, line 1, while the unindent warning there
+		// correctly says line 2). Was off by one in every one of them;
+		// no footnote fixture in the corpus has an empty body, so the
+		// identical bug on that side went uncaught until citations
+		// surfaced it.
+		el.Append(sectionMessage("2", "WARNING", contentKind+" content expected.", msgLine(next-1, lineBase), ""))
 	}
 	nodes := []doctree.Node{el}
 	// Real docutils chains a whole RUN of explicit-markup constructs

@@ -58,6 +58,21 @@ func TestMatchBracketLabel(t *testing.T) {
 		{"not bracketed", "", "", false},
 		{"[unterminated", "", "", false},
 		{"[1]nospace", "", "", false},
+
+		// The label must be a footnote or citation label, not arbitrary text.
+		// docutils dispatches on `[0-9]+|#|#simplename|\*` (footnote) and
+		// `simplename` (citation); anything else falls through to the comment
+		// fallback, so matchBracketLabel must refuse it rather than build a
+		// <citation> out of a sentence that merely starts with a bracket.
+		{"[citation label with spaces] text", "", "", false},
+		{"[] empty", "", "", false},
+		{"[not a name!] text", "", "", false},
+		{"[_leading] text", "", "", false},
+		{"[trailing-] text", "", "", false},
+		{"[double--dash] text", "", "", false},
+		{"[#not a name] text", "", "", false},
+		{"[#] ok", "#", "ok", true},
+		{"[a.b-c_d+e:f] ok", "a.b-c_d+e:f", "ok", true},
 	}
 	for _, tc := range cases {
 		label, rest, ok := matchBracketLabel(tc.s)
