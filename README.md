@@ -281,7 +281,21 @@ still supported — `:class:`/`:name:` options, content required; unlike
 the bare syntax, each content line is inline-parsed INDEPENDENTLY,
 never joined across a wrap, so markup can't span two lines the way it
 can there — reuses the bare syntax's own nesting algorithm verbatim,
-`LineBlock.run`, `body.py`, read directly). And
+`LineBlock.run`, `body.py`, read directly). `.. math::` (TeX math
+source kept VERBATIM — never inline-parsed, since a backslash or
+asterisk in it is math syntax rather than markup — in one or more
+`<math_block>` nodes: content SPLITS ON BLANK LINES into several
+siblings from a single directive, and no arguments are declared at all,
+so same-line text folds into content's own first line, which is why an
+argument PLUS an indented body yields two blocks rather than one;
+`:class:`/`:name:` options, content required — `MathBlock.run`,
+`body.py`, read directly. The HTML writer emits MathJax's own
+display delimiters `\[...\]` and the LaTeX writer an `equation*`
+environment, the latter matching real docutils' own latex2e output
+exactly; docutils' html5 writer instead emits MathML by default, which
+would need a TeX→MathML converter this project deliberately doesn't
+carry, the same category of omission as the `code` directive's own
+Pygments highlighting). And
 backslash escapes; standalone URI (`scheme://...`) and email
 (`user@host`) recognition — no backtick quoting or trailing `_` needed
 at all, e.g. plain `https://example.com` in running text becomes a

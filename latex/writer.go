@@ -228,6 +228,14 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		// own special characters (^, _, \) would corrupt the very syntax
 		// $...$ math mode depends on.
 		b.WriteString("$" + doctree.AsText(el) + "$")
+	case doctree.TagMathBlock:
+		// equation* (unnumbered display math), matching real docutils'
+		// own latex2e writer output for a math_block exactly — verified
+		// directly against it rather than assumed, since $$...$$ and
+		// \[...\] would both have been plausible guesses. Verbatim for
+		// the same reason as the inline case above: escaping the TeX
+		// source would corrupt the math it is.
+		b.WriteString("\\begin{equation*}\n" + doctree.AsText(el) + "\n\\end{equation*}\n")
 	case doctree.TagAbbreviation, doctree.TagAcronym, doctree.TagInline:
 		renderChildren(b, el, level)
 	case doctree.TagReference:

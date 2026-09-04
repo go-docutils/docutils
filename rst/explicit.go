@@ -752,6 +752,9 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 	if strings.EqualFold(name, "line-block") {
 		return p.runLineBlockDirective(lines, i, lineBase, next, args, body), next
 	}
+	if strings.EqualFold(name, "math") {
+		return p.runMathDirective(lines, i, next, args, body), next
+	}
 	if strings.EqualFold(name, "topic") {
 		return p.runTopicOrSidebar(doctree.TagTopic, lines, i, lineBase, next, args, body, blankFinish, parent), next
 	}
