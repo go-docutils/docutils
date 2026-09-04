@@ -141,6 +141,9 @@ const (
 	TagContainer          = "container"
 	TagCompound           = "compound"
 	TagRubric             = "rubric"
+	TagDecoration         = "decoration"
+	TagHeader             = "header"
+	TagFooter             = "footer"
 )
 
 // AsText concatenates all Text descendants, mirroring docutils

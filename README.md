@@ -244,7 +244,17 @@ declares no content at all, so a real indented body is a genuine
 (a `<literal_block>` whose content IS inline-parsed, unlike an ordinary
 literal block — the whole joined content parsed in ONE call, so markup
 spanning multiple physical lines still resolves as a single node,
-matching real docutils' own `inline_text` call exactly). The `.. role::` DIRECTIVE itself
+matching real docutils' own `inline_text` call exactly); `header`/
+`footer` (no argument at all, same shape as the nine generic
+admonitions — same-line text folds into the directive's own first
+content line — but nested-parsed into the document's own SINGLETON
+`<header>`/`<footer>`, not a fresh element per invocation: a SECOND
+`.. header::` anywhere in the document appends more content to the
+SAME `<header>` rather than creating a second one, wrapped together in
+one `<decoration>` at the end of parsing with header always first and
+footer always last, regardless of which was declared first in the
+source — `get_decoration`/`get_header`/`get_footer`, `nodes.py`, read
+directly). The `.. role::` DIRECTIVE itself
 (as opposed to a role it registers being used unrecognized later) does
 error on a malformed definition, matching `Role.run`: no content at all,
 content not matching the `NAME(BASE)` pattern, a `BASE` that isn't a
