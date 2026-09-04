@@ -133,6 +133,19 @@ type parser struct {
 	// actual splice to hoistMetaNodes, run once at the end of Parse,
 	// rather than mutating doc mid-walk.
 	metaNodes []doctree.Node
+	// headerEl/footerEl are the document's own SINGLETON <header>/<footer>
+	// nodes (nil until the first ".. header::"/".. footer::" is seen) —
+	// real docutils' own document.get_decoration().get_header()/
+	// get_footer() (nodes.py, read directly): every ".. header::"
+	// invocation nested-parses its content into the SAME shared element
+	// (appending more paragraphs, never creating a second one), and the
+	// same for footer. Spliced into the document as a single <decoration>
+	// wrapper (header always first, footer always last, regardless of
+	// which was declared first in the source) once at the end of Parse —
+	// see hoistDecoration, the same deferred-splice shape hoistMetaNodes
+	// already established for <meta>.
+	headerEl *doctree.Element
+	footerEl *doctree.Element
 	// fallbackIDCounters backs explicitTargetID's per-tag positional
 	// fallback ("footnote-1", "footnote-2", ...) — real docutils'
 	// Node.document.set_id, read directly: an explicit target whose own
@@ -201,6 +214,7 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	resolveTargets(doc, p.msgCount)
 	resolveFootnoteNumbers(doc)
 	hoistMetaNodes(doc, p.metaNodes)
+	hoistDecoration(doc, p.headerEl, p.footerEl)
 	promoteDocInfo(doc)
 	return doc
 }
