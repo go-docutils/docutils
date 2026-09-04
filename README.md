@@ -162,7 +162,11 @@ ten-symbol sequence, doubling/tripling/... once it wraps: `**`, `††`,
 ...) — both matched to their references by document-order position
 when unnamed, same mechanism as anonymous targets above), citations
 (`[CITE2002]_`, never auto-numbered), substitution definitions/references
-(`|name|` — its content is always an embedded directive invocation,
+(`|name|` — the marker's own NAME may itself span multiple physical
+lines, real docutils progressively re-matching its own substitution
+pattern against the growing text until the closing `|` is found
+(`matchPipeLabelMultiline`, explicit.go, v0.50.0+) — its content is
+always an embedded directive invocation,
 real semantics for `replace::` (inline-parsed as one paragraph's worth
 of content, nested directly as the substitution's own children — a
 prohibited construct inside it, an anonymous reference, an

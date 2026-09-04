@@ -89,6 +89,54 @@ func TestMatchPipeLabel(t *testing.T) {
 	}
 }
 
+// TestMatchPipeLabelMultiline covers the "|name|" marker's own NAME
+// spanning several physical lines — real docutils progressively
+// re-matches its own substitution pattern against the marker's growing
+// text until the closing "|" is found (Body.substitution_def, read
+// directly). The single-line cases mirror TestMatchPipeLabel's own
+// (matchPipeLabelMultiline's fast path is just matchPipeLabel itself).
+func TestMatchPipeLabelMultiline(t *testing.T) {
+	cases := []struct {
+		name             string
+		lines            []string
+		i                int
+		wantName         string
+		wantRest         string
+		wantBodyStartIdx int
+		wantOK           bool
+	}{
+		{
+			"closes on the first line: bodyStartIdx unchanged",
+			[]string{"|name| replace:: text"},
+			0, "name", "replace:: text", 0, true,
+		},
+		{
+			"not a pipe marker at all",
+			[]string{"not piped"},
+			0, "", "", 0, false,
+		},
+		{
+			"name spans two lines, bodyStartIdx advances to the closing line",
+			[]string{"|very long substitution text,", "   split across lines| image:: symbol.png"},
+			0, "very long substitution text, split across lines", "image:: symbol.png", 1, true,
+		},
+		{
+			"stops at a blank line without finding a close: malformed",
+			[]string{"|unterminated", "", "   more text"},
+			0, "", "", 0, false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			name, rest, bodyStartIdx, ok := matchPipeLabelMultiline(tc.lines, tc.i, tc.lines[tc.i])
+			if ok != tc.wantOK || name != tc.wantName || rest != tc.wantRest || (ok && bodyStartIdx != tc.wantBodyStartIdx) {
+				t.Errorf("matchPipeLabelMultiline(%v, %d, ...) = (%q, %q, %d, %v), want (%q, %q, %d, %v)",
+					tc.lines, tc.i, name, rest, bodyStartIdx, ok, tc.wantName, tc.wantRest, tc.wantBodyStartIdx, tc.wantOK)
+			}
+		})
+	}
+}
+
 func TestIsAllDigits(t *testing.T) {
 	cases := map[string]bool{
 		"123": true,
