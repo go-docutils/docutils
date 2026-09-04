@@ -263,7 +263,15 @@ PREVIOUSLY `.. role::`-defined custom role is accepted, though the
 chain only ever resolves ONE level deep at use time, see `roleElement`'s
 own doc comment), and a `:class:`/argument-derived class name that
 can't become a valid identifier (a purely-numeric token, `make_id`'s
-own leading-digit stripping leaving nothing). And
+own leading-digit stripping leaving nothing). `.. default-role::` (an
+OPTIONAL single-token argument, no options, no content permitted)
+changes what BARE interpreted text — no explicit role prefix, no
+trailing hyperlink underscore — resolves to for the rest of the
+document, reusing the SAME base-role validation `.. role::` already
+has (an unresolvable name is the identical INFO+ERROR pair); a bare
+`.. default-role::` with no argument at all RESETS it back to real
+docutils' own standard default, `title-reference` — `DefaultRole.run`,
+`misc.py`, read directly. And
 backslash escapes; standalone URI (`scheme://...`) and email
 (`user@host`) recognition — no backtick quoting or trailing `_` needed
 at all, e.g. plain `https://example.com` in running text becomes a

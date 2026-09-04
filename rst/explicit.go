@@ -711,6 +711,9 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 	if strings.EqualFold(name, "footer") {
 		return p.runHeaderOrFooterDirective(false, lines, i, next, args, body), next
 	}
+	if strings.EqualFold(name, "default-role") {
+		return p.runDefaultRoleDirective(lines, i, next, args), next
+	}
 	if strings.EqualFold(name, "topic") {
 		return p.runTopicOrSidebar(doctree.TagTopic, lines, i, lineBase, next, args, body, blankFinish, parent), next
 	}

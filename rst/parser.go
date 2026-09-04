@@ -80,6 +80,14 @@ type parser struct {
 	// a divergence this project needs to defend, just an improvement on a
 	// real wart in the reference implementation's own architecture.
 	roles map[string]roleDef
+	// defaultRole is the role name bare interpreted text (`` `text` ``,
+	// no explicit role prefix and no trailing hyperlink underscore)
+	// resolves to — "" means real docutils' own standard default
+	// (title-reference), matching roles.py's own DEFAULT_INTERPRETED_ROLE
+	// constant and register initial state (roles._roles has no ""
+	// entry until ".. default-role::" sets one). Set by
+	// runDefaultRoleDirective, read by referenceOrPhrase.
+	defaultRole string
 	// messages is parseInline's own per-call scratch accumulator for every
 	// <system_message> a PARSE-time inline markup failure generates inside
 	// the text it's currently parsing (see markupProblematic in inline.go)
