@@ -149,7 +149,7 @@ func TestSubstitutionEmbeddedDirectives(t *testing.T) {
 		{
 			"replace with an embedded, resolvable hyperlink reference",
 			".. |Python| replace:: Python, *the* best language around\n\n.. _Python: http://www.python.org/\n\nI recommend you try |Python|_.\n",
-			"<document>\n    <substitution_definition name=\"Python\">\n        Python, \n        <emphasis>\n            the\n         best language around\n    <target name=\"python\" refuri=\"http://www.python.org/\">\n    <paragraph>\n        I recommend you try \n        <reference refname=\"python\" refuri=\"http://www.python.org/\">\n            <substitution_reference refname=\"Python\">\n                Python\n        .\n",
+			"<document>\n    <substitution_definition name=\"Python\">\n        Python, \n        <emphasis>\n            the\n         best language around\n    <target id=\"python\" name=\"python\" refuri=\"http://www.python.org/\">\n    <paragraph>\n        I recommend you try \n        <reference refname=\"python\" refuri=\"http://www.python.org/\">\n            <substitution_reference refname=\"Python\">\n                Python\n        .\n",
 		},
 		{
 			"a target inside replace is prohibited",
@@ -170,6 +170,25 @@ func TestSubstitutionEmbeddedDirectives(t *testing.T) {
 			"replace with truly no content at all is empty or invalid, matching this project's own simplified diagnostic (real docutils gives a separate, more specific two-part error here — a deliberate scope simplification, see fillReplaceSubstitution's own doc comment)",
 			".. |name| replace::\n",
 			"<document>\n    <system_message level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Substitution definition \"name\" empty or invalid.\n        <literal_block>\n            .. |name| replace::\n",
+		},
+		{
+			// The WARNING messages parseInline generates for the unclosed
+			// start-strings carry NO "backref" here, unlike their normal
+			// shape elsewhere — verified directly against the foreign
+			// judge: the problematic nodes they describe are reparented
+			// into this ERROR's own block_quote reconstruction, not left
+			// in their original paragraph position.
+			"problematic content in replace carries no backref on its own warning messages",
+			".. |name| replace::  *error in **inline ``markup\n",
+			"<document>\n    <system_message id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline emphasis start-string without end-string.\n    <system_message id=\"system-message-2\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline strong start-string without end-string.\n    <system_message id=\"system-message-3\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline literal start-string without end-string.\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Problematic content in substitution definition\n        <literal_block>\n            .. |name| replace::  *error in **inline ``markup\n        <block_quote>\n            <paragraph>\n                <problematic id=\"problematic-1\" refid=\"system-message-1\">\n                    *\n                error in \n                <problematic id=\"problematic-2\" refid=\"system-message-2\">\n                    **\n                inline \n                <problematic id=\"problematic-3\" refid=\"system-message-3\">\n                    ``\n                markup\n",
+		},
+		{
+			// Replace.run is only ever reached FROM WITHIN a substitution
+			// definition's own dispatch — used as an ordinary top-level
+			// directive, real docutils rejects it outright.
+			"the \"replace\" directive used outside a substitution definition is an error",
+			".. replace:: not valid outside of a substitution definition\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Invalid context: the \"replace\" directive can only be used within a substitution definition.\n        <literal_block>\n            .. replace:: not valid outside of a substitution definition\n",
 		},
 	}
 	for _, tc := range cases {

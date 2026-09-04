@@ -31,7 +31,7 @@ func TestAnonymousTargetResolution(t *testing.T) {
 		{
 			"an indirect anonymous target chases through a named target to its refuri",
 			".. _real: https://example.org/real\n\n.. __: real_\n\nit__\n",
-			"<document>\n    <target name=\"real\" refuri=\"https://example.org/real\">\n    <target anonymous=\"true\" refname=\"real\">\n    <paragraph>\n        <reference anonymous=\"true\" name=\"it\" refuri=\"https://example.org/real\">\n            it\n",
+			"<document>\n    <target id=\"real\" name=\"real\" refuri=\"https://example.org/real\">\n    <target anonymous=\"true\" refname=\"real\">\n    <paragraph>\n        <reference anonymous=\"true\" name=\"it\" refuri=\"https://example.org/real\">\n            it\n",
 		},
 		{
 			"an indirect anonymous target that fails to chase still consumes its document-order slot",
