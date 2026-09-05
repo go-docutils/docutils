@@ -228,6 +228,14 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		// own special characters (^, _, \) would corrupt the very syntax
 		// $...$ math mode depends on.
 		b.WriteString("$" + doctree.AsText(el) + "$")
+	case doctree.TagPending:
+		// A <pending> is INTERNAL bookkeeping: it records what a
+		// transform would do, and its text child is a debug dump, not
+		// content. Real docutils' writers never meet one, because the
+		// transform has replaced it long before they run. Without this
+		// case the generic child-rendering leaked ".. internal
+		// attributes: ..." straight into the output.
+		return
 	case doctree.TagMathBlock:
 		// equation* (unnumbered display math), matching real docutils'
 		// own latex2e writer output for a math_block exactly — verified

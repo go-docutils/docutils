@@ -227,3 +227,16 @@ func TestRenderTagsAreBalanced(t *testing.T) {
 		t.Fatalf("unclosed tags at EOF: %v\nfull output: %s", stack, got)
 	}
 }
+
+// TestPendingRendersNothing pins <pending> to producing no output at all.
+// It is INTERNAL bookkeeping recording what a transform would do; its
+// text child is a debug dump, not content. Real docutils' writers never
+// meet one, because the transform replaces it long before they run --
+// without an explicit case the generic child-rendering leaked
+// ".. internal attributes: ..." straight into the page.
+func TestPendingRendersNothing(t *testing.T) {
+	got := Render(rst.Parse(".. class:: c1\n\nText.\n"))
+	if want := "<p>Text.</p>"; got != want {
+		t.Errorf("Render = %q, want %q", got, want)
+	}
+}
