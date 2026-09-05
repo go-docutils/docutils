@@ -429,7 +429,18 @@ it (`` :very.long-role_name:`x` ``, and `` :a:b:`x` `` is greedily the
 single role `a:b`) — this used to scan letters/digits/`-` only, missing
 such a role entirely and leaving it as plain text beside a bare
 `<title_reference>`. Standalone URI recognition (no backtick
-quoting or trailing `_` needed at all, `inline.go`) only matches a
+quoting or trailing `_` needed at all, `inline.go`) uses docutils' own
+two character classes rather than a punctuation heuristic (v0.63.0+):
+the body class `[-_.!~*'()[\];/:@&=+$,%a-zA-Z0-9]` contains neither `<`
+nor `>`, so a URI inside angle brackets ends at the bracket, and the
+final character must be one of `[_~*/=+a-zA-Z0-9]` OR any body character
+followed by `>` — which is why `<http://example.org/x.>` keeps a
+trailing stop that `see http://example.org/x.` loses. **Known
+divergence**: a path segment ending in `_` (`http://a/b_`) is one URI
+here, where docutils splits it into `http://a/` plus a bare reference
+`b_`, its reference pattern winning the tail; matching that means
+modelling pattern ALTERNATION order, not just character classes. It
+only matches a
 "scheme://" (double-slash) form — real docutils' own URI pattern also
 accepts a bare "scheme:path" with no "//" at all (`mailto:`, `news:`,
 `urn:` and friends), not yet ported; the SAME schemes work fine as an

@@ -1208,19 +1208,26 @@ func tryURIScheme(runes []rune, i int) (doctree.Node, int, bool) {
 		return nil, 0, false
 	}
 	start := j + 3
-	k := start
-	for k < len(runes) && !unicode.IsSpace(runes[k]) {
-		k++
+	k := scanURIChars(runes, start)
+	// The query and fragment introducers are not URI characters
+	// themselves; docutils' pattern adds each as its own optional group.
+	if k < len(runes) && unescapeRune(runes[k]) == '?' {
+		k = scanURIChars(runes, k+1)
 	}
-	end := trimTrailingURIPunct(runes, start, k)
+	if k < len(runes) && unescapeRune(runes[k]) == '#' {
+		k = scanURIChars(runes, k+1)
+	}
+	end := trimToURIFinalChar(runes, start, k)
 	if end <= start {
 		return nil, 0, false
 	}
-	if end < len(runes) {
-		next := runes[end]
-		if !unicode.IsSpace(next) && !unicode.IsPunct(next) {
-			return nil, 0, false
-		}
+	// isValidEndBoundaryChar, not a blanket unicode.IsPunct: ">" is a
+	// MATH SYMBOL in Unicode, not punctuation, so the ad-hoc check
+	// rejected the whole URI as soon as the scan correctly stopped at the
+	// ">" of "<http://example.org/x.>" instead of swallowing it. This is
+	// the same end_string_suffix class every other construct's close uses.
+	if end < len(runes) && !isValidEndBoundaryChar(runes[end]) {
+		return nil, 0, false
 	}
 	text := unescapeRunes(runes[i:end])
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
@@ -1595,4 +1602,57 @@ func validEndBoundaryAfterOptionalUnderscores(runes []rune, at int) bool {
 		}
 	}
 	return false
+}
+
+// URI character sets, taken from docutils' own uri pattern rather than
+// approximated. The body class is
+//
+//	[-_.!~*'()[\];/:@&=+$,%a-zA-Z0-9]
+//
+// which notably contains neither "<" nor ">", so a URI written inside
+// angle brackets simply ends at the ">". Scanning "everything that is not
+// whitespace" instead swallowed the closing bracket into the refuri.
+func isURIChar(r rune) bool {
+	if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+		return true
+	}
+	return strings.ContainsRune("-_.!~*'()[];/:@&=+$,%", r)
+}
+
+// isURIFinalChar is the much narrower class docutils requires of the LAST
+// character: [_~*/=+a-zA-Z0-9]. It is what trims a sentence's trailing
+// full stop off "see http://example.org/." without a punctuation
+// heuristic.
+func isURIFinalChar(r rune) bool {
+	if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+		return true
+	}
+	return strings.ContainsRune("_~*/=+", r)
+}
+
+func scanURIChars(runes []rune, i int) int {
+	for i < len(runes) && isURIChar(unescapeRune(runes[i])) {
+		i++
+	}
+	return i
+}
+
+// trimToURIFinalChar backs off until the URI ends on a character docutils
+// accepts as final. The second alternative in its pattern —
+// "[<uri char>](?=[>])" — is why a URI written inside angle brackets keeps
+// punctuation the same URI would lose in running prose:
+// "<http://example.org/ends-with-dot.>" keeps its dot because a ">"
+// follows it, while "see http://example.org/x." loses the dot.
+func trimToURIFinalChar(runes []rune, start, end int) int {
+	for end > start {
+		last := unescapeRune(runes[end-1])
+		if isURIFinalChar(last) {
+			return end
+		}
+		if end < len(runes) && unescapeRune(runes[end]) == '>' && isURIChar(last) {
+			return end
+		}
+		end--
+	}
+	return end
 }
