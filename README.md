@@ -441,20 +441,21 @@ title, invalid title-or-transition) ARE enforced — `matchTitle`/
 `match_titles=false` case (a title-looking construct somewhere titles
 aren't allowed, e.g. inside a block quote) and enumerator-sequence
 validation (docutils errors on a non-consecutive ordinal) are the two
-pieces still NOT ported. A genuinely separate, deliberately NOT chased
-gap found alongside the enumerator work: once a line has fallen through
-every recognized block-construct check to become ordinary paragraph
-text, real docutils' own paragraph gathering (`Text.text`'s
-`get_text_block`, read directly) swallows every subsequent line
-unconditionally up to the next blank line or dedent — it never
-re-examines a LATER line to see whether it independently looks like a
-different construct. This parser's own paragraph-gathering
-(`consumeParagraph`) does the opposite: it still stops early whenever a
-later line matches a recognized marker shape, even mid-paragraph — a
-real, if narrow, architectural difference from real docutils that spans
-every block-construct check there (bullet/field/doctest/table/etc.), not
-just enumerators; fixing it properly is a bigger, separate undertaking
-than this round's own enumerator scope. A table's column-margin violations are never detected
+pieces still NOT ported. Paragraph gathering now matches real docutils
+(v0.60.0+): once a line has become ordinary paragraph text,
+`Text.text`'s `get_text_block` swallows every subsequent line up to the
+next blank line or dedent, never re-examining a LATER line to see
+whether it independently looks like a different construct. docutils'
+Text state has exactly four transitions — blank, indent, underline,
+text — and no bullet/enum/field/explicit-markup/doctest/line-block/table
+transition at all, so `` text\n- item ``, `` text\n.. comment ``,
+`` text\n:field: v ``, `` text\n| line `` and `` text\n1. one `` are
+each ONE paragraph. `consumeParagraph` used to break on every one of
+those shapes; the checks could only ever fire MID-paragraph, which is
+exactly where docutils does not look, since a construct at a genuine
+paragraph boundary is preceded by a blank line and handled before this
+function is reached. A title underline still splits, because `underline`
+IS one of those four transitions. A table's column-margin violations are never detected
 (only the "last column overflows its width" case is handled, since real
 content relies on it). A block quote's own indent is discovered the same
 way real docutils' `StringList.get_indented` does: the MINIMUM across a
