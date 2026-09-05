@@ -173,7 +173,7 @@ func parseOptionToken(s string) (optionToken, bool) {
 // its own line nor indented beneath it) is not really an option list item —
 // docutils falls back to ordinary paragraph text (TransitionCorrection), so
 // ok is false and the caller should try other block types instead.
-func (p *parser) parseOptionList(lines []string, i int) (el *doctree.Element, next int, ok bool) {
+func (p *parser) parseOptionList(lines []string, i, lineBase int) (el *doctree.Element, next int, ok bool) {
 	ol := doctree.NewElement(doctree.TagOptionList)
 	start := i
 	for i < len(lines) {
@@ -194,7 +194,7 @@ func (p *parser) parseOptionList(lines []string, i int) (el *doctree.Element, ne
 			group.Append(optionNode(opt))
 		}
 		desc := doctree.NewElement(doctree.TagDescription)
-		p.parseBlockLines(bodyLines, desc, -1)
+		p.parseBlockLines(bodyLines, desc, nestedLineBase(i, lineBase))
 		item := doctree.NewElement(doctree.TagOptionListItem, group, desc)
 		ol.Append(item)
 		i = n

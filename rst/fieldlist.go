@@ -125,7 +125,7 @@ func (p *parser) parseFieldList(lines []string, i, lineBase int) (*doctree.Eleme
 		for _, m := range nameMsgs {
 			body.Append(m)
 		}
-		p.parseBlockLines(bodyLines, body, -1)
+		p.parseBlockLines(bodyLines, body, nestedLineBase(i, lineBase))
 		field.Append(body)
 		fl.Append(field)
 		i = next
@@ -352,7 +352,12 @@ func (p *parser) parseDefinitionList(lines []string, i, lineBase int) (*doctree.
 					`Interpreted as a definition list item.`,
 				msgLine(i+1, lineBase), ""))
 		}
-		p.parseBlockLines(block, def, -1)
+		// consumeIndentedBlock, like consumeIndentedRun, only dedents and
+		// trims TRAILING blanks, so block[k] is lines[i+1+k] exactly and a
+		// real absolute base can be handed down — same derivation as the
+		// block-quote one in blockquote.go. Without it a diagnostic raised
+		// inside a definition BODY carried no line at all.
+		p.parseBlockLines(block, def, nestedLineBase(i+1, lineBase))
 		item.Append(def)
 		dl.Append(item)
 		i = next

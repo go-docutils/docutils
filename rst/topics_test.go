@@ -75,7 +75,7 @@ func TestTopicsAndSidebars(t *testing.T) {
 			// number reappearing, not full parity with real docutils.
 			"a topic inside a list item is NOT one of topic's valid parents: ERROR",
 			"- .. topic:: In a list\n\n     Not allowed.\n",
-			"<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <system_message level=\"3\" type=\"ERROR\">\n                <paragraph>\n                    The \"topic\" directive may not be used within topics or body elements.\n                <literal_block>\n                    .. topic:: In a list\n                    \n                       Not allowed.\n",
+			"<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n                <paragraph>\n                    The \"topic\" directive may not be used within topics or body elements.\n                <literal_block>\n                    .. topic:: In a list\n                    \n                       Not allowed.\n",
 		},
 	}
 	for _, tc := range cases {
