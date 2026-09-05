@@ -109,7 +109,7 @@ func (p *parser) parseInline(text string, lineno int) ([]doctree.Node, []*doctre
 	i := 0
 	n := len(runes)
 	for i < n {
-		if node, consumed, ok := tryFootnoteRef(runes, i); ok {
+		if node, consumed, ok := p.tryFootnoteRef(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
@@ -1244,7 +1244,7 @@ func trimTrailingURIPunct(runes []rune, start, end int) int {
 // "[#]_", "[#name]_", "[*]_") or citation reference ("[name]_"),
 // docutils' Inliner.footnote_reference. Unlike the phrase-reference
 // form, only a single trailing "_" is meaningful here (no "__" form).
-func tryFootnoteRef(runes []rune, i int) (doctree.Node, int, bool) {
+func (p *parser) tryFootnoteRef(runes []rune, i int) (doctree.Node, int, bool) {
 	if runes[i] != '[' || !validStartBoundary(runes, i, 1) {
 		return nil, 0, false
 	}
@@ -1260,6 +1260,16 @@ func tryFootnoteRef(runes []rune, i int) (doctree.Node, int, bool) {
 	}
 	label := unescapeRunes(runes[i+1 : end])
 	if label == "" {
+		return nil, 0, false
+	}
+	// The label must BE a footnote or citation label, not just any text
+	// between brackets — docutils' footnotelabel is `[0-9]+|#|#simplename|
+	// \*` and its citationlabel a bare simplename, the same constructs
+	// table the BLOCK-level ".. [label]" dispatch uses (explicit.go's
+	// matchBracketLabel, gated on this same helper since v0.53.0; the
+	// inline side was left over-accepting, so "[CIT 1]_" built a real
+	// <citation_reference> named "cit 1" instead of staying plain text).
+	if !isValidBracketLabel(label) {
 		return nil, 0, false
 	}
 	total := end + 2 - i
@@ -1296,6 +1306,11 @@ func tryFootnoteRef(runes []rune, i int) (doctree.Node, int, bool) {
 		el = doctree.NewElement(doctree.TagCitationReference, &doctree.Text{Data: label})
 		el.SetAttr("refname", normalizeName(label))
 	}
+	// Every one of these gets an id at PARSE time, not in a later
+	// transform: document.note_{footnote,citation,autofootnote,
+	// symbol_footnote}_ref all call set_id, so even an auto-numbered or
+	// symbol reference carrying no refname at all still has one.
+	el.SetAttr("id", p.autoID(el.Tag))
 	return el, total, true
 }
 

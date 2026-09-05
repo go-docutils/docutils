@@ -141,3 +141,40 @@ func TestAdjacentFootnoteAndCitationReferencesRejectEachOther(t *testing.T) {
 		})
 	}
 }
+
+// TestReferenceIDs pins the ids docutils assigns to footnote and citation
+// REFERENCES at parse time -- document.note_{footnote,citation,
+// autofootnote,symbol_footnote}_ref all call set_id, so even an
+// auto-numbered or symbol reference carrying no refname of its own still
+// gets one. The two prefixes count INDEPENDENTLY of each other and of the
+// <footnote>/<citation> nodes they point at (docutils keeps one counter
+// per id prefix), which is the part worth pinning: the whole sequence
+// below was checked against the reference implementation on this exact
+// document. The auto references additionally carry a refname here, which
+// real docutils resolves only in a later transform -- this parser's own
+// documented eager auto-numbering, not part of what this test is about.
+func TestReferenceIDs(t *testing.T) {
+	src := "Refs [1]_ [a]_ [#]_ [*]_ [b]_ but not [CIT 1]_.\n\n.. [1] one\n\n.. [a] two\n\n.. [#] three\n\n.. [*] four\n\n.. [b] five\n"
+	got := doctree.Dump(Parse(src))
+	for _, want := range []string{
+		`<footnote_reference id="footnote-reference-1" refname="1">`,
+		`<citation_reference id="citation-reference-1" refname="a">`,
+		`<footnote_reference auto="1" id="footnote-reference-2"`,
+		`<footnote_reference auto="*" id="footnote-reference-3"`,
+		`<citation_reference id="citation-reference-2" refname="b">`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %s in:\n%s", want, got)
+		}
+	}
+	// "[CIT 1]_" is not a valid label (a citation label is a simplename,
+	// which admits no spaces), so it stays plain text rather than becoming
+	// a <citation_reference refname="cit 1"> -- the inline counterpart of
+	// the block-level over-acceptance fixed in v0.53.0.
+	if strings.Contains(got, "cit 1") {
+		t.Errorf("[CIT 1]_ was wrongly accepted as a citation reference:\n%s", got)
+	}
+	if !strings.Contains(got, "but not [CIT 1]_.") {
+		t.Errorf("[CIT 1]_ did not survive as plain text:\n%s", got)
+	}
+}
