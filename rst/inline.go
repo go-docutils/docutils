@@ -516,7 +516,21 @@ func (p *parser) referenceOrPhrase(contentRunes []rune, afterClose int, runes []
 	// reassigns `unescaped`, read directly).
 	displayName := normalizeName(text)
 	target.SetAttr("name", displayName)
-	target.SetAttr("id", makeID(displayName))
+	// claimID, not a bare makeID: two embedded-URI references sharing a
+	// display name ("| `uff <test1>`_" then "| `uff <test2>`_") used to
+	// produce two <target>s with the SAME id. docutils numbers them
+	// "uff"/"uff-1" via set_id like every other id.
+	target.SetAttr("id", p.claimID(makeID(displayName)))
+	// This target is IMPLICIT: Inliner.phrase_ref registers it with
+	// note_implicit_target, unlike an inline "_`name`" target or a
+	// ".. _name:" block target, both of which are explicit. The
+	// distinction drives the whole duplicate-name transition table, and
+	// nothing in the tree itself records it, so remember it here.
+	if p.implicitTargets == nil {
+		p.implicitTargets = map[*doctree.Element]bool{}
+	}
+	p.implicitTargets[target] = true
+	p.noteNameLine(target)
 	if kind == "uri" {
 		target.SetAttr("refuri", targetValue)
 	} else {
@@ -1099,7 +1113,11 @@ func (p *parser) tryInlineTarget(runes []rune, i int) (doctree.Node, int, bool) 
 	el := doctree.NewElement(doctree.TagTarget, &doctree.Text{Data: content})
 	name := normalizeName(content)
 	el.SetAttr("name", name)
-	el.SetAttr("id", makeID(name))
+	// claimID, not a bare makeID: an inline target and a later
+	// embedded-URI target can slug to the same id, and docutils numbers
+	// the second "file-txt-1" rather than repeating "file-txt".
+	el.SetAttr("id", p.claimID(makeID(name)))
+	p.noteNameLine(el)
 	return el, (closeAt + closeLen) - i, true
 }
 

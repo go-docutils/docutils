@@ -661,6 +661,30 @@ currently treats it as plain text with no diagnostic), and enumerator-
 sequence validation (docutils warns on a non-consecutive ordinal; this
 parser doesn't check).
 
+**Duplicate reference names** are diagnosed and resolved (`dupnames.go`,
+v0.57.0+), a full port of docutils' own `set_duplicate_name` transition
+table. What happens when two elements claim one name depends on whether
+each is EXPLICIT (a `.. _name:` target, an inline `` _`name` `` target, a
+footnote, a citation, a directive's `:name:`) or IMPLICIT (a section
+title, or the target a phrase reference with an embedded URI leaves
+behind): two explicit ones invalidate each other with a WARNING, an
+explicit one OVERRIDES an implicit one, two implicit ones invalidate each
+other, and two naming the same destination keep the first. "Invalidating"
+moves the name from `name` to `dupname` — the element keeps its id and
+its place, but stops being something a reference resolves to. The
+message's position follows docutils' own `msgnode` rule, including the
+case where it is BUILT AND DROPPED: inside a line block `msgnode` is the
+`<line>`, which cannot hold body elements, so a duplicate there is
+invalidated silently ("System messages are no longer inserted between
+`<line>`s"). **Not matched**: the `line` attribute on these specific
+messages, which docutils reports against its own `node.line` bookkeeping
+rather than the duplicate's own source line — probing found no constant
+offset (three hypotheses each fitted some shapes and failed others), so
+this parser uses the real source line rather than a formula reverse-fitted
+to one fixture. The substitution-definition duplicate rule is separate
+(`Body.substitution_def`, where the LATER definition wins) and is not
+ported.
+
 Sphinx's `autodoc` extension (and `napoleon`, downstream of
 it) is out of scope entirely: it works by importing and introspecting
 live Python code, which is not portable to pure Go.
