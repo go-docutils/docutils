@@ -676,11 +676,19 @@ Docutils' `RSTState.unindent_warning` — one method raising
 `"<X> ends without a blank line; unexpected unindent."` from nine call
 sites — is ported for all of them but `Option list`, which no corpus
 fixture reaches: Block quote (v0.59.0+), Bullet list, Enumerated list,
-Field list, Explicit markup, Definition list and Literal block. A block
-quote also now threads a REAL absolute line number into its own content
-(each entry of the dedented run corresponds one-for-one to a parent
-line), so a diagnostic raised inside one carries a line at last; a list
-item's content still passes the "unknown" placeholder.
+Field list, Explicit markup, Definition list and Literal block. Nested content now
+threads a REAL absolute line number rather than the "unknown"
+placeholder, so a diagnostic raised inside one carries a line at last:
+block quotes (v0.59.0+), and definition bodies, field bodies, option
+descriptions and bullet/enumerated list items (v0.61.0+). The
+correspondence is exact wherever the sub-slice comes from
+`consumeIndentedBlock` or `gatherListItemLines`, since both only dedent
+and trim TRAILING blanks, so entry *k* is the parent's line *i+k* — the
+same derivation v0.44.0 made for topic/sidebar content. **Still
+placeholder**: a table cell (whose content is genuinely not a contiguous
+parent slice) and any directive whose body goes through
+`parseDirectiveBlock`, whose fold-back branch breaks the
+correspondence.
 
 **Duplicate reference names** are diagnosed and resolved (`dupnames.go`,
 v0.57.0+), a full port of docutils' own `set_duplicate_name` transition

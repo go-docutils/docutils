@@ -319,7 +319,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if isEnumListStart(lines, i) {
-			list, siblings, next := p.parseEnumeratedList(lines, i)
+			list, siblings, next := p.parseEnumeratedList(lines, i, 0)
 			current.Append(list)
 			for _, sib := range siblings {
 				current.Append(sib)
@@ -336,7 +336,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
-		if optlist, next, ok := p.parseOptionList(lines, i); ok {
+		if optlist, next, ok := p.parseOptionList(lines, i, 0); ok {
 			current.Append(optlist)
 			i = next
 			continue
@@ -517,7 +517,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 			continue
 		}
 		if isEnumListStart(lines, i) {
-			list, siblings, next := p.parseEnumeratedList(lines, i)
+			list, siblings, next := p.parseEnumeratedList(lines, i, lineBase)
 			parent.Append(list)
 			for _, sib := range siblings {
 				parent.Append(sib)
@@ -534,7 +534,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 			i = next
 			continue
 		}
-		if optlist, next, ok := p.parseOptionList(lines, i); ok {
+		if optlist, next, ok := p.parseOptionList(lines, i, lineBase); ok {
 			parent.Append(optlist)
 			i = next
 			continue
@@ -739,7 +739,7 @@ func (p *parser) parseBulletList(lines []string, i, lineBase int) (*doctree.Elem
 		}
 		itemLines, next := gatherListItemLines(lines, i, col, first)
 		item := doctree.NewElement(doctree.TagListItem)
-		p.parseBlockLines(itemLines, item, -1)
+		p.parseBlockLines(itemLines, item, nestedLineBase(i, lineBase))
 		list.Append(item)
 		itemNext = next
 		i = next
@@ -774,7 +774,7 @@ func (p *parser) parseBulletList(lines []string, i, lineBase int) (*doctree.Elem
 // produces here (self.parent += msg, read directly) land as SIBLINGS of
 // the <enumerated_list> in the tree, never nested inside it — hence the
 // separate return value rather than an in-list Append.
-func (p *parser) parseEnumeratedList(lines []string, i int) (*doctree.Element, []*doctree.Element, int) {
+func (p *parser) parseEnumeratedList(lines []string, i, lineBase int) (*doctree.Element, []*doctree.Element, int) {
 	format, sequence, text, ordinal, col, ok := matchEnumStart(lines, i)
 	if !ok {
 		return doctree.NewElement(doctree.TagEnumeratedList), nil, i
@@ -804,7 +804,7 @@ func (p *parser) parseEnumeratedList(lines []string, i int) (*doctree.Element, [
 		}
 		itemLines, next := gatherListItemLines(lines, i, col, first)
 		item := doctree.NewElement(doctree.TagListItem)
-		p.parseBlockLines(itemLines, item, -1)
+		p.parseBlockLines(itemLines, item, nestedLineBase(i, lineBase))
 		list.Append(item)
 		// gatherListItemLines only ever stops at EOF or a genuine
 		// non-blank, insufficiently-indented line — any blank lines

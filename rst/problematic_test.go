@@ -95,9 +95,14 @@ func TestUnclosedInlineMarkupBecomesProblematic(t *testing.T) {
 			"<document>\n    <section id=\"test-unclosed-title\" name=\"test *unclosed title\">\n        <title>\n            Test \n            <problematic id=\"problematic-1\" refid=\"system-message-1\">\n                *\n            unclosed title\n        <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n            <paragraph>\n                Inline emphasis start-string without end-string.\n",
 		},
 		{
-			"an unclosed marker inside a nested construct (a list item) still attaches as a sibling of its own paragraph, not a trailing document section — line is omitted (parser.currentLine's own documented scope boundary: a list item's lines are a rebased sub-slice, not tracked back to an absolute document position), everything else byte-identical to real docutils",
+			// A list item's content now carries a REAL absolute line
+			// (docutils/rst v0.61.0+: gatherListItemLines returns
+			// lines[i..] one-for-one, so the base is derivable) -- this
+			// used to omit the attribute entirely and said so in its own
+			// name. Byte-identical to real docutils, line included.
+			"an unclosed marker inside a list item attaches as a sibling of its own paragraph, not a trailing document section",
 			"- item with *unclosed here\n",
-			"<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with \n                <problematic id=\"problematic-1\" refid=\"system-message-1\">\n                    *\n                unclosed here\n            <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" type=\"WARNING\">\n                <paragraph>\n                    Inline emphasis start-string without end-string.\n",
+			"<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with \n                <problematic id=\"problematic-1\" refid=\"system-message-1\">\n                    *\n                unclosed here\n            <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n                <paragraph>\n                    Inline emphasis start-string without end-string.\n",
 		},
 	}
 	for _, tc := range cases {
