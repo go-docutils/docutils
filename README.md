@@ -563,7 +563,16 @@ instead of stripping them — the ONLY marker with this behavior:
 which (`nodes.unescape`, read directly) puts the literal backslash back
 rather than dropping it, so `` ``\literal`` `` keeps its own visible
 backslash (`\literal`) where every other construct (emphasis, strong,
-a role's own interpreted text, ...) would silently drop it. General marker start-boundary recognition immediately after a
+a role's own interpreted text, ...) would silently drop it. **A
+backslash in a literal does not protect the CLOSING backquotes either**
+(v0.56.0+): docutils spells the two end-strings differently on purpose —
+`(?<![\s\x00])(\*)` for emphasis against `(?<!\s)(``)` for literal, with
+no `\x00` in the literal form's lookbehind at all — so `` ``literal\`` ``
+closes normally and keeps the backslash as content, and `` ``a\\`` ``
+keeps BOTH backslashes. That is the spec's "backslashes are not escapes
+inside inline literals" made mechanical, and it is the one place a
+marker's close must IGNORE an escape this parser otherwise honors
+everywhere (`findCloseLiteral`). General marker start-boundary recognition immediately after a
 backslash-escaped space or newline (`m\ *a*\ **r**\ ``k``\ `u`:title:` —
 each construct's own escaped-space prefix now counts as valid preceding
 whitespace, `docutils/rst` v0.33.0+) IS ported —
