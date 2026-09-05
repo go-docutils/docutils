@@ -173,6 +173,13 @@ type parser struct {
 	// "citation-withdot", and the corpus fixture pairing them is what
 	// surfaced this.
 	usedIDs map[string]bool
+	// implicitTargets records the <target>s registered with docutils'
+	// note_implicit_target rather than note_explicit_target (see
+	// dupnames.go) -- nothing in the tree itself distinguishes them.
+	implicitTargets map[*doctree.Element]bool
+	// nameLines records the source line an inline-created named element
+	// was built on, for the duplicate-name pass that runs after parsing.
+	nameLines map[*doctree.Element]int
 }
 
 // explicitTargetID returns the id an explicit target (a footnote,
@@ -273,6 +280,7 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	doc := doctree.NewElement(doctree.TagDocument)
 	p.parseDocument(splitLines(source), doc)
 	assignSectionTargets(doc)
+	p.resolveDuplicateNames(doc)
 	resolveTargets(doc, p.msgCount)
 	resolveFootnoteNumbers(doc)
 	hoistMetaNodes(doc, p.metaNodes)

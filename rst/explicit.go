@@ -1172,12 +1172,12 @@ func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTarg
 		// with "#"+id unconditionally was a real regression this fix
 		// caught immediately via the existing test suite (a target's own
 		// refuri got clobbered into a same-document self-reference).
-		// No duplicate-name precedence rule against an explicit <target>
-		// sharing the same name: real docutils diagnoses that as a
-		// duplicate-name warning, a diagnostic this project already
-		// doesn't implement for any other name collision (see
-		// resolveTargets' own doc comment) — last write in document order
-		// wins here too, the same simplification applied everywhere else.
+		// Duplicate names ARE diagnosed now (dupnames.go, v0.57.0+), and
+		// that pass runs BEFORE this one — so by the time collectTargets
+		// walks the tree, every element invalidated by a name collision
+		// has already had its "name" moved to "dupname" and simply isn't
+		// seen here. Last-write-wins below therefore only ever applies to
+		// names that survived the transition table.
 		if name := el.Attr("name"); name != "" && el.Attr("id") != "" {
 			direct[name] = "#" + el.Attr("id")
 		}

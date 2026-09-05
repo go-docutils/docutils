@@ -46,9 +46,16 @@ func TestSectionImplicitTarget(t *testing.T) {
 			// support exists, which would entangle this test (about
 			// duplicate section id/name suffixing, nothing to do with
 			// enumerated lists) with unrelated enum-parsing behavior.
-			"duplicate section titles get distinct ids, second suffixed -1",
+			// Both sections are INVALIDATED, not merely disambiguated: two
+			// implicit targets sharing a name is docutils' implicit/implicit
+			// row -- the name moves to "dupname" on BOTH and neither stays
+			// resolvable, with an INFO inside the second section right after
+			// its title. Checked against the reference; this test used to
+			// expect both sections to keep "name", which predates dupname
+			// support entirely.
+			"duplicate section titles are BOTH invalidated, with distinct ids",
 			"Same\n====\n\nFirst paragraph.\n\nSame\n====\n\nSecond paragraph.\n",
-			"<document>\n    <section id=\"same\" name=\"same\">\n        <title>\n            Same\n        <paragraph>\n            First paragraph.\n    <section id=\"same-1\" name=\"same\">\n        <title>\n            Same\n        <paragraph>\n            Second paragraph.\n",
+			"<document>\n    <section dupname=\"same\" id=\"same\">\n        <title>\n            Same\n        <paragraph>\n            First paragraph.\n    <section dupname=\"same\" id=\"same-1\">\n        <title>\n            Same\n        <system_message backref=\"same-1\" level=\"1\" type=\"INFO\">\n            <paragraph>\n                Duplicate implicit target name: \"same\".\n        <paragraph>\n            Second paragraph.\n",
 		},
 		{
 			"the trailing system-messages section is never given a name/id of its own",
