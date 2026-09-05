@@ -292,6 +292,15 @@ func (p *parser) tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 		if m.tag == doctree.TagEmphasis && hasPrefixAt(runes, i, "**") {
 			return nil, 0, false
 		}
+		// docutils' substitution start-string is `\|(?!\|)`: a "|"
+		// followed by another "|" is not a start-string at all. Without
+		// this, "first | then || and finally |||" opened a substitution
+		// reference at the first "|" of the "||" pair and swallowed the
+		// rest of the line, where real docutils leaves every pipe as
+		// plain text.
+		if m.tag == doctree.TagSubstitutionRef && hasPrefixAt(runes, i, "||") {
+			return nil, 0, false
+		}
 		if !validStartBoundary(runes, i, ol) {
 			continue
 		}
@@ -306,9 +315,12 @@ func (p *parser) tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 		// bug the backquote case hit first.
 		var closeAt, closeLen int
 		var ok bool
-		if m.tag == doctree.TagSubstitutionRef {
+		switch m.tag {
+		case doctree.TagSubstitutionRef:
 			closeAt, closeLen, ok = findCloseSubstitution(runes, i+ol)
-		} else {
+		case doctree.TagLiteral:
+			closeAt, closeLen, ok = findCloseLiteral(runes, i+ol)
+		default:
 			closeAt, closeLen, ok = findClose(runes, i+ol, m.open)
 		}
 		if !ok {
@@ -326,6 +338,15 @@ func (p *parser) tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 		var content string
 		if m.tag == doctree.TagLiteral {
 			content = restoreEscapes(runes[i+ol : closeAt])
+			// When the close was found ON an escaped backquote (see
+			// findCloseLiteral), the backslash that escaped it still
+			// belongs to the CONTENT: docutils' escape2null leaves the
+			// marker byte inside the text it slices, and unescape(...,
+			// restore_backslashes=True) turns it back into a backslash.
+			// "``literal\``" is <literal>literal\</literal>.
+			if isEscapedRune(runes[closeAt]) {
+				content += `\`
+			}
 		} else {
 			content = unescapeRunes(runes[i+ol : closeAt])
 		}
@@ -1402,6 +1423,44 @@ func isValidEndBoundaryChar(r rune) bool {
 // a DELIMITER, or a CLOSER — never an OPENER or an ordinary character (the
 // same asymmetry validStartBoundary enforces on the other side, replacing
 // this parser's earlier blanket unicode.IsPunct approximation).
+// findCloseLiteral is findClose for the inline-literal end-string, which
+// docutils deliberately spells DIFFERENTLY from every other one. Compare
+// the two end patterns as built in states.py:
+//
+//	emphasis: (?<![\s\x00])(\*)($|(?=...))
+//	literal:  (?<!\s)(``)($|(?=...))
+//
+// The emphasis form refuses a delimiter preceded by the \x00 escape
+// marker; the literal form has no \x00 in its lookbehind at all. That is
+// the spec's "backslashes are not escapes inside inline literals" made
+// mechanical: a backslash before a closing backquote does NOT protect it,
+// so "“literal\“" closes normally and keeps the backslash as content,
+// and "“a\\“" keeps BOTH backslashes. This project fuses the escape
+// marker into the character's own rune value rather than keeping it as a
+// separate preceding rune, so restoring docutils' behavior means matching
+// an escaped backquote as a backquote here — which the shared findClose,
+// used by every marker that DOES honor the escape, must keep refusing.
+// All four shapes were checked against the reference.
+func findCloseLiteral(runes []rune, from int) (int, int, bool) {
+	isBackquote := func(r rune) bool { return unescapeRune(r) == '`' }
+	for j := from; j <= len(runes)-2; j++ {
+		if !isBackquote(runes[j]) || !isBackquote(runes[j+1]) {
+			continue
+		}
+		if j == from {
+			continue // empty content, e.g. "````"
+		}
+		if unicode.IsSpace(unescapeRune(runes[j-1])) {
+			continue
+		}
+		if j+2 < len(runes) && !isValidEndBoundaryChar(runes[j+2]) {
+			continue
+		}
+		return j, 2, true
+	}
+	return 0, 0, false
+}
+
 func findClose(runes []rune, from int, open string) (int, int, bool) {
 	ol := len([]rune(open))
 	for j := from; j <= len(runes)-ol; j++ {
