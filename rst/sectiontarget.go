@@ -154,3 +154,17 @@ var asciiFold = map[rune]rune{
 	'æ': 'a',
 	'œ': 'o',
 }
+
+// MakeID returns the identifier reStructuredText derives from a name —
+// docutils' own nodes.make_id, and the exact rule this package uses for a
+// section's implicit target, a hyperlink target's anchor and every other
+// generated id.
+//
+// It is exported for consumers that need to ask "would this id be
+// produced anyway?" — go-richdoc/rst's writer, for one, emits an explicit
+// ".. _id:" target before a heading only when the heading's own title
+// would NOT already slug to that id, since emitting it regardless
+// produces a genuine duplicate-name diagnostic on reparse (see
+// dupnames.go). Reimplementing the rule downstream would duplicate this
+// package's asciiFold table and drift from it.
+func MakeID(s string) string { return makeID(s) }
