@@ -203,7 +203,7 @@ func consumeIndentedBlock(lines []string, i, indent int) ([]string, int) {
 
 func splitLines(source string) []string {
 	source = strings.ReplaceAll(source, "\r\n", "\n")
-	lines := strings.Split(source, "\n")
+	lines := splitOnPythonLineBoundaries(source)
 	// Drop only ONE trailing empty element: the artifact of a final newline.
 	// This is exactly Python's str.splitlines(), which docutils' string2lines
 	// is built on. Genuine trailing blank lines must survive, because the
@@ -216,4 +216,33 @@ func splitLines(source string) []string {
 		lines = lines[:len(lines)-1]
 	}
 	return lines
+}
+
+// splitOnPythonLineBoundaries splits on every boundary Python's
+// str.splitlines() recognizes, which is what docutils' string2lines is
+// built on — not just "\n". Beyond CR and LF that is VT, FF, the three
+// C1 file/group/record separators, NEL, and the two Unicode separators
+// LINE SEPARATOR (U+2028) and PARAGRAPH SEPARATOR (U+2029). A corpus
+// fixture puts markup around a U+2028 ("*\u2028LINE SEPARATOR\u2028*")
+// precisely to check it is treated as a line break rather than as
+// ordinary text inside one line.
+func splitOnPythonLineBoundaries(s string) []string {
+	isBoundary := func(r rune) bool {
+		switch r {
+		case '\n', '\r', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
+			return true
+		}
+		return false
+	}
+	var lines []string
+	var b strings.Builder
+	for _, r := range s {
+		if isBoundary(r) {
+			lines = append(lines, b.String())
+			b.Reset()
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return append(lines, b.String())
 }

@@ -48,7 +48,12 @@ name) becoming typed children rather than staying generic `<field>`s;
 into one `<author>` per name; dedication/abstract become sibling
 `<topic>` elements instead, right after docinfo — definition lists, line blocks (nested by
 relative indentation, matching docutils' own sub-stanza grouping),
-doctest blocks (kept verbatim, ">>>" prompts included), block
+doctest blocks (kept verbatim, ">>>" prompts included) — a
+block runs from its prompt to the next BLANK line, indentation
+irrelevant, since the indented lines after a prompt are the
+interpreter's own OUTPUT (docutils reads it with `get_text_block()` and
+no `flush_left`; stopping at the first indented line instead handed that
+output to a spurious block quote, v0.62.0), block
 quotes, literal blocks (`::`), comments, directives (captured
 structurally — name, arguments, raw content — never dispatched to
 per-directive semantics, with these exceptions: `raw` (`.. raw::
@@ -382,7 +387,12 @@ topics.go is still the only caller that does). A diagnostic about a
 construct's own missing content names the LAST LINE THE BLOCK CONSUMED,
 which for a blank-terminated block is the blank line itself; since
 docutils consumes and counts trailing blank lines too (`.. [c]\n\n`
-reports line 2, `.. [c]\n\n\n` reports line 3), `splitLines` drops only
+reports line 2, `.. [c]\n\n\n` reports line 3), `splitLines` splits on every boundary Python's
+`str.splitlines()` recognizes — CR, LF, VT, FF, the three C1
+file/group/record separators, NEL, and the two Unicode separators
+LINE SEPARATOR (U+2028) and PARAGRAPH SEPARATOR (U+2029) — not just
+`\n`, since that is what docutils' `string2lines` is built on
+(v0.62.0+). It drops only
 ONE trailing empty element — the artifact of the final newline, exactly
 Python's `str.splitlines()` — rather than every trailing blank as it
 used to (v0.53.0; stripping them all cancelled an off-by-one, so these
