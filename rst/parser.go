@@ -185,11 +185,25 @@ func (p *parser) explicitTargetID(tag, name string) string {
 	if id := makeID(name); id != "" {
 		return p.claimID(id)
 	}
+	return p.autoID(tag)
+}
+
+// autoID builds the id docutils' create_id gives an element with no
+// usable name of its own: its `auto_id_prefix` branch, whose default
+// value "%" expands to make_id(node.tagname), followed by a counter kept
+// PER PREFIX (document.id_counter) — so "footnote-reference-1" and
+// "citation-reference-1" number independently of each other and of the
+// <footnote>/<citation> nodes they refer to, verified against the
+// reference on one document carrying all of them at once. makeID doubles
+// as make_id here: it turns the "_" in a tag name like
+// "footnote_reference" into the "-" the id needs.
+func (p *parser) autoID(tag string) string {
+	prefix := makeID(tag)
 	if p.fallbackIDCounters == nil {
 		p.fallbackIDCounters = map[string]int{}
 	}
-	p.fallbackIDCounters[tag]++
-	return p.claimID(tag + "-" + strconv.Itoa(p.fallbackIDCounters[tag]))
+	p.fallbackIDCounters[prefix]++
+	return p.claimID(prefix + "-" + strconv.Itoa(p.fallbackIDCounters[prefix]))
 }
 
 // claimID reserves id for one explicit target, disambiguating it with a

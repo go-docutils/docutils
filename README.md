@@ -167,7 +167,15 @@ footnote and a bare `simplename` for a citation, so a line like
 `.. [citation label with spaces] text` is not a citation at all but
 falls through to the explicit-markup comment fallback, v0.53.0+; when
 two names slug to the same id, the later one is disambiguated with an
-incrementing `-N` suffix, docutils' `create_id`), substitution definitions/references
+incrementing `-N` suffix, docutils' `create_id`). **That same label
+validation applies to the INLINE reference form too** (`[CIT 1]_`, whose
+label is not a `simplename`, stays plain text instead of becoming a
+`<citation_reference>`, v0.55.0+), and every footnote/citation REFERENCE
+carries a parse-time id of its own (`footnote-reference-1`,
+`citation-reference-1`, ... — `document.note_*_ref` all call `set_id`,
+so an auto-numbered or symbol reference with no refname at all still
+gets one; the two prefixes count independently of each other and of the
+`<footnote>`/`<citation>` nodes they point at). Substitution definitions/references
 (`|name|` — the marker's own NAME may itself span multiple physical
 lines, real docutils progressively re-matching its own substitution
 pattern against the growing text until the closing `|` is found
