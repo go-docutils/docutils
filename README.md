@@ -92,10 +92,8 @@ plus an optional caption/legend body: the content's first `<paragraph>`
 becomes `<caption>`, an empty comment suppresses the caption entirely,
 anything else there is an ERROR discarding whatever legend would have
 followed, and everything remaining after becomes `<legend>`; a
-`.. class::`-produced `<pending>` node ahead of the caption is not
-reproduced — this project has no transform system and so no `<pending>`
-node at all — though a bare hyperlink target in that position still
-passes through correctly); `code` (an OPTIONAL language argument
+`.. class::`-produced `<pending>` node ahead of the caption IS reproduced
+now, see below); `code` (an OPTIONAL language argument
 becomes a class alongside the fixed `code` one — even for a language
 this parser will never actually highlight, see below — plus
 `:class:`/`:name:`/`:number-lines:` options; `:number-lines:` is fully
@@ -710,6 +708,20 @@ placeholder**: a table cell (whose content is genuinely not a contiguous
 parent slice) and any directive whose body goes through
 `parseDirectiveBlock`, whose fold-back branch breaks the
 correspondence.
+
+Directives whose real work happens in a later TRANSFORM parse to a
+`<pending>` placeholder carrying the transform's name and options
+(`pending.go`, v0.64.0+): `class`/`rst-class`
+(`misc.ClassAttribute`), `sectnum`/`section-numbering` (`parts.SectNum`)
+and `target-notes` (`references.TargetNotes`). This project still has no
+transform system and is not getting one — but that was never what these
+needed. A parse tree holds the placeholder; nothing has to run, and
+`nodes.pending.pformat` gives its exact shape (details SORTED BY KEY,
+values in Python `repr` form). `title` is the odd one out: it sets the
+document's own `title` ATTRIBUTE and leaves no node behind at all.
+**Still not dispatched**: `contents`, and the two `target-notes` shapes
+that need directive-level OPTION VALIDATION (an unknown option, an
+option missing its value) — the general gap described further down.
 
 **Duplicate reference names** are diagnosed and resolved (`dupnames.go`,
 v0.57.0+), a full port of docutils' own `set_duplicate_name` transition

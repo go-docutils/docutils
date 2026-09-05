@@ -214,3 +214,11 @@ func TestRenderBalancesEnvironments(t *testing.T) {
 		t.Fatalf("unclosed environments at EOF: %v\nfull output:\n%s", stack, got)
 	}
 }
+
+// TestPendingRendersNothing is the LaTeX half of html's test of the same
+// name: <pending> is internal bookkeeping and must produce no output.
+func TestPendingRendersNothing(t *testing.T) {
+	if got := Render(rst.Parse(".. class:: c1\n\nText.\n")); strings.Contains(got, "internal attributes") {
+		t.Errorf("a <pending> node's debug dump leaked into the output:\n%s", got)
+	}
+}

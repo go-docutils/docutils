@@ -131,6 +131,9 @@ type parser struct {
 	// separate, much larger undertaking (see README/PR description), not
 	// a small extension of this fix.
 	currentLine int
+	// docTitle is the ".. title::" directive's argument, which becomes an
+	// attribute on <document> rather than a node.
+	docTitle string
 	// metaNodes accumulates every ".. meta::" directive's own result
 	// nodes (a real <meta>, or a diagnostic runMetaDirective itself
 	// produced), in document order, regardless of where in the source
@@ -286,6 +289,9 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	hoistMetaNodes(doc, p.metaNodes)
 	hoistDecoration(doc, p.headerEl, p.footerEl)
 	promoteDocInfo(doc)
+	if p.docTitle != "" {
+		doc.SetAttr("title", p.docTitle)
+	}
 	return doc
 }
 

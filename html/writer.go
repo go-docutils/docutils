@@ -216,6 +216,14 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		// script loaded still shows readable TeX source instead of a
 		// broken widget — this writer has no CSS/JS dependency to add.
 		b.WriteString(`\(` + escapeText(doctree.AsText(el)) + `\)`)
+	case doctree.TagPending:
+		// A <pending> is INTERNAL bookkeeping: it records what a
+		// transform would do, and its text child is a debug dump, not
+		// content. Real docutils' writers never meet one, because the
+		// transform has replaced it long before they run. Without this
+		// case the generic child-rendering leaked ".. internal
+		// attributes: ..." straight into the output.
+		return
 	case doctree.TagMathBlock:
 		// The DISPLAY-math counterpart of the inline case above — same
 		// MathJax-delimiter convention (\[...\]) and the same reasoning.
