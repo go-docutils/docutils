@@ -260,9 +260,16 @@ func isDoctestLine(s string) bool {
 	return strings.HasPrefix(s, ">>>") && (len(s) == 3 || s[3] == ' ')
 }
 
+// parseDoctestBlock gathers a ">>>" block. docutils' Body.doctest reads
+// it with get_text_block() and NO flush_left argument, so it stops at a
+// BLANK line and nothing else — indentation is irrelevant, because the
+// indented lines after a prompt are the interpreter's own OUTPUT and
+// belong to the block. Stopping at the first indented line instead split
+// every doctest with indented output, handing that output to a spurious
+// block quote.
 func parseDoctestBlock(lines []string, i int) (*doctree.Element, int) {
 	j := i
-	for j < len(lines) && !isBlankStr(lines[j]) && leadingSpaces(lines[j]) == 0 {
+	for j < len(lines) && !isBlankStr(lines[j]) {
 		j++
 	}
 	text := strings.Join(lines[i:j], "\n")
