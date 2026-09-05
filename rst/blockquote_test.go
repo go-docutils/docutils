@@ -105,9 +105,14 @@ func TestBlockQuoteAttribution(t *testing.T) {
 			"<document>\n    <paragraph>\n        Paragraph.\n    <block_quote>\n        <paragraph>\n            Block quote.\n        <paragraph>\n            ---- not attribution\n",
 		},
 		{
+			// Still not an attribution -- but "--" IS a short adornment, so
+			// it also draws docutils' "too short to be an overline or
+			// transition" INFO before being treated as ordinary text.
+			// Checked against the reference on this exact input; the old
+			// expectation here simply predated that diagnostic.
 			"a bare dash marker with nothing after it is not an attribution",
 			"Paragraph.\n\n   Block quote.\n\n   --\n",
-			"<document>\n    <paragraph>\n        Paragraph.\n    <block_quote>\n        <paragraph>\n            Block quote.\n        <paragraph>\n            --\n",
+			"<document>\n    <paragraph>\n        Paragraph.\n    <block_quote>\n        <paragraph>\n            Block quote.\n        <system_message level=\"1\" line=\"5\" type=\"INFO\">\n            <paragraph>\n                Unexpected possible title overline or transition.\n                Treating it as ordinary text because it's so short.\n        <paragraph>\n            --\n",
 		},
 		{
 			"an attribution at the outer level of a nested block quote",
