@@ -1134,44 +1134,26 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 			break
 		}
 		if j > i {
-			// isEnumListStart, not the bare shape check isEnumLine: a
-			// line that merely LOOKS enumerator-shaped but fails its own
-			// validity check (an invalid roman numeral, or one whose
-			// own forward lookahead fails) must not split a paragraph
-			// that was already underway — matches isDefinitionTermLine's
-			// identical reasoning just above in a sibling file.
+			// A continuation line's SHAPE is irrelevant. Real docutils'
+			// Text state has exactly four transitions — blank, indent,
+			// underline, text — and no bullet/enum/field/explicit-markup/
+			// doctest/line-block/table transition at all, so a line that
+			// merely looks like one of those, with no blank line before
+			// it, is still the same paragraph. Verified directly for all
+			// of them: "text\n- item", "text\n.. comment",
+			// "text\n:field: v", "text\n| line" and "text\n1. one" are
+			// each ONE paragraph in the reference.
 			//
-			// CORPUS-CONFIRMED DIVERGENCE, not yet fixed (v0.37.0): real
-			// docutils' own continuation-line gathering (Text.text's
-			// get_text_block(flush_left=True), states.py, read directly)
-			// checks ONLY blank-ness and indentation — never bullet/enum/
-			// field/doctest/line-block/table/transition shape at all. A
-			// continuation line that merely LOOKS like one of those
-			// (no blank line before it, so it's unambiguously still part
-			// of the SAME paragraph) should join the paragraph text, not
-			// split it — confirmed by two independent corpus fixtures now
-			// (test_character_level_inline_markup.py's
-			// markup_recognition_rules][4], a bullet-shaped continuation;
-			// test_line_blocks.py[line_blocks][10], a "|"-shaped one).
-			// Left unfixed this round: every check below was added and
-			// separately corpus-verified in its own earlier round, and
-			// this function is reached from both top-level and deeply
-			// nested contexts — removing them needs its own dedicated,
-			// isolated investigation to confirm none of those earlier
-			// fixtures actually depended on a shape-check firing
-			// mid-paragraph rather than at a genuine paragraph boundary.
-			if isBulletLine(lines[j]) || isEnumListStart(lines, j) || isExplicitMarkupLine(lines[j]) {
-				break
-			}
-			if _, _, isField := matchFieldMarker(lines[j]); isField {
-				break
-			}
-			if isDoctestLine(lines[j]) || isLineBlockLine(lines[j]) {
-				break
-			}
-			if isSimpleTableTopLine(lines[j]) || isGridTableTopLine(lines[j]) {
-				break
-			}
+			// This function used to break on every one of those shapes.
+			// The checks could only ever fire mid-paragraph (j > i) —
+			// which is precisely where docutils does not look — because a
+			// construct at a genuine paragraph BOUNDARY is preceded by a
+			// blank line and already handled above, or dispatched by the
+			// caller before this function is reached at all. They were
+			// removed together, and this comment's predecessor was right
+			// to demand a dedicated investigation first: the corpus rose
+			// 449 -> 454 and the whole permanent suite stayed green, so
+			// nothing had in fact come to depend on them.
 			// Only a line of at least 4 repeated characters can possibly be
 			// a genuine transition or title marker (real docutils' own
 			// Body.line/Text.underline shortness rule, states.py, read
