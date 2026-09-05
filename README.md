@@ -653,13 +653,33 @@ following line (`is_enumerated_list_item`, ported): blank, indented, or
 starting with the next ordinal's own marker confirms a real list item;
 anything else — most commonly a title underline — corrects the
 enumerator-looking line back to plain text, letting the title win.
-**Not yet ported**: the `match_titles=False` diagnostics for a title-
-looking construct found somewhere titles aren't allowed at all (inside
-a block quote or list item — real docutils still errors there,
-`"Unexpected section title."` or `"...or transition."`; this parser
-currently treats it as plain text with no diagnostic), and enumerator-
+The `match_titles=False` diagnostics ARE ported (v0.59.0+): inside a
+block quote, a list item, a table cell — anywhere that is not the
+document or a section — neither a section title nor a transition is
+allowed, and each becomes an ERROR carrying the offending source as a
+`<literal_block>` (`"Unexpected section title."` for an underlined
+title, both of whose lines are consumed; `"Unexpected section title or
+transition."` for a lone adornment, which used to become a
+`<transition>` regardless). An adornment too short to be either (under
+4 characters, ANY length down to one) draws
+`"Unexpected possible title overline or transition. Treating it as
+ordinary text because it's so short."` and is then treated as text.
+All of this applies only at the START of a block: an adornment-looking
+line in the MIDDLE of a paragraph is folded into that paragraph with no
+diagnostic at all, which is what real docutils does and what an
+unguarded first version of this got wrong. **Still not ported**: enumerator-
 sequence validation (docutils warns on a non-consecutive ordinal; this
 parser doesn't check).
+
+Docutils' `RSTState.unindent_warning` — one method raising
+`"<X> ends without a blank line; unexpected unindent."` from nine call
+sites — is ported for all of them but `Option list`, which no corpus
+fixture reaches: Block quote (v0.59.0+), Bullet list, Enumerated list,
+Field list, Explicit markup, Definition list and Literal block. A block
+quote also now threads a REAL absolute line number into its own content
+(each entry of the dedented run corresponds one-for-one to a parent
+line), so a diagnostic raised inside one carries a line at last; a list
+item's content still passes the "unknown" placeholder.
 
 **Duplicate reference names** are diagnosed and resolved (`dupnames.go`,
 v0.57.0+), a full port of docutils' own `set_duplicate_name` transition

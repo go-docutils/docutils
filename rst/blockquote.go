@@ -34,13 +34,22 @@ import (
 // ported, the same scope boundary already applied to title-style
 // consistency and table column-margin violations elsewhere in this
 // parser — see the package SCOPE note.
-func (p *parser) parseBlockQuotes(lines []string, i int) ([]*doctree.Element, int) {
+func (p *parser) parseBlockQuotes(lines []string, i, lineBase int) ([]*doctree.Element, int) {
 	indented, next := consumeIndentedRun(lines, i)
 	var out []*doctree.Element
+	// offset is how far into `indented` this iteration starts. Every entry
+	// of `indented` corresponds one-for-one to lines[i+offset+k]
+	// (consumeIndentedRun only dedents and trims TRAILING blanks, it never
+	// drops a line in the middle), so a real absolute lineBase can be
+	// handed down rather than the -1 "unknown" this used to pass — the
+	// same derivation v0.44.0 made for topic/sidebar content, and the
+	// reason a diagnostic raised INSIDE a block quote can now carry a
+	// line number at all.
+	offset := 0
 	for len(indented) > 0 {
 		bqLines, attrLines, remaining := splitAttribution(indented)
 		bq := doctree.NewElement(doctree.TagBlockQuote)
-		p.parseBlockLines(bqLines, bq, -1)
+		p.parseBlockLines(bqLines, bq, nestedLineBase(i+offset, lineBase))
 		out = append(out, bq)
 		if attrLines != nil {
 			text := joinTrimmed(attrLines)
@@ -52,10 +61,25 @@ func (p *parser) parseBlockQuotes(lines []string, i int) ([]*doctree.Element, in
 			// children of the attribution.
 			out = append(out, attrMsgs...)
 		}
+		offset += len(indented) - len(remaining)
 		indented = remaining
 		for len(indented) > 0 && isBlankStr(indented[0]) {
 			indented = indented[1:]
+			offset++
 		}
+	}
+	// The same "ends without a blank line; unexpected unindent." warning
+	// every other indented construct already carries — docutils raises it
+	// from ONE shared RSTState.unindent_warning with nine call sites, of
+	// which this was the last one still unported (only "Option list"
+	// remains, and no corpus fixture reaches it). It fires when the
+	// indented run ended because a non-blank UNINDENTED line followed
+	// immediately, with no blank line between: unindent_warning reports
+	// "one line below the current line", which is that offending line.
+	if len(out) > 0 && next < len(lines) && !isBlankStr(lines[next]) && !isBlankStr(lines[next-1]) {
+		out = append(out, sectionMessage("2", "WARNING",
+			"Block quote ends without a blank line; unexpected unindent.",
+			msgLine(next, lineBase), ""))
 	}
 	return out, next
 }
@@ -230,4 +254,14 @@ func rtrimAll(s string) string {
 		i--
 	}
 	return s[:i]
+}
+
+// nestedLineBase shifts a lineBase down into a sub-slice starting at
+// index start of the parent's own lines. An unknown parent base (-1)
+// stays unknown: msgLine reports no line at all rather than a wrong one.
+func nestedLineBase(start, lineBase int) int {
+	if lineBase < 0 {
+		return -1
+	}
+	return start + lineBase
 }

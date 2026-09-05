@@ -302,7 +302,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			continue
 		}
 		if leadingSpaces(lines[i]) > 0 {
-			bqs, next := p.parseBlockQuotes(lines, i)
+			bqs, next := p.parseBlockQuotes(lines, i, 0)
 			for _, bq := range bqs {
 				current.Append(bq)
 			}
@@ -500,7 +500,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 			continue
 		}
 		if leadingSpaces(lines[i]) > 0 {
-			bqs, next := p.parseBlockQuotes(lines, i)
+			bqs, next := p.parseBlockQuotes(lines, i, lineBase)
 			for _, bq := range bqs {
 				parent.Append(bq)
 			}
@@ -572,10 +572,56 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 			i = next
 			continue
 		}
-		if isTransitionLine(lines[i]) {
-			parent.Append(doctree.NewElement(doctree.TagTransition))
-			i++
-			continue
+		// A NESTED context is docutils' match_titles=False: neither a
+		// section title nor a transition may appear inside a block quote,
+		// a list item, a table cell and so on, and Body.line /
+		// Text.underline both turn what looks like one into an ERROR
+		// carrying the offending source as a <literal_block> (states.py,
+		// read directly) instead of building the construct. This parser
+		// used to build a <transition> here regardless, and to leave a
+		// title's own text as a stray paragraph in front of it.
+		//
+		// All of this applies only at the START of a block. docutils
+		// reaches Body.line from the BODY state; an adornment-looking line
+		// in the MIDDLE of a paragraph is folded into that paragraph by
+		// the Text state instead, with no diagnostic at all — checked
+		// against the reference for "Line one\nLine two\n========",
+		// which is one paragraph there. A first version of this without
+		// the guard invented an ERROR for exactly that shape.
+		if i == 0 || isBlankStr(lines[i-1]) {
+			if i+1 < len(lines) && isTransitionLine(lines[i+1]) && !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 {
+				// An adornment directly under a single line of text is a
+				// TITLE UNDERLINE: both lines are consumed, and the
+				// message is reported against the underline's own line.
+				block := trimTrailingSpace(lines[i]) + "\n" + trimTrailingSpace(lines[i+1])
+				parent.Append(sectionMessage("3", "ERROR", "Unexpected section title.",
+					msgLine(i+1, lineBase), block))
+				i += 2
+				continue
+			}
+			if isTransitionLine(lines[i]) {
+				// An adornment with no text above it is an overline or a
+				// transition marker; either way it cannot be one here.
+				parent.Append(sectionMessage("3", "ERROR", "Unexpected section title or transition.",
+					msgLine(i, lineBase), trimTrailingSpace(lines[i])))
+				i++
+				continue
+			}
+			// Too SHORT to be either (isTransitionLine's own 4-character
+			// floor): docutils says so and then treats the line as
+			// ordinary text. ANY length below 4 draws this, one character
+			// included — a first version guessed a floor of 2, from a
+			// probe using "-" that was really measuring bullet-list
+			// recognition rather than adornment length; "~" alone draws it
+			// too. "::" is excluded because it opens a literal block.
+			if n := shortAdornmentLen(lines[i]); n >= 1 && n < 4 {
+				parent.Append(sectionMessage("1", "INFO",
+					"Unexpected possible title overline or transition.\nTreating it as ordinary text because it's so short.",
+					msgLine(i, lineBase), ""))
+				// deliberately no `continue`: the line falls through to
+				// the paragraph handling below, which is what "treating
+				// it as ordinary text" means.
+			}
 		}
 		if isDefinitionTermLine(lines, i) {
 			dl, dlMsgs, next := p.parseDefinitionList(lines, i, lineBase)
@@ -1335,4 +1381,19 @@ func tryQuotedLiteralBlock(lines []string, i, lineBase int) ([]doctree.Node, int
 	}
 	lb := doctree.NewElement(doctree.TagLiteralBlock, &doctree.Text{Data: strings.Join(context, "\n")})
 	return []doctree.Node{lb}, k
+}
+
+// shortAdornmentLen returns the length of a uniform run of one punctuation
+// character making up the whole line, or 0 when the line is not one. "::"
+// is excluded: docutils hands it to the literal-block handling instead of
+// treating it as a possible overline.
+func shortAdornmentLen(line string) int {
+	t := trimTrailingSpace(line)
+	if t == "::" {
+		return 0
+	}
+	if _, ok := isUniformLine(t); !ok {
+		return 0
+	}
+	return len([]rune(t))
 }
