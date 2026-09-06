@@ -2,6 +2,7 @@ package rst
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/go-docutils/docutils/doctree"
@@ -54,3 +55,64 @@ func TestStandaloneURICharacterClasses(t *testing.T) {
 // "http://a/b_" as one URI. Matching it means modelling docutils' pattern
 // ALTERNATION order, not just its character classes -- a much larger
 // change, and no corpus fixture exercises the shape.
+
+// TestURISchemesAreWhitelisted pins standalone-hyperlink recognition to
+// docutils' own urischemes list. Its fixture states the rule outright:
+// "None of these are standalone hyperlinks (their 'schemes' are not
+// recognized): signal:noise, a:b."
+//
+// The list matters in BOTH directions. Without it, allowing the
+// single-slash form turned every "word:word" into a link -- a field name
+// like ":field:name:with:embedded:colons:" became one. And this used to
+// accept ANY scheme as long as it had "://", which docutils does not.
+func TestURISchemesAreWhitelisted(t *testing.T) {
+	refuri := regexp.MustCompile(`refuri="([^"]*)"`)
+	links := func(src string) []string {
+		var out []string
+		for _, m := range refuri.FindAllStringSubmatch(doctree.Dump(Parse(src)), -1) {
+			out = append(out, m[1])
+		}
+		return out
+	}
+	// docutils' hierarchical part is "(//?)?" -- two slashes, one, or none.
+	for _, tc := range []struct{ source, want string }{
+		{"http://example.org/x\n", "http://example.org/x"},
+		{"http:/one-slash-only.absolute.path\n", "http:/one-slash-only.absolute.path"},
+		{"mailto:someone@somewhere.com\n", "mailto:someone@somewhere.com"},
+		{"news:comp.lang.python\n", "news:comp.lang.python"},
+	} {
+		if got := links(tc.source); len(got) != 1 || got[0] != tc.want {
+			t.Errorf("Parse(%q) links = %v, want [%q]", tc.source, got, tc.want)
+		}
+	}
+	for _, src := range []string{"signal:noise\n", "a:b\n", "unknownscheme://x.y\n"} {
+		if got := links(src); len(got) != 0 {
+			t.Errorf("Parse(%q) recognized an UNKNOWN scheme: %v", src, got)
+		}
+	}
+}
+
+// TestEmailHostRule covers the host half of docutils' email pattern:
+// "[chars]+" followed by a separate FINAL URI char group, so a host needs
+// at least TWO characters and must end on one of [_~*/=+a-zA-Z0-9]. The
+// rule this replaced -- "the domain must contain a dot" -- appears
+// nowhere in that pattern and rejected both cases below.
+func TestEmailHostRule(t *testing.T) {
+	refuri := regexp.MustCompile(`refuri="([^"]*)"`)
+	for _, tc := range []struct{ source, want string }{
+		{"see user@host now\n", "mailto:user@host"},
+		{"a@b-c\n", "mailto:a@b-c"},
+		{"x@y.com.\n", "mailto:x@y.com"},
+		// Stops before the "?", which is not a valid FINAL character.
+		{"(a.question.mark@end?)\n", "mailto:a.question.mark@end"},
+	} {
+		m := refuri.FindStringSubmatch(doctree.Dump(Parse(tc.source)))
+		if m == nil || m[1] != tc.want {
+			t.Errorf("Parse(%q) = %v, want %q", tc.source, m, tc.want)
+		}
+	}
+	// A single-character host has nothing left for the final group.
+	if got := doctree.Dump(Parse("a@b\n")); strings.Contains(got, "refuri=") {
+		t.Errorf(`"a@b" was treated as an address:`+"\n%s", got)
+	}
+}

@@ -484,9 +484,15 @@ trailing stop that `see http://example.org/x.` loses. **Known
 divergence**: a path segment ending in `_` (`http://a/b_`) is one URI
 here, where docutils splits it into `http://a/` plus a bare reference
 `b_`, its reference pattern winning the tail; matching that means
-modelling pattern ALTERNATION order, not just character classes. It
-only matches a
-"scheme://" (double-slash) form — real docutils' own URI pattern also
+modelling pattern ALTERNATION order, not just character classes. The SCHEME must be one docutils recognizes
+(`utils.urischemes`, 108 entries, transcribed) — its own fixture states
+the rule: "None of these are standalone hyperlinks (their 'schemes' are
+not recognized): signal:noise, a:b." — and the hierarchical part is
+`(//?)?`, so two slashes, one, or none all work (`http://x`,
+`http:/one-slash`, `mailto:`, `news:`), v0.76.0+. An email's HOST is
+`[chars]+` plus a separate final-character group, so it needs at least
+two characters and must end on one of `[_~*/=+a-zA-Z0-9]`: `user@host`
+and `a@b-c` are addresses, `a@b` is not. This used to match — real docutils' own URI pattern also
 accepts a bare "scheme:path" with no "//" at all (`mailto:`, `news:`,
 `urn:` and friends), not yet ported; the SAME schemes work fine as an
 EMBEDDED URI inside a phrase reference (`` `text <mailto:x@y.com>`_

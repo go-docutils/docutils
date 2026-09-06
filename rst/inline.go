@@ -1241,10 +1241,28 @@ func tryURIScheme(runes []rune, i int) (doctree.Node, int, bool) {
 		runes[j] == '+' || runes[j] == '-' || runes[j] == '.') {
 		j++
 	}
-	if !hasPrefixAt(runes, j, "://") {
+	// docutils' hierarchical-URI part is "(//?)?" -- TWO slashes, ONE, or
+	// NONE. Requiring "://" rejected "http:/one-slash-only.absolute.path",
+	// which its own fixture includes precisely to check the single-slash
+	// form. A scheme with no slashes at all ("mailto:", "news:") is
+	// covered by the same rule.
+	if j >= len(runes) || runes[j] != ':' {
 		return nil, 0, false
 	}
-	start := j + 3
+	// The scheme must be one docutils RECOGNIZES. Its own fixture spells
+	// out why: "None of these are standalone hyperlinks (their 'schemes'
+	// are not recognized): signal:noise, a:b." Without the list, relaxing
+	// the slash requirement turned every "word:word" into a link --
+	// ":field:name:with:embedded:colons:" became one. The list also
+	// tightens the "://" form this used to accept for ANY scheme:
+	// "unknownscheme://x.y" is not a reference in docutils either.
+	if _, known := uriSchemes[strings.ToLower(string(runes[i:j]))]; !known {
+		return nil, 0, false
+	}
+	start := j + 1
+	for k := 0; k < 2 && start < len(runes) && runes[start] == '/'; k++ {
+		start++
+	}
 	k := scanURIChars(runes, start)
 	// The query and fragment introducers are not URI characters
 	// themselves; docutils' pattern adds each as its own optional group.
@@ -1285,11 +1303,14 @@ func tryEmail(runes []rune, i int) (doctree.Node, int, bool) {
 	for j < len(runes) && isEmailDomainChar(runes[j]) {
 		j++
 	}
-	if !strings.Contains(string(runes[domainStart:j]), ".") {
-		return nil, 0, false
-	}
-	end := trimTrailingURIPunct(runes, i, j)
-	if end <= domainStart {
+	// docutils' host part is "[chars]+" followed by a separate FINAL URI
+	// char group, so the host needs at least TWO characters and must END
+	// on one of [_~*/=+a-zA-Z0-9]: "user@host" and "a@b-c" are addresses,
+	// "a@b" is not, and "a.question.mark@end?" stops before the "?". The
+	// old rule -- "the domain must contain a dot" -- accepted neither
+	// "user@host" nor that fixture, and is nowhere in the pattern.
+	end := trimToURIFinalChar(runes, domainStart, j)
+	if end-domainStart < 2 {
 		return nil, 0, false
 	}
 	if end < len(runes) {
@@ -1692,4 +1713,31 @@ func trimToURIFinalChar(runes []rune, start, end int) int {
 		end--
 	}
 	return end
+}
+
+// uriSchemes is docutils.utils.urischemes.schemes, transcribed. Only a
+// scheme in this list starts a standalone hyperlink.
+var uriSchemes = map[string]struct{}{
+	"about": {}, "acap": {}, "addbook": {}, "afp": {}, "afs": {},
+	"aim": {}, "callto": {}, "castanet": {}, "chttp": {}, "cid": {},
+	"crid": {}, "data": {}, "dav": {}, "dict": {}, "dns": {},
+	"eid": {}, "fax": {}, "feed": {}, "file": {}, "finger": {},
+	"freenet": {}, "ftp": {}, "go": {}, "gopher": {}, "gsm-sms": {},
+	"h323": {}, "h324": {}, "hdl": {}, "hnews": {}, "http": {},
+	"https": {}, "hydra": {}, "iioploc": {}, "ilu": {}, "im": {},
+	"imap": {}, "info": {}, "ior": {}, "ipp": {}, "irc": {},
+	"iris.beep": {}, "iseek": {}, "jar": {}, "javascript": {}, "jdbc": {},
+	"ldap": {}, "lifn": {}, "livescript": {}, "lrq": {}, "mailbox": {},
+	"mailserver": {}, "mailto": {}, "md5": {}, "mid": {}, "mocha": {},
+	"modem": {}, "mtqp": {}, "mupdate": {}, "news": {}, "nfs": {},
+	"nntp": {}, "opaquelocktoken": {}, "phone": {}, "pop": {}, "pop3": {},
+	"pres": {}, "printer": {}, "prospero": {}, "rdar": {}, "res": {},
+	"rtsp": {}, "rvp": {}, "rwhois": {}, "rx": {}, "sdp": {},
+	"service": {}, "shttp": {}, "sip": {}, "sips": {}, "smb": {},
+	"snews": {}, "snmp": {}, "soap.beep": {}, "soap.beeps": {}, "ssh": {},
+	"t120": {}, "tag": {}, "tcp": {}, "tel": {}, "telephone": {},
+	"telnet": {}, "tftp": {}, "tip": {}, "tn3270": {}, "tv": {},
+	"urn": {}, "uuid": {}, "vemmi": {}, "videotex": {}, "view-source": {},
+	"wais": {}, "whodp": {}, "whois++": {}, "x-man-page": {}, "xmlrpc.beep": {},
+	"xmlrpc.beeps": {}, "z39.50r": {}, "z39.50s": {},
 }
