@@ -759,16 +759,22 @@ correspondence.
 Directives whose real work happens in a later TRANSFORM parse to a
 `<pending>` placeholder carrying the transform's name and options
 (`pending.go`, v0.64.0+): `class`/`rst-class`
-(`misc.ClassAttribute`), `sectnum`/`section-numbering` (`parts.SectNum`)
+(`misc.ClassAttribute` — but ONLY in its contentless form: given CONTENT
+it parses that content and adds the classes to each resulting top-level
+node, returning those nodes and no placeholder at all, v0.74.0+), `sectnum`/`section-numbering` (`parts.SectNum`)
 and `target-notes` (`references.TargetNotes`). This project still has no
 transform system and is not getting one — but that was never what these
 needed. A parse tree holds the placeholder; nothing has to run, and
 `nodes.pending.pformat` gives its exact shape (details SORTED BY KEY,
 values in Python `repr` form). `title` is the odd one out: it sets the
 document's own `title` ATTRIBUTE and leaves no node behind at all.
-**Still not dispatched**: `contents`, and the two `target-notes` shapes
-that need directive-level OPTION VALIDATION (an unknown option, an
-option missing its value) — the general gap described further down.
+`target-notes` validates its options (v0.74.0+) — an unknown one, or one
+given with no value, is docutils' own
+`Error in "target-notes" directive: ...`. That is portable for this
+directive alone because its whole `option_spec` is a single `:class:`
+entry; the GENERAL per-directive option validation described further
+down is still not implemented. **Still not dispatched**: `contents` and
+`date`.
 
 **Five `Options` fields decide whether a docutils behaviour that is NOT
 part of parsing happens at parse time here**, and each default follows
