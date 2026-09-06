@@ -323,7 +323,18 @@ document, reusing the SAME base-role validation `.. role::` already
 has (an unresolvable name is the identical INFO+ERROR pair); a bare
 `.. default-role::` with no argument at all RESETS it back to real
 docutils' own standard default, `title-reference` — `DefaultRole.run`,
-`misc.py`, read directly. `.. line-block::` (the legacy directive form
+`misc.py`, read directly. `.. date::` (usable ONLY inside a substitution
+definition — anywhere else is an ERROR with the same "Invalid context"
+sentence `.. replace::` gets, since `misc.Date.run` opens by refusing
+any state that is not a `SubstitutionDef`. The directive declares no
+arguments, so same-line text folds into its CONTENT, which is a C
+`strftime` format string, defaulting to `%Y-%m-%d` when there is none.
+The whole portable conversion set is implemented (`%a %A %b %B %c %C %d
+%D %e %F %g %G %h %H %I %j %k %l %m %M %n %p %r %R %s %S %t %T %u %U %V
+%w %W %x %X %y %Y %z %Z %%`), each pinned against real C `strftime` for
+three timestamps chosen to separate them; an UNKNOWN conversion is kept
+verbatim, `%` and all, since real docutils delegates to a platform
+`strftime` and the platforms disagree about that case). `.. line-block::` (the legacy directive form
 of a line block, deprecated in favor of the bare `| ` syntax below but
 still supported — `:class:`/`:name:` options, content required; unlike
 the bare syntax, each content line is inline-parsed INDEPENDENTLY,
