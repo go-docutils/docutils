@@ -45,3 +45,35 @@ func TestSubstitutionReferenceAsHyperlink(t *testing.T) {
 		})
 	}
 }
+
+// TestSubstitutionUnindentWarning covers the "Explicit markup ends
+// without a blank line; unexpected unindent." warning for a SUBSTITUTION
+// DEFINITION. Every other explicit construct -- footnote, citation,
+// comment, directive, topic -- already appended it; the substitution path
+// simply discarded gatherExplicitBody's blankFinish, so it was the one
+// member of the family that stayed silent.
+func TestSubstitutionUnindentWarning(t *testing.T) {
+	got := doctree.Dump(Parse(".. |symbol| image:: symbol.png\nNo blank line after.\n"))
+	if !strings.Contains(got, "Explicit markup ends without a blank line; unexpected unindent.") {
+		t.Errorf("no unindent warning for a substitution definition:\n%s", got)
+	}
+	// The control: a blank line after it stays silent.
+	quiet := doctree.Dump(Parse(".. |symbol| image:: symbol.png\n\nA paragraph.\n"))
+	if strings.Contains(quiet, "unexpected unindent") {
+		t.Errorf("warned despite a blank line:\n%s", quiet)
+	}
+}
+
+// TestPipeNameRejectsEdgeWhitespace pins the fallthrough: a name with
+// whitespace immediately inside either pipe is not a substitution
+// definition at all, and the line becomes an ordinary comment.
+func TestPipeNameRejectsEdgeWhitespace(t *testing.T) {
+	got := doctree.Dump(Parse(".. | bad name | bad data\n"))
+	if !strings.Contains(got, "<comment>") || strings.Contains(got, "substitution_definition") {
+		t.Errorf("expected a comment, not a substitution:\n%s", got)
+	}
+	ok := doctree.Dump(Parse(".. |good name| replace:: x\n"))
+	if !strings.Contains(ok, "<substitution_definition") {
+		t.Errorf("a name with an INTERNAL space was rejected:\n%s", ok)
+	}
+}

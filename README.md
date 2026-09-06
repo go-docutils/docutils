@@ -198,7 +198,12 @@ carries a parse-time id of its own (`footnote-reference-1`,
 so an auto-numbered or symbol reference with no refname at all still
 gets one; the two prefixes count independently of each other and of the
 `<footnote>`/`<citation>` nodes they point at). Substitution definitions/references
-(`|name|` — the marker's own NAME may itself span multiple physical
+(`|name|` — whitespace immediately INSIDE either pipe disqualifies the
+construct entirely and the line becomes an ordinary comment
+(`.. | bad name |`), while a space WITHIN the name is fine
+(`|good name|`), v0.77.0+; a definition followed by a non-blank
+unindented line draws the same "Explicit markup ends without a blank
+line" warning every other explicit construct already did — the marker's own NAME may itself span multiple physical
 lines, real docutils progressively re-matching its own substitution
 pattern against the growing text until the closing `|` is found
 (`matchPipeLabelMultiline`, explicit.go, v0.50.0+) — its content is
