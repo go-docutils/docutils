@@ -388,6 +388,10 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 	var stack []*doctree.Element // open sections, stack[0] = top-level
 
 	i := 0
+	// The position of a line demoted by the short-overline INFO, so the
+	// title match can be retried there once with the "a uniform line is
+	// never title text" guard lifted -- see the consumed == 0 branch.
+	demotedAt := -1
 	for i < len(lines) {
 		if isBlankStr(lines[i]) {
 			i++
@@ -466,7 +470,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
-		if title, style, consumed, warning, ok := matchTitle(lines, i); ok {
+		if title, style, consumed, warning, ok := matchTitle(lines, i, demotedAt == i); ok {
 			// The title TEXT's own line, not the overline's — verified
 			// against the foreign judge for both styles (an overlined
 			// title's message reports the text line, one past the
@@ -526,12 +530,24 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 				i += consumed
 				continue
 			}
-			// consumed == 0: an INFO-only "too short to be a title" notice —
-			// the line still needs ordinary dispatch (it may be plain text,
-			// a definition-list term, ...); fall through to the checks
-			// below in this SAME iteration rather than looping back to the
-			// top, which would just re-attempt (and re-reject) the same
-			// short line through matchTitle/titleDiagnostic again.
+			// consumed == 0: an INFO-only "too short to be a title" notice.
+			// docutils' short_overline calls previous_line(), so the line
+			// goes back into the Body state as ordinary text -- and there
+			// it may be a title's OWN text, underlined by the line that
+			// was rejected as its underline a moment ago. Retry the match
+			// once with that guard lifted; the flag makes the top of the
+			// loop take the title branch instead of arriving back here and
+			// emitting the INFO a second time.
+			if demotedAt != i {
+				if _, _, c, _, ok2 := matchTitle(lines, i, true); ok2 && c > 0 {
+					demotedAt = i
+					continue
+				}
+			}
+			// Otherwise the line still needs ordinary dispatch (plain
+			// text, a definition-list term, ...); fall through to the
+			// checks below in this SAME iteration rather than looping back
+			// to the top, which would just re-reject it identically.
 		} else if msg, ok := underlineTooShortDiagnostic(lines, i); ok {
 			current.Append(msg)
 			// Same "fall through, don't loop back" reasoning as above.
@@ -586,6 +602,10 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 // callers still pass -1 unchanged; only topics.go computes a real one.
 func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBase int) {
 	i := 0
+	// The index just past an adornment line already reported as an
+	// unexpected title/transition -- see the match_titles=False branch
+	// below, which treats that position as a fresh block start.
+	resumedAfterAdornment := -1
 	for i < len(lines) {
 		if isBlankStr(lines[i]) {
 			i++
@@ -680,7 +700,15 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 		// against the reference for "Line one\nLine two\n========",
 		// which is one paragraph there. A first version of this without
 		// the guard invented an ERROR for exactly that shape.
-		if i == 0 || isBlankStr(lines[i-1]) {
+		//
+		// "The START of a block" includes the line right after an
+		// adornment this branch has just REPORTED: docutils returns to
+		// the Body state there, so the next line is dispatched afresh
+		// and can be a title's own text. Judging block-start from the
+		// raw previous line instead left "-----\nTitle\n-----" with one
+		// error and a stray paragraph, where docutils reports the
+		// adornment AND then the title under it.
+		if i == 0 || isBlankStr(lines[i-1]) || i == resumedAfterAdornment {
 			if i+1 < len(lines) && isTransitionLine(lines[i+1]) && !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 {
 				// An adornment directly under a single line of text is a
 				// TITLE UNDERLINE: both lines are consumed, and the
@@ -697,6 +725,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 				parent.Append(sectionMessage("3", "ERROR", "Unexpected section title or transition.",
 					msgLine(i, lineBase), trimTrailingSpace(lines[i])))
 				i++
+				resumedAfterAdornment = i
 				continue
 			}
 			// Too SHORT to be either (isTransitionLine's own 4-character
@@ -952,7 +981,7 @@ func columnWidth(s string) int {
 	return n
 }
 
-func matchTitle(lines []string, i int) (title string, style titleStyle, consumed int, warning *doctree.Element, ok bool) {
+func matchTitle(lines []string, i int, demoted bool) (title string, style titleStyle, consumed int, warning *doctree.Element, ok bool) {
 	if char, isLine := isUniformLine(lines[i]); isLine {
 		if i+2 < len(lines) {
 			text := lines[i+1]
@@ -1006,7 +1035,13 @@ func matchTitle(lines []string, i int) (title string, style titleStyle, consumed
 	// titleDiagnostic's failure messages), never falls through to be
 	// treated as underline-style title TEXT even when a following line
 	// happens to look like a valid "underline" for it.
-	if _, isSelfLine := isUniformLine(lines[i]); !isSelfLine {
+	// ... unless it has just been DEMOTED by short_overline, which calls
+	// previous_line() and hands the line back to the Body state as
+	// ordinary text -- where it can perfectly well be a title's own text
+	// with the next line as its underline. That is docutils' "bubble-up":
+	// "...\n..." is an INFO about the short overline AND a section
+	// titled "...".
+	if _, isSelfLine := isUniformLine(lines[i]); !isSelfLine || demoted {
 		if _, _, isField := matchFieldMarker(lines[i]); !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 &&
 			!isBulletLine(lines[i]) && !isEnumListStart(lines, i) && !isExplicitMarkupLine(lines[i]) && !isField &&
 			!isDoctestLine(lines[i]) && !isLineBlockLine(lines[i]) {

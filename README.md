@@ -752,7 +752,18 @@ failures are a WARNING (`"Title overline too short."`, section still
 created) or an ERROR (missing, mismatched, or absent-at-EOF underline,
 and two overlines with no title text between — no section created).
 That is a threshold, not a blanket rule, and checking the length first
-suppressed every well-formed short title. Title-STYLE consistency is enforced too: a style's
+suppressed every well-formed short title.
+
+What happens AFTER the demotion is docutils' "bubble-up" (v0.84.0+):
+`short_overline` calls `previous_line()`, so the demoted line goes back
+into the Body state as ordinary text — where it can be a title's OWN
+text, underlined by the very line that was rejected as its underline a
+moment ago. `...` over `...` is therefore an INFO *and* a section titled
+`...`, not a two-line paragraph. The same re-entry applies to the
+`match_titles=False` errors: the line after a reported adornment starts
+a fresh block there too, so `-----`/`Title`/`-----` inside a block quote
+is the adornment's own error AND `"Unexpected section title."` for the
+title under it, rather than one error and a stray paragraph. Title-STYLE consistency is enforced too: a style's
 level is fixed by the order it's first seen in the whole document
 (`title_styles`, ported), reusing an established style returns to that
 level (closing any deeper-nested sections), and introducing more than
