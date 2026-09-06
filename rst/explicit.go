@@ -385,6 +385,14 @@ func matchPipeLabel(s string) (name, rest string, ok bool) {
 		return "", "", false
 	}
 	end++ // index within s, not s[1:]
+	// docutils' substitution pattern brackets the name with "(?![ ])" and
+	// "(?<![ ])", so whitespace immediately INSIDE either pipe
+	// disqualifies the whole construct and it falls through to the
+	// comment fallback: ".. | bad name | bad data" is a <comment>. Spaces
+	// WITHIN the name are fine -- "|good name|" is a real substitution.
+	if name := s[1:end]; name == "" || name[0] == ' ' || name[len(name)-1] == ' ' {
+		return "", "", false
+	}
 	return s[1:end], strings.TrimSpace(s[end+1:]), true
 }
 
@@ -449,10 +457,22 @@ func matchPipeLabelMultiline(lines []string, i int, firstLineRest string) (name,
 // below is anchored there specifically so a line already consumed as
 // part of the (possibly multi-line) NAME is never re-offered to the
 // embedded directive as its own body content.
-func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name, directiveRest string, parent *doctree.Element) ([]doctree.Node, int, bool) {
+func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name, directiveRest string, parent *doctree.Element) (nodes []doctree.Node, nextOut int, okOut bool) {
 	lineno := i + 1
 	subname := normalizeWhitespace(name)
-	body, _, next := gatherExplicitBody(lines, bodyStartIdx)
+	body, blankFinish, next := gatherExplicitBody(lines, bodyStartIdx)
+	// The SAME "Explicit markup ends without a blank line" warning every
+	// other explicit construct already appends -- footnotes, citations,
+	// comments, directives, topics. A substitution definition simply
+	// discarded gatherExplicitBody's blankFinish, so it was the one
+	// member of the family that stayed silent. Appended to whatever this
+	// function returns, since it has several exits.
+	defer func() {
+		if okOut && !blankFinish && !(next < len(lines) && isExplicitMarkupLine(lines[next])) {
+			nodes = append(nodes, sectionMessage("2", "WARNING",
+				"Explicit markup ends without a blank line; unexpected unindent.", next+1, ""))
+		}
+	}()
 	blockText := strings.Join(lines[i:next], "\n")
 
 	// gatherExplicitBody's own body has already dropped the blank

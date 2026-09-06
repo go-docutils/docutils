@@ -94,6 +94,15 @@ func TestMatchPipeLabel(t *testing.T) {
 		{"|name|", "name", "", true},
 		{"not piped", "", "", false},
 		{"|unterminated", "", "", false},
+
+		// docutils brackets the name with "(?![ ])" and "(?<![ ])", so
+		// whitespace immediately INSIDE either pipe disqualifies the whole
+		// construct and it falls through to the comment fallback. Spaces
+		// WITHIN the name are fine.
+		{"| leading| x", "", "", false},
+		{"|trailing | x", "", "", false},
+		{"| both | x", "", "", false},
+		{"|good name| replace:: x", "good name", "replace:: x", true},
 	}
 	for _, tc := range cases {
 		name, rest, ok := matchPipeLabel(tc.s)
