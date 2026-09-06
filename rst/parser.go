@@ -104,6 +104,17 @@ type Options struct {
 	// built from it.
 	PromoteDocInfo bool
 
+	// NumberAutoFootnotes assigns numbers to auto-numbered footnotes
+	// ("[#]_", "[#name]_") and symbols to auto-symbol ones ("[*]_"),
+	// giving each footnote its <label> and matching every reference to its
+	// definition.
+	//
+	// It defaults FALSE: docutils does all of it in
+	// transforms.references.Footnotes, so its bare parse leaves an auto
+	// footnote with no label and no number at all. Set it true for the
+	// numbered shape -- go-richdoc/rst does, since it renders footnotes.
+	NumberAutoFootnotes bool
+
 	// ReportUnknownRoles emits docutils' diagnostics for interpreted text
 	// whose role this parser does not know: an INFO for the failed lookup,
 	// then an ERROR carrying the whole construct as a <problematic>.
@@ -339,7 +350,9 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	assignSectionTargets(doc)
 	p.resolveDuplicateNames(doc)
 	resolveTargets(doc, p.msgCount, opts.ReportDanglingReferences)
-	resolveFootnoteNumbers(doc)
+	if opts.NumberAutoFootnotes {
+		resolveFootnoteNumbers(doc)
+	}
 	hoistMetaNodes(doc, p.metaNodes)
 	hoistDecoration(doc, p.headerEl, p.footerEl)
 	if opts.PromoteDocInfo {

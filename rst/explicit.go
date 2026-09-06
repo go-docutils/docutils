@@ -287,14 +287,23 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label,
 	contentKind := "Footnote"
 	switch {
 	case label == "*":
+		// An auto footnote's id is assigned at PARSE time
+		// (document.note_symbol_footnote -> set_id), independently of the
+		// numbering, which is a transform. Auto and symbol footnotes share
+		// ONE positional counter: ".. [#] a" then ".. [*] c" gives
+		// footnote-1 then footnote-2.
 		el = doctree.NewElement(doctree.TagFootnote)
 		el.SetAttr("auto", "*")
+		el.SetAttr("id", p.explicitTargetID("footnote", ""))
 	case len(label) > 0 && label[0] == '#':
 		el = doctree.NewElement(doctree.TagFootnote)
 		el.SetAttr("auto", "1")
-		if name := label[1:]; name != "" {
-			el.SetAttr("name", normalizeName(name))
+		name := ""
+		if n := label[1:]; n != "" {
+			name = normalizeName(n)
+			el.SetAttr("name", name)
 		}
+		el.SetAttr("id", p.explicitTargetID("footnote", name))
 	case isAllDigits(label):
 		el = doctree.NewElement(doctree.TagFootnote)
 		el.SetAttr("name", label)
