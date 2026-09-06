@@ -38,7 +38,13 @@ producing that distinct diagnostic) is the one piece of this still not
 fully ported, see "Not yet ported" below — field lists
 (including a docutils-shaped body-indent quirk: a continuation line
 indented less than the marker column, e.g. under `:date: 2026-08-30`,
-still belongs to the field) — with a leading field list (the document's
+still belongs to the field — a FIELD BODY and an OPTION DESCRIPTION
+discover their own indent via `get_first_known_indented`, while a LIST
+ITEM's content column is fixed by its marker, so the same shallower line
+ENDS a bullet/enumerated list and becomes a block quote with the usual
+unindent warning, v0.65.0+; a BARE marker with nothing after it takes
+its column from wherever its first indented line starts, narrower or
+wider alike, independently of that distinction) — with a leading field list (the document's
 very own first child) promoted to a typed `<docinfo>`, registered
 bibliographic names (author, authors, organization, address, contact,
 version, revision, status, date, copyright, dedication, abstract,
