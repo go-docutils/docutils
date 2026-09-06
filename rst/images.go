@@ -334,7 +334,14 @@ func (p *parser) runFigureDirective(lines []string, i, next int, args string, bo
 				return []doctree.Node{figureEl, sectionMessage("3", "ERROR",
 					"Figure caption must be a paragraph or empty comment.", lineno, blockText)}
 			}
-			if ce.Tag == doctree.TagTarget {
+			if ce.Tag == doctree.TagTarget || ce.Tag == doctree.TagPending {
+				// A hyperlink target or a deferred-transform placeholder
+				// sitting AHEAD of the caption passes straight through as
+				// a <figure> child. This function's own doc comment always
+				// said so; TagPending simply did not exist yet when it was
+				// written (v0.64.0 added it), so a ".. class::" before a
+				// caption was rejected as "must be a paragraph or empty
+				// comment".
 				figureEl.Append(ce)
 				continue
 			}
