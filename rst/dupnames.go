@@ -90,6 +90,43 @@ type nameEntry struct {
 func (p *parser) resolveDuplicateNames(doc *doctree.Element) {
 	names := map[string]*nameEntry{}
 	p.walkNames(doc, doc, names)
+	p.resolveDuplicateSubstitutions(doc, doc)
+}
+
+// resolveDuplicateSubstitutions is document.note_substitution_def's own
+// rule, which runs BACKWARDS compared with every other duplicate here:
+// "keep only the last definition", so it is the OLD node that gets
+// dupname and the NEW one that keeps its name. The ERROR lands where the
+// duplicate was found, between the two definitions.
+func (p *parser) resolveDuplicateSubstitutions(el, body *doctree.Element) {
+	seen := map[string]*doctree.Element{}
+	var walk func(cur, body *doctree.Element)
+	walk = func(cur, body *doctree.Element) {
+		childBody := body
+		if admitsBodyElements(cur.Tag) {
+			childBody = cur
+		}
+		for _, c := range cur.Children {
+			ce, ok := c.(*doctree.Element)
+			if !ok {
+				continue
+			}
+			if ce.Tag == doctree.TagSubstitutionDef {
+				if name := ce.Attr("name"); name != "" {
+					if old, dup := seen[name]; dup {
+						dupname(old, name)
+						msg := sectionMessage("3", "ERROR",
+							`Duplicate substitution definition name: "`+name+`".`,
+							p.nameLines[ce], "")
+						insertBefore(childBody, topLevelAncestor(childBody, ce), msg)
+					}
+					seen[name] = ce
+				}
+			}
+			walk(ce, childBody)
+		}
+	}
+	walk(el, body)
 }
 
 // walkNames recurses in document order. body is the nearest ancestor that

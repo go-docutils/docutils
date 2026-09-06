@@ -488,6 +488,14 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 	rest := block[1:]
 
 	el := doctree.NewElement(doctree.TagSubstitutionDef)
+	// Record the definition's own source line for the duplicate-name pass,
+	// which runs after parsing and reports against it. A substitution
+	// definition is block-level, so noteNameLine's inline p.currentLine is
+	// never set for one.
+	if p.nameLines == nil {
+		p.nameLines = map[*doctree.Element]int{}
+	}
+	p.nameLines[el] = lineno
 	el.SetAttr("name", subname)
 
 	switch {

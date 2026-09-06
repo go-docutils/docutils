@@ -803,9 +803,10 @@ messages, which docutils reports against its own `node.line` bookkeeping
 rather than the duplicate's own source line — probing found no constant
 offset (three hypotheses each fitted some shapes and failed others), so
 this parser uses the real source line rather than a formula reverse-fitted
-to one fixture. The substitution-definition duplicate rule is separate
-(`Body.substitution_def`, where the LATER definition wins) and is not
-ported.
+to one fixture. The substitution-definition duplicate rule IS ported too (v0.71.0+),
+and it runs BACKWARDS compared with every other: `note_substitution_def`
+keeps only the LAST definition, so the OLD node is the one invalidated
+to `dupname` and the newcomer keeps its name.
 
 Sphinx's `autodoc` extension (and `napoleon`, downstream of
 it) is out of scope entirely: it works by importing and introspecting
