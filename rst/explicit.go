@@ -821,13 +821,13 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		return []doctree.Node{el}, next
 	}
 	if strings.EqualFold(name, "class") || strings.EqualFold(name, "rst-class") {
-		return runClassDirective(name, args, body), next
+		return p.runClassDirective(name, args, body), next
 	}
 	if strings.EqualFold(name, "sectnum") || strings.EqualFold(name, "section-numbering") {
 		return runSectnumDirective(args, body), next
 	}
 	if strings.EqualFold(name, "target-notes") {
-		return runTargetNotesDirective(args, body), next
+		return runTargetNotesDirective(args, body, strings.Join(trimTrailingBlankLines(lines[i:next]), "\n"), msgLine(i, lineBase)), next
 	}
 	if strings.EqualFold(name, "title") {
 		// ".. title:: text" sets the document's own title ATTRIBUTE and

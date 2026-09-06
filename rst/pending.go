@@ -65,13 +65,51 @@ func pyReprList(items []string) string {
 // normalized the same way every other :class: option is, and the
 // directive's own name is recorded because "class" and its alias
 // "rst-class" produce different details.
-func runClassDirective(name, args string, body []string) []doctree.Node {
-	combined := append([]string{args}, body...)
-	argument, _, _ := parseDirectiveBlock(combined, true)
+func (p *parser) runClassDirective(name, args string, body []string) []doctree.Node {
+	// NOT parseDirectiveBlock: gatherExplicitBody has already trimmed the
+	// blank line that separates a same-line argument from the content, so
+	// that split would run past it and read the first content paragraph as
+	// more class names. Class declares exactly ONE argument and NO options,
+	// so the division needs no scanning: the argument is the same-line
+	// text when there is any, else the first body line.
+	argument, content := args, body
+	if strings.TrimSpace(argument) == "" {
+		argument, content = "", nil
+		for i, l := range body {
+			if !isBlankStr(l) {
+				argument, content = l, body[i+1:]
+				break
+			}
+		}
+	}
+	for len(content) > 0 && isBlankStr(content[0]) {
+		content = content[1:]
+	}
 	var classes []string
 	for _, f := range strings.Fields(argument) {
 		classes = append(classes, makeID(f))
 	}
+
+	// WITH content, Class.run parses it and adds the classes to each
+	// resulting top-level node, returning those nodes and NO <pending> at
+	// all -- the transform exists only for the contentless form, whose job
+	// is to reach the NEXT element instead. This used to discard the
+	// content split entirely, so the body's own words were read as further
+	// class names: ".. class:: c1 c2" over a paragraph produced classes
+	// ['c1','c2','the','classes','are','applied', ...].
+	if len(content) > 0 {
+		container := doctree.NewElement(doctree.TagDocument)
+		p.parseBlockLines(content, container, -1)
+		out := make([]doctree.Node, 0, len(container.Children))
+		for _, c := range container.Children {
+			if ce, ok := c.(*doctree.Element); ok && len(classes) > 0 {
+				ce.SetAttr("class", strings.Join(classes, " "))
+			}
+			out = append(out, c)
+		}
+		return out
+	}
+
 	details := []pendingDetail{{"directive", pyRepr(strings.ToLower(name))}}
 	if len(classes) > 0 {
 		details = append(details, pendingDetail{"class", pyReprList(classes)})
@@ -102,9 +140,26 @@ func runSectnumDirective(args string, body []string) []doctree.Node {
 
 // runTargetNotesDirective ports directives.references.TargetNotes, whose
 // only option is :class:.
-func runTargetNotesDirective(args string, body []string) []doctree.Node {
+func runTargetNotesDirective(args string, body []string, blockText string, lineno int) []doctree.Node {
 	combined := append([]string{args}, body...)
 	_, options, _ := parseDirectiveBlock(combined, false)
+	// TargetNotes declares exactly one option, :class:. docutils reports
+	// anything else, and an option given with no value, as an
+	// "Error in ... directive" naming the specific failure -- the general
+	// per-directive option validation this package otherwise does not do,
+	// ported here because target-notes' whole option_spec is one entry.
+	for k, v := range options {
+		switch {
+		case !strings.EqualFold(k, "class"):
+			return []doctree.Node{sectionMessage("3", "ERROR",
+				`Error in "target-notes" directive:`+"\n"+`unknown option: "`+k+`".`, lineno, blockText)}
+		case strings.TrimSpace(v) == "":
+			return []doctree.Node{sectionMessage("3", "ERROR",
+				`Error in "target-notes" directive:`+"\n"+
+					`invalid option value: (option: "`+strings.ToLower(k)+`"; value: None)`+"\n"+
+					`argument required but none supplied.`, lineno, blockText)}
+		}
+	}
 	var details []pendingDetail
 	if v, ok := options["class"]; ok {
 		var classes []string

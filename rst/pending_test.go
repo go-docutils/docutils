@@ -1,6 +1,7 @@
 package rst
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-docutils/docutils/doctree"
@@ -69,5 +70,47 @@ func TestPendingDirectives(t *testing.T) {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestClassDirectiveWithContent covers Class.run's two halves. WITH
+// content it parses that content and adds the classes to each resulting
+// top-level node, returning those nodes and NO <pending> at all -- the
+// transform exists only for the CONTENTLESS form, whose job is to reach
+// the next element instead.
+//
+// The argument/content split cannot use parseDirectiveBlock here:
+// gatherExplicitBody has already trimmed the blank line separating a
+// same-line argument from the content, so that scan runs past it and
+// reads the first content paragraph as more class names. Class declares
+// exactly one argument and no options, so the division needs no scanning.
+func TestClassDirectiveWithContent(t *testing.T) {
+	got := doctree.Dump(Parse(".. class:: class1  class2\n\n   The classes are applied to this paragraph.\n\n   And this one.\n"))
+	want := "<document>\n    <paragraph class=\"class1 class2\">\n        The classes are applied to this paragraph.\n    <paragraph class=\"class1 class2\">\n        And this one.\n"
+	if got != want {
+		t.Errorf("dump =\n%s\nwant:\n%s", got, want)
+	}
+
+	// The contentless form still produces the placeholder.
+	if bare := doctree.Dump(Parse(".. class:: c1\n")); !strings.Contains(bare, "<pending>") {
+		t.Errorf("the contentless form lost its <pending>:\n%s", bare)
+	}
+}
+
+// TestTargetNotesOptionValidation covers the one directive whose whole
+// option_spec is a single entry, which makes docutils' per-directive
+// option validation portable for it without a general mechanism.
+func TestTargetNotesOptionValidation(t *testing.T) {
+	unknown := doctree.Dump(Parse(".. target-notes::\n   :class: custom\n   :name: targets\n"))
+	if !strings.Contains(unknown, `unknown option: "name".`) {
+		t.Errorf("an unknown option was accepted:\n%s", unknown)
+	}
+	empty := doctree.Dump(Parse(".. target-notes::\n   :class:\n"))
+	if !strings.Contains(empty, `invalid option value: (option: "class"; value: None)`) {
+		t.Errorf("an option with no value was accepted:\n%s", empty)
+	}
+	// The control: a valid :class: still builds the placeholder.
+	if ok := doctree.Dump(Parse(".. target-notes:: :class: custom\n")); !strings.Contains(ok, "TargetNotes") {
+		t.Errorf("a valid option was rejected:\n%s", ok)
 	}
 }
