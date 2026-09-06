@@ -77,3 +77,39 @@ func TestPipeNameRejectsEdgeWhitespace(t *testing.T) {
 		t.Errorf("a name with an INTERNAL space was rejected:\n%s", ok)
 	}
 }
+
+// TestFailedImageInSubstitution covers the message PAIR a failed embedded
+// directive produces: the directive's own ERROR, then the "empty or
+// invalid" WARNING for the substitution it was standing in for. They
+// quote DIFFERENT blocks -- the ERROR quotes the DIRECTIVE, the WARNING
+// the whole substitution line -- which is the same split the replace
+// directive's content checks use.
+//
+// Only the first of the two used to be emitted, and it quoted the
+// substitution line.
+//
+// KNOWN RESIDUAL: inside the ERROR's literal block, content indented
+// relative to the directive comes out dedented, because
+// gatherExplicitBody strips the body's own minimum indent before the
+// block is rebuilt. docutils keeps it. One corpus fixture differs on
+// exactly that and nothing else; recovering the original indentation
+// means threading an undedented body through, which is a larger change
+// than a quoted string's leading spaces justify.
+func TestFailedImageInSubstitution(t *testing.T) {
+	got := doctree.Dump(Parse(".. |symbol 1| image:: symbol.png\n\n    Followed by a block quote.\n"))
+	if !strings.Contains(got, `Error in "image" directive:`) {
+		t.Errorf("the directive's own error is missing:\n%s", got)
+	}
+	if !strings.Contains(got, `Substitution definition "symbol 1" empty or invalid.`) {
+		t.Errorf("the substitution warning is missing:\n%s", got)
+	}
+	// The ERROR quotes the DIRECTIVE, not the ".. |name|" line.
+	i := strings.Index(got, `Error in "image" directive:`)
+	j := strings.Index(got, `Substitution definition "symbol 1"`)
+	if i < 0 || j < 0 || i > j {
+		t.Fatalf("expected the ERROR before the WARNING:\n%s", got)
+	}
+	if strings.Contains(got[i:j], ".. |symbol 1|") {
+		t.Errorf("the ERROR quoted the substitution line rather than the directive:\n%s", got[i:j])
+	}
+}

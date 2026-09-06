@@ -552,7 +552,11 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 	case strings.EqualFold(dirName, "image"):
 		combined := append([]string{dirArgs}, rest...)
 		argument, options, content := parseDirectiveBlock(combined, true)
-		nodes := finishImageDirective("image", argument, options, content, subname, lineno, blockText)
+		// The directive's OWN block, not the whole substitution line: an
+		// "Error in ..." message quotes the directive, while the
+		// "empty or invalid" warning that follows quotes the substitution.
+		// Same pairing as the replace directive's content checks.
+		nodes := finishImageDirective("image", argument, options, content, subname, lineno, strings.Join(block, "\n"))
 		if len(nodes) != 1 {
 			return []doctree.Node{sectionMessage("2", "WARNING",
 				`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
@@ -560,7 +564,11 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 		if img, ok := nodes[0].(*doctree.Element); ok && img.Tag == doctree.TagImage {
 			el.Append(img)
 		} else {
-			return []doctree.Node{nodes[0]}, next, true
+			// A failed image directive produces its own ERROR, and the
+			// substitution it was standing in for is then empty -- both
+			// messages, in that order.
+			return []doctree.Node{nodes[0], sectionMessage("2", "WARNING",
+				`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
 		}
 	default:
 		// Any OTHER directive name: either a real but non-inline directive
