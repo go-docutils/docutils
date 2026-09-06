@@ -885,6 +885,21 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 	if strings.EqualFold(name, "sectnum") || strings.EqualFold(name, "section-numbering") {
 		return runSectnumDirective(args, body), next
 	}
+	if strings.EqualFold(name, testDirectiveName) {
+		blanks := 0
+		for j := i + 1; j < len(lines) && isBlankStr(lines[j]); j++ {
+			blanks++
+		}
+		out := runTestDirective(name, args, body, blanks,
+			strings.Join(trimTrailingBlankLines(lines[i:next]), "\n"), msgLine(i, lineBase))
+		// The SAME warning every other explicit construct appends when
+		// its body ends on an unindent rather than a blank line.
+		if !blankFinish && !(next < len(lines) && isExplicitMarkupLine(lines[next])) {
+			out = append(out, sectionMessage("2", "WARNING",
+				"Explicit markup ends without a blank line; unexpected unindent.", msgLine(next, lineBase), ""))
+		}
+		return out, next
+	}
 	if strings.EqualFold(name, "target-notes") {
 		return runTargetNotesDirective(args, body, strings.Join(trimTrailingBlankLines(lines[i:next]), "\n"), msgLine(i, lineBase)), next
 	}
@@ -1504,6 +1519,10 @@ const anonymousAttrValue = "1"
 // structural capture; what it must not do is claim the name is unknown.
 func isImplementedDirective(name string) bool {
 	if _, ok := admonitionTags[strings.ToLower(name)]; ok {
+		return true
+	}
+	switch strings.ToLower(name) {
+	case testDirectiveName:
 		return true
 	}
 	switch strings.ToLower(name) {
