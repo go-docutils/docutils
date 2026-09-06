@@ -56,9 +56,15 @@ func TestRender(t *testing.T) {
 			`<p>See <a href="https://python.org">Python</a><a id="python"></a> now.</p>`,
 		},
 		{
-			"bare reference with no target becomes problematic text plus a trailing system-messages section",
+			// Unresolved by DEFAULT is just a link with no href: the
+			// <problematic> rewriting moved behind
+			// Options.ReportDanglingReferences in docutils/rst v0.66.0,
+			// because docutils itself does it in a TRANSFORM rather than
+			// in the parser. See TestRenderReportedDanglingReference for
+			// the opted-in shape.
+			"bare reference with no target renders as plain text",
 			"See `nowhere`_ now.\n",
-			"<p>See nowhere now.</p><section><h1>Docutils System Messages</h1><p>Unknown target name: &quot;nowhere&quot;.</p></section>",
+			"<p>See nowhere now.</p>",
 		},
 		{
 			"inline internal target keeps its text and gets an id; a later reference resolves to a same-document anchor",
@@ -237,6 +243,19 @@ func TestRenderTagsAreBalanced(t *testing.T) {
 func TestPendingRendersNothing(t *testing.T) {
 	got := Render(rst.Parse(".. class:: c1\n\nText.\n"))
 	if want := "<p>Text.</p>"; got != want {
+		t.Errorf("Render = %q, want %q", got, want)
+	}
+}
+
+// TestRenderReportedDanglingReference covers the same input with
+// Options.ReportDanglingReferences on, which is where the <problematic>
+// and the trailing "Docutils System Messages" section come from.
+func TestRenderReportedDanglingReference(t *testing.T) {
+	opts := rst.DefaultOptions()
+	opts.ReportDanglingReferences = true
+	got := Render(rst.ParseWithOptions("See `nowhere`_ now.\n", opts))
+	want := "<p>See nowhere now.</p><section><h1>Docutils System Messages</h1><p>Unknown target name: &quot;nowhere&quot;.</p></section>"
+	if got != want {
 		t.Errorf("Render = %q, want %q", got, want)
 	}
 }

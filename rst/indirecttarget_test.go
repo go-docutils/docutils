@@ -53,7 +53,7 @@ func TestIndirectTargetResolution(t *testing.T) {
 			// treatment any other dangling reference does.
 			"a cycle doesn't loop forever, and the reference it leaves dangling is reported like any other",
 			".. _a: b_\n.. _b: a_\n\nSee a_.\n",
-			"<document>\n    <target id=\"a\" name=\"a\" refname=\"b\">\n    <target id=\"b\" name=\"b\" refname=\"a\">\n    <paragraph>\n        See \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            a\n        .\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Unknown target name: \"a\".\n",
+			"<document>\n    <target id=\"a\" name=\"a\" refname=\"b\">\n    <target id=\"b\" name=\"b\" refname=\"a\">\n    <paragraph>\n        See \n        <reference name=\"a\" refname=\"a\">\n            a\n        .\n",
 		},
 		{
 			"a url that happens to end in an underscore is not mistaken for an indirect target",

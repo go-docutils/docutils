@@ -60,6 +60,23 @@ type Options struct {
 	// disabled, the directive falls back to this project's existing
 	// structural capture, the same as any other unimplemented directive.
 	RawEnabled bool
+
+	// ReportDanglingReferences rewrites a reference with no matching
+	// target into a <problematic>, and appends one trailing
+	// "Docutils System Messages" section collecting every such
+	// diagnostic.
+	//
+	// It defaults to FALSE, because that rewriting is not parsing: real
+	// docutils does it in the DanglingReferences and Messages TRANSFORMS,
+	// which run after the parser and which a caller may never run at all.
+	// A bare Parse therefore leaves an unresolved reference exactly as
+	// docutils' own bare parse does — a <reference> carrying its refname
+	// and no refuri — and a consumer that wants the diagnostics opts in.
+	//
+	// References that DO resolve are unaffected either way: their refuri
+	// is filled in during parsing regardless, which is what makes this
+	// package usable without a transform pipeline.
+	ReportDanglingReferences bool
 }
 
 // DefaultOptions returns the Options Parse itself uses, matching real
@@ -284,7 +301,7 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	p.parseDocument(splitLines(source), doc)
 	assignSectionTargets(doc)
 	p.resolveDuplicateNames(doc)
-	resolveTargets(doc, p.msgCount)
+	resolveTargets(doc, p.msgCount, opts.ReportDanglingReferences)
 	resolveFootnoteNumbers(doc)
 	hoistMetaNodes(doc, p.metaNodes)
 	hoistDecoration(doc, p.headerEl, p.footerEl)
