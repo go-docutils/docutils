@@ -38,7 +38,7 @@ func TestSubstitutionReferenceAsHyperlink(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := doctree.Dump(Parse(tc.source))
+			got := doctree.Dump(parseResolvingReferences(tc.source))
 			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}
@@ -53,12 +53,12 @@ func TestSubstitutionReferenceAsHyperlink(t *testing.T) {
 // simply discarded gatherExplicitBody's blankFinish, so it was the one
 // member of the family that stayed silent.
 func TestSubstitutionUnindentWarning(t *testing.T) {
-	got := doctree.Dump(Parse(".. |symbol| image:: symbol.png\nNo blank line after.\n"))
+	got := doctree.Dump(parseResolvingReferences(".. |symbol| image:: symbol.png\nNo blank line after.\n"))
 	if !strings.Contains(got, "Explicit markup ends without a blank line; unexpected unindent.") {
 		t.Errorf("no unindent warning for a substitution definition:\n%s", got)
 	}
 	// The control: a blank line after it stays silent.
-	quiet := doctree.Dump(Parse(".. |symbol| image:: symbol.png\n\nA paragraph.\n"))
+	quiet := doctree.Dump(parseResolvingReferences(".. |symbol| image:: symbol.png\n\nA paragraph.\n"))
 	if strings.Contains(quiet, "unexpected unindent") {
 		t.Errorf("warned despite a blank line:\n%s", quiet)
 	}
@@ -68,11 +68,11 @@ func TestSubstitutionUnindentWarning(t *testing.T) {
 // whitespace immediately inside either pipe is not a substitution
 // definition at all, and the line becomes an ordinary comment.
 func TestPipeNameRejectsEdgeWhitespace(t *testing.T) {
-	got := doctree.Dump(Parse(".. | bad name | bad data\n"))
+	got := doctree.Dump(parseResolvingReferences(".. | bad name | bad data\n"))
 	if !strings.Contains(got, "<comment>") || strings.Contains(got, "substitution_definition") {
 		t.Errorf("expected a comment, not a substitution:\n%s", got)
 	}
-	ok := doctree.Dump(Parse(".. |good name| replace:: x\n"))
+	ok := doctree.Dump(parseResolvingReferences(".. |good name| replace:: x\n"))
 	if !strings.Contains(ok, "<substitution_definition") {
 		t.Errorf("a name with an INTERNAL space was rejected:\n%s", ok)
 	}
@@ -96,7 +96,7 @@ func TestPipeNameRejectsEdgeWhitespace(t *testing.T) {
 // means threading an undedented body through, which is a larger change
 // than a quoted string's leading spaces justify.
 func TestFailedImageInSubstitution(t *testing.T) {
-	got := doctree.Dump(Parse(".. |symbol 1| image:: symbol.png\n\n    Followed by a block quote.\n"))
+	got := doctree.Dump(parseResolvingReferences(".. |symbol 1| image:: symbol.png\n\n    Followed by a block quote.\n"))
 	if !strings.Contains(got, `Error in "image" directive:`) {
 		t.Errorf("the directive's own error is missing:\n%s", got)
 	}

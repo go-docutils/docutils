@@ -162,7 +162,7 @@ func TestInlineMarkupBoundaries(t *testing.T) {
 		{
 			"a named reference by backquote resolves through the trailing underscore, not a problematic",
 			"see `Section`_ for details\n\nSection\n=======\n",
-			"<document>\n    <paragraph>\n        see \n        <reference name=\"Section\" refname=\"section\" refuri=\"#section\">\n            Section\n         for details\n    <section id=\"section\" name=\"section\">\n        <title>\n            Section\n",
+			"<document>\n    <paragraph>\n        see \n        <reference name=\"Section\" refname=\"section\">\n            Section\n         for details\n    <section id=\"section\" name=\"section\">\n        <title>\n            Section\n",
 		},
 		{
 			// docutils/rst v0.36.0+ — real docutils' regex alternation

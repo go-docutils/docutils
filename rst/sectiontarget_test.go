@@ -60,7 +60,7 @@ func TestSectionImplicitTarget(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := doctree.Dump(Parse(tc.source))
+			got := doctree.Dump(parseResolvingReferences(tc.source))
 			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}

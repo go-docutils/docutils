@@ -1203,7 +1203,7 @@ func normalizeName(s string) string {
 // parse_messages (ids assigned first, parsing finishes before any
 // transform runs) with document.transform_messages (this function's own,
 // assigned next).
-func resolveTargets(doc *doctree.Element, initMsgCount int, reportDangling bool) {
+func resolveTargets(doc *doctree.Element, initMsgCount int, reportDangling, resolve bool) {
 	direct := map[string]string{}
 	indirect := map[string]string{}
 	var anonTargets []anonTarget
@@ -1241,7 +1241,7 @@ func resolveTargets(doc *doctree.Element, initMsgCount int, reportDangling bool)
 		anonMismatch.SetAttr("id", "system-message-"+strconv.Itoa(msgCount))
 		messages = append(messages, anonMismatch)
 	}
-	linkReferences(doc, targets, anonURIs, anonMismatch, &anonIndex, &messages, &msgCount, reportDangling)
+	linkReferences(doc, targets, anonURIs, anonMismatch, &anonIndex, &messages, &msgCount, reportDangling, resolve)
 	if len(messages) > 0 {
 		doc.Append(systemMessagesSection(messages))
 	}
@@ -1379,7 +1379,7 @@ func resolveIndirect(name string, direct, indirect map[string]string, depth int)
 // (docutils' own "Anonymous hyperlink mismatch", a whole-document
 // condition, not a per-reference one — see resolveTargets); otherwise
 // anonymous references resolve by position exactly as before.
-func linkReferences(parent *doctree.Element, targets map[string]string, anonTargets []string, anonMismatch *doctree.Element, anonIndex *int, messages *[]*doctree.Element, msgCount *int, reportDangling bool) {
+func linkReferences(parent *doctree.Element, targets map[string]string, anonTargets []string, anonMismatch *doctree.Element, anonIndex *int, messages *[]*doctree.Element, msgCount *int, reportDangling, resolve bool) {
 	for i, c := range parent.Children {
 		el, ok := c.(*doctree.Element)
 		if !ok {
@@ -1393,21 +1393,23 @@ func linkReferences(parent *doctree.Element, targets map[string]string, anonTarg
 					continue // the replacement has no children of its own to recurse into
 				}
 				if *anonIndex < len(anonTargets) {
-					if uri := anonTargets[*anonIndex]; uri != "" {
+					if uri := anonTargets[*anonIndex]; uri != "" && resolve {
 						el.SetAttr("refuri", uri)
 					}
 					*anonIndex++
 				}
 			case el.Attr("refname") != "":
 				if uri, found := targets[normalizeName(el.Attr("refname"))]; found {
-					el.SetAttr("refuri", uri)
+					if resolve {
+						el.SetAttr("refuri", uri)
+					}
 				} else if reportDangling {
 					parent.Children[i] = problematicReference(el, messages, msgCount)
 					continue // the replacement has no children of its own to recurse into
 				}
 			}
 		}
-		linkReferences(el, targets, anonTargets, anonMismatch, anonIndex, messages, msgCount, reportDangling)
+		linkReferences(el, targets, anonTargets, anonMismatch, anonIndex, messages, msgCount, reportDangling, resolve)
 	}
 }
 

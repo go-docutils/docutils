@@ -477,17 +477,22 @@ refname, matching docutils' own bare parse; the rewrite to
 `<problematic>` plus a trailing "Docutils System Messages" section is
 its `DanglingReferences` + `Messages` TRANSFORMS, which run after the
 parser and which a caller may never run at all. They are available via
-`Options.ReportDanglingReferences`, **off by default** (v0.66.0+). A
-reference that DOES resolve gets its `refuri` filled in during parsing
-either way — that is what makes this package usable with no transform
-pipeline, and it has not changed. **That eager resolution is itself a
-transform** (docutils' `ExternalTargets`/`InternalTargets`), so its bare
-parse leaves even a resolvable reference with only a `refname`; two
-corpus fixtures differ from this parser on exactly that and nothing
-else. It is kept deliberately, and NOT put behind an option like the
-dangling-reference diagnostics were: those cost nothing to turn off,
-while this is the feature that makes the package worth using without a
-transform pipeline at all. The `anonymous` attribute is spelled `"1"`,
+`Options.ReportDanglingReferences`, **off by default** (v0.66.0+).
+
+Whether a reference that DOES resolve gets its `refuri` is a separate
+question and a separate option, `Options.ResolveReferences`, **also off
+by default** (v0.80.0+). That resolution is itself a transform
+(docutils' `references.Hyperlinks`, via `ExternalTargets`/
+`InternalTargets`), so a bare parse leaves even a resolvable reference
+carrying only the `refname` it points at. Turning it on fills in the
+`refuri` — an external target's URI, or `#its-id` for an internal one —
+and any renderer wants it: the bundled `html` and `latex` writers'
+own tests set it, and so does `go-richdoc/rst`. Until v0.80.0 this
+was unconditional, documented as what made the package usable without a
+transform pipeline; the refname is written either way, so a consumer
+could always resolve for itself, and the default now matches every
+other transform-derived option instead of being the one exception.
+The `anonymous` attribute is spelled `"1"`,
 not `"true"` — it is a boolean in docutils and `starttag` renders one as
 `str(int(value))` (v0.67.0+). Standalone URI recognition (no backtick
 quoting or trailing `_` needed at all, `inline.go`) uses docutils' own
@@ -810,17 +815,18 @@ the PARSER, or in a TRANSFORM?*
 | `ReportDanglingReferences` | **false** | `DanglingReferences`/`Messages` are transforms |
 | `PromoteDocInfo` | **false** | `DocInfo` is a transform |
 | `NumberAutoFootnotes` | **false** | `references.Footnotes` is a transform |
+| `ResolveReferences` | **false** | `references.Hyperlinks` is a transform |
 
 A consumer picks per field. `go-richdoc/rst` turns the two report
 options OFF (a diagnostic aimed at someone WRITING reST becomes
 fabricated content once it reaches a converted document) and
-`PromoteDocInfo` and `NumberAutoFootnotes` ON (its `Document.Meta` is
-built from the first, and it renders footnotes). Two things stay
-unconditional either way, because both are assigned during PARSING even
-in docutils: a reference that DOES have a target gets its `refuri` (see
-above), and every footnote gets its `id` — `note_autofootnote` calls
-`set_id`, so an auto footnote is `footnote-1` with no label at all, and
-auto and symbol footnotes share one positional counter.
+`PromoteDocInfo`, `NumberAutoFootnotes` and `ResolveReferences` ON (its
+`Document.Meta` is built from the first, it renders footnotes, and its
+links need somewhere to point). One thing stays unconditional either
+way, because it is assigned during PARSING even in docutils: every
+footnote gets its `id` — `note_autofootnote` calls `set_id`, so an auto
+footnote is `footnote-1` with no label at all, and auto and symbol
+footnotes share one positional counter.
 
 **Duplicate reference names** are diagnosed and resolved (`dupnames.go`,
 v0.57.0+), a full port of docutils' own `set_duplicate_name` transition

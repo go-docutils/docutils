@@ -73,10 +73,27 @@ type Options struct {
 	// docutils' own bare parse does — a <reference> carrying its refname
 	// and no refuri — and a consumer that wants the diagnostics opts in.
 	//
-	// References that DO resolve are unaffected either way: their refuri
-	// is filled in during parsing regardless, which is what makes this
-	// package usable without a transform pipeline.
+	// Whether a reference that DOES resolve gains its refuri is a
+	// separate question, and a separate option: see ResolveReferences.
 	ReportDanglingReferences bool
+
+	// ResolveReferences fills a reference's refuri in from the target it
+	// names -- turning `link`_ plus ".. _link: http://x" into a
+	// <reference refname="link" refuri="http://x">, and a reference to an
+	// internal name into "#its-id".
+	//
+	// It defaults FALSE, by the same rule as ReportDanglingReferences,
+	// PromoteDocInfo and NumberAutoFootnotes: docutils resolves
+	// hyperlinks in transforms.references.Hyperlinks, a TRANSFORM, so its
+	// bare parse leaves a reference carrying only the refname it points
+	// at. Set it true to have this package do the resolution too -- the
+	// html and latex writers here do, and so does go-richdoc/rst, since a
+	// renderer needs somewhere to send the reader.
+	//
+	// The refname is written either way, so a consumer can always resolve
+	// for itself; what this option controls is only whether this package
+	// does it eagerly.
+	ResolveReferences bool
 
 	// ReportUnknownDirectives emits docutils' own pair of diagnostics for a
 	// directive this parser has no implementation for: an INFO
@@ -349,7 +366,7 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	p.parseDocument(splitLines(source), doc)
 	assignSectionTargets(doc)
 	p.resolveDuplicateNames(doc)
-	resolveTargets(doc, p.msgCount, opts.ReportDanglingReferences)
+	resolveTargets(doc, p.msgCount, opts.ReportDanglingReferences, opts.ResolveReferences)
 	if opts.NumberAutoFootnotes {
 		resolveFootnoteNumbers(doc)
 	}
