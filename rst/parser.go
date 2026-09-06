@@ -77,12 +77,27 @@ type Options struct {
 	// is filled in during parsing regardless, which is what makes this
 	// package usable without a transform pipeline.
 	ReportDanglingReferences bool
+
+	// ReportUnknownDirectives emits docutils' own pair of diagnostics for a
+	// directive this parser has no implementation for: an INFO
+	// ("No directive entry for ... Trying ... as canonical directive
+	// name.") and an ERROR ("Unknown directive type ...") carrying the
+	// directive's whole source as a <literal_block>, in place of the
+	// structural <directive> capture.
+	//
+	// Unlike ReportDanglingReferences this defaults TRUE, because the
+	// asymmetry is real: Body.unknown_directive lives in the PARSER, so
+	// emitting it is what a faithful parse does. A consumer that would
+	// rather keep an unrecognized directive's content — a Sphinx
+	// ".. toctree::" in a document this package was not told about, say —
+	// sets it false and gets the structural capture back.
+	ReportUnknownDirectives bool
 }
 
 // DefaultOptions returns the Options Parse itself uses, matching real
 // docutils' own defaults.
 func DefaultOptions() Options {
-	return Options{RawEnabled: true}
+	return Options{RawEnabled: true, ReportUnknownDirectives: true}
 }
 
 type parser struct {

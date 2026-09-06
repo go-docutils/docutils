@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-docutils/docutils/doctree"
 	"github.com/go-docutils/docutils/rst"
 )
 
@@ -133,15 +134,6 @@ func TestRender(t *testing.T) {
 			"<!-- a comment -->",
 		},
 		{
-			// "some-directive" is deliberately NOT one of this project's
-			// implemented directives (note/table/list-table/raw/role) —
-			// an earlier version of this test used ".. note::" here,
-			// which predates note becoming a real, implemented directive.
-			"directive renders as a labeled pre block, not silently dropped",
-			".. some-directive::\n\n   content\n",
-			`<pre class="directive" data-directive="some-directive">content</pre>`,
-		},
-		{
 			"line block renders as nested divs, one per line",
 			"| one\n| two\n",
 			`<div class="line-block"><div>one</div><div>two</div></div>`,
@@ -255,6 +247,27 @@ func TestRenderReportedDanglingReference(t *testing.T) {
 	opts.ReportDanglingReferences = true
 	got := Render(rst.ParseWithOptions("See `nowhere`_ now.\n", opts))
 	want := "<p>See nowhere now.</p><section><h1>Docutils System Messages</h1><p>Unknown target name: &quot;nowhere&quot;.</p></section>"
+	if got != want {
+		t.Errorf("Render = %q, want %q", got, want)
+	}
+}
+
+// parseCapturingDirectives builds a tree with the structural <directive>
+// node an unimplemented directive produces when
+// Options.ReportUnknownDirectives is off. That capture is what these
+// writer cases exist to render; the parser's DEFAULT is docutils' own
+// "Unknown directive type" diagnostics instead.
+func parseCapturingDirectives(src string) *doctree.Element {
+	opts := rst.DefaultOptions()
+	opts.ReportUnknownDirectives = false
+	return rst.ParseWithOptions(src, opts)
+}
+
+// TestRenderCapturedDirective renders the structural <directive> node,
+// which is now the OPT-OUT shape (see parseCapturingDirectives).
+func TestRenderCapturedDirective(t *testing.T) {
+	got := Render(parseCapturingDirectives(".. some-directive::\n\n   content\n"))
+	want := `<pre class="directive" data-directive="some-directive">content</pre>`
 	if got != want {
 		t.Errorf("Render = %q, want %q", got, want)
 	}

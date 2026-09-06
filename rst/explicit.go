@@ -867,6 +867,9 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		p.runMetaDirective(lines, i, body, i+1, strings.Join(lines[i:next], "\n"))
 		return nil, next
 	}
+	if p.opts.ReportUnknownDirectives && !isImplementedDirective(name) {
+		return unknownDirectiveDiagnostics(name, lines, i, next, lineBase), next
+	}
 	el := doctree.NewElement(doctree.TagDirective)
 	el.SetAttr("name", name)
 	if args != "" {
@@ -876,6 +879,28 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		el.Append(&doctree.Text{Data: strings.Join(body, "\n")})
 	}
 	return []doctree.Node{el}, next
+}
+
+// unknownDirectiveDiagnostics ports the pair docutils raises for a
+// directive name it cannot resolve: directives.directive() reports the
+// lookup failure as an INFO, then Body.unknown_directive reports the
+// ERROR. Both name the DEFAULT language module explicitly, which is why
+// the corpus's German admonition fixtures land here rather than in any
+// localization gap: docutils' own default language is English, so
+// ".. Achtung::" is simply an unknown directive to it too.
+//
+// The ERROR's <literal_block> is the directive's WHOLE source, marker
+// line and original indentation included — unknown_directive calls
+// get_first_known_indented(0, strip_indent=False), not the dedenting
+// form every implemented directive's body goes through.
+func unknownDirectiveDiagnostics(name string, lines []string, i, next, lineBase int) []doctree.Node {
+	lineno := msgLine(i, lineBase)
+	info := sectionMessage("1", "INFO",
+		`No directive entry for "`+name+`" in module "docutils.parsers.rst.languages.en".`+
+			"\n"+`Trying "`+name+`" as canonical directive name.`, lineno, "")
+	block := strings.Join(trimTrailingBlankLines(lines[i:next]), "\n")
+	err := sectionMessage("3", "ERROR", `Unknown directive type "`+name+`".`, lineno, block)
+	return []doctree.Node{info, err}
 }
 
 // parseComment ports Body.comment (states.py, read directly): like
@@ -1333,3 +1358,27 @@ func systemMessagesSection(messages []*doctree.Element) *doctree.Element {
 // corpus with it, spells it anonymous="1". Thirteen fixtures differed
 // from this parser on nothing else at all.
 const anonymousAttrValue = "1"
+
+// isImplementedDirective reports whether this package has real semantics
+// for a directive name, however that dispatch turned out for the
+// particular invocation. Reaching the generic capture with an
+// IMPLEMENTED name means the directive failed its own validation --
+// ".. raw::" with no format argument, say -- and docutils reports that as
+// `Error in "raw" directive: ...`, NOT as an unknown directive type. This
+// package does not implement per-directive argument/option validation
+// (see the README), so such an invocation still falls back to the
+// structural capture; what it must not do is claim the name is unknown.
+func isImplementedDirective(name string) bool {
+	if _, ok := admonitionTags[strings.ToLower(name)]; ok {
+		return true
+	}
+	switch strings.ToLower(name) {
+	case "admonition", "class", "code", "compound", "container",
+		"default-role", "figure", "footer", "header", "image", "line-block",
+		"list-table", "math", "meta", "parsed-literal", "raw", "replace",
+		"role", "rst-class", "rubric", "section-numbering", "sectnum",
+		"sidebar", "table", "target-notes", "title", "topic":
+		return true
+	}
+	return false
+}

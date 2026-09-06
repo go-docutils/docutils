@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-docutils/docutils/doctree"
 	"github.com/go-docutils/docutils/rst"
 )
 
@@ -106,15 +107,6 @@ func TestRenderContains(t *testing.T) {
 			"comment renders as LaTeX line comments",
 			".. a comment\n",
 			[]string{"% a comment"},
-		},
-		{
-			// "some-directive" is deliberately NOT one of this project's
-			// implemented directives (note/table/list-table/raw/role) —
-			// an earlier version of this test used ".. note::" here,
-			// which predates note becoming a real, implemented directive.
-			"directive renders as a labeled verbatim block, not silently dropped",
-			".. some-directive::\n\n   content\n",
-			[]string{`[directive: some-directive]`, "content"},
 		},
 		{
 			"document wrapper",
@@ -220,5 +212,27 @@ func TestRenderBalancesEnvironments(t *testing.T) {
 func TestPendingRendersNothing(t *testing.T) {
 	if got := Render(rst.Parse(".. class:: c1\n\nText.\n")); strings.Contains(got, "internal attributes") {
 		t.Errorf("a <pending> node's debug dump leaked into the output:\n%s", got)
+	}
+}
+
+// parseCapturingDirectives builds a tree with the structural <directive>
+// node an unimplemented directive produces when
+// Options.ReportUnknownDirectives is off. That capture is what these
+// writer cases exist to render; the parser's DEFAULT is docutils' own
+// "Unknown directive type" diagnostics instead.
+func parseCapturingDirectives(src string) *doctree.Element {
+	opts := rst.DefaultOptions()
+	opts.ReportUnknownDirectives = false
+	return rst.ParseWithOptions(src, opts)
+}
+
+// TestRenderCapturedDirective is the LaTeX half of html's test of the
+// same name: the structural <directive> node is now the OPT-OUT shape.
+func TestRenderCapturedDirective(t *testing.T) {
+	got := Render(parseCapturingDirectives(".. some-directive::\n\n   content\n"))
+	for _, want := range []string{`[directive: some-directive]`, "content"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Render missing %q:\n%s", want, got)
+		}
 	}
 }
