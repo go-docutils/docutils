@@ -668,7 +668,7 @@ func disallowedInSubstitutionNode(n doctree.Node) string {
 	if !ok {
 		return ""
 	}
-	if el.Tag == doctree.TagReference && el.Attr("anonymous") == "true" {
+	if el.Tag == doctree.TagReference && el.Attr("anonymous") == anonymousAttrValue {
 		return "Anonymous references"
 	}
 	if el.Tag == doctree.TagFootnoteReference && (el.Attr("auto") == "1" || el.Attr("auto") == "*") {
@@ -984,7 +984,7 @@ func parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int
 		uri += strings.TrimSpace(l)
 	}
 	el := doctree.NewElement(doctree.TagTarget)
-	el.SetAttr("anonymous", "true")
+	el.SetAttr("anonymous", anonymousAttrValue)
 	if indirect, ok := bareIndirectTargetName(uri); ok {
 		el.SetAttr("refname", normalizeName(indirect))
 	} else {
@@ -1120,7 +1120,7 @@ func countAnonymousReferences(n doctree.Node) int {
 		return 0
 	}
 	count := 0
-	if el.Tag == doctree.TagReference && el.Attr("anonymous") == "true" {
+	if el.Tag == doctree.TagReference && el.Attr("anonymous") == anonymousAttrValue {
 		count++
 	}
 	for _, c := range el.Children {
@@ -1142,7 +1142,7 @@ func collectTargets(n doctree.Node, direct, indirect map[string]string, anonTarg
 	}
 	if el.Tag == doctree.TagTarget {
 		switch {
-		case el.Attr("anonymous") == "true":
+		case el.Attr("anonymous") == anonymousAttrValue:
 			*anonTargets = append(*anonTargets, anonTarget{refuri: el.Attr("refuri"), refname: el.Attr("refname")})
 		case el.Attr("name") != "":
 			name := el.Attr("name")
@@ -1250,7 +1250,7 @@ func linkReferences(parent *doctree.Element, targets map[string]string, anonTarg
 		}
 		if el.Tag == doctree.TagReference {
 			switch {
-			case el.Attr("anonymous") == "true":
+			case el.Attr("anonymous") == anonymousAttrValue:
 				if anonMismatch != nil {
 					parent.Children[i] = problematicAnonymousReference(el, anonMismatch, msgCount)
 					continue // the replacement has no children of its own to recurse into
@@ -1326,3 +1326,10 @@ func systemMessagesSection(messages []*doctree.Element) *doctree.Element {
 	}
 	return sec
 }
+
+// anonymousAttrValue is "1", not "true". The attribute is a BOOLEAN in
+// docutils (reference['anonymous'] = True), and nodes.Element.starttag
+// renders a bool as str(int(value)) — so every pseudoxml dump, and the
+// corpus with it, spells it anonymous="1". Thirteen fixtures differed
+// from this parser on nothing else at all.
+const anonymousAttrValue = "1"

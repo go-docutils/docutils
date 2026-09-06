@@ -440,7 +440,16 @@ parser and which a caller may never run at all. They are available via
 `Options.ReportDanglingReferences`, **off by default** (v0.66.0+). A
 reference that DOES resolve gets its `refuri` filled in during parsing
 either way — that is what makes this package usable with no transform
-pipeline, and it has not changed. Standalone URI recognition (no backtick
+pipeline, and it has not changed. **That eager resolution is itself a
+transform** (docutils' `ExternalTargets`/`InternalTargets`), so its bare
+parse leaves even a resolvable reference with only a `refname`; two
+corpus fixtures differ from this parser on exactly that and nothing
+else. It is kept deliberately, and NOT put behind an option like the
+dangling-reference diagnostics were: those cost nothing to turn off,
+while this is the feature that makes the package worth using without a
+transform pipeline at all. The `anonymous` attribute is spelled `"1"`,
+not `"true"` — it is a boolean in docutils and `starttag` renders one as
+`str(int(value))` (v0.67.0+). Standalone URI recognition (no backtick
 quoting or trailing `_` needed at all, `inline.go`) uses docutils' own
 two character classes rather than a punctuation heuristic (v0.63.0+):
 the body class `[-_.!~*'()[\];/:@&=+$,%a-zA-Z0-9]` contains neither `<`

@@ -84,12 +84,12 @@ func TestEmbeddedLinkPhraseReference(t *testing.T) {
 			// itself correctly declines here.
 			"a space right after '<' or right before '>' disqualifies embedded-link recognition entirely",
 			"`no embedded alias (whitespace inside bracket) < alias_ >`__\n\n.. __: https://example.org/anon\n",
-			"<document>\n    <paragraph>\n        <reference anonymous=\"true\" name=\"no embedded alias (whitespace inside bracket) < alias_ >\" refuri=\"https://example.org/anon\">\n            no embedded alias (whitespace inside bracket) < alias_ >\n    <target anonymous=\"true\" refuri=\"https://example.org/anon\">\n",
+			"<document>\n    <paragraph>\n        <reference anonymous=\"1\" name=\"no embedded alias (whitespace inside bracket) < alias_ >\" refuri=\"https://example.org/anon\">\n            no embedded alias (whitespace inside bracket) < alias_ >\n    <target anonymous=\"1\" refuri=\"https://example.org/anon\">\n",
 		},
 		{
 			"no preceding whitespace before '<' also disqualifies embedded-link recognition",
 			"`no embedded alias (no preceding whitespace)<alias_>`__\n\n.. __: https://example.org/anon\n",
-			"<document>\n    <paragraph>\n        <reference anonymous=\"true\" name=\"no embedded alias (no preceding whitespace)<alias_>\" refuri=\"https://example.org/anon\">\n            no embedded alias (no preceding whitespace)<alias_>\n    <target anonymous=\"true\" refuri=\"https://example.org/anon\">\n",
+			"<document>\n    <paragraph>\n        <reference anonymous=\"1\" name=\"no embedded alias (no preceding whitespace)<alias_>\" refuri=\"https://example.org/anon\">\n            no embedded alias (no preceding whitespace)<alias_>\n    <target anonymous=\"1\" refuri=\"https://example.org/anon\">\n",
 		},
 		{
 			"an escaped backslash inside an anonymous embedded URI stays a single literal backslash, in both the text and the refuri attribute",
