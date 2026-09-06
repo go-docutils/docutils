@@ -1089,6 +1089,15 @@ func titleDiagnostic(lines []string, i int) (msg *doctree.Element, consumed int,
 		return nil, 0, false
 	}
 	overlineLine := i + 1
+	// A short uniform line is only a title ATTEMPT when something
+	// follows it on the next line. Standing alone before a blank line or
+	// EOF it is simply a paragraph, and docutils says nothing about it:
+	// "Short marker.\n\n---\n\nParagraph" has no diagnostic at all,
+	// while "---\nTitle\n---" does. Reported regardless, this INFO fired
+	// on every stray "---" a document happened to contain.
+	if i+1 >= len(lines) || isBlankStr(lines[i+1]) {
+		return nil, 0, false
+	}
 	if len([]rune(overline)) < 4 {
 		// Too short to be either an overline or a transition at all (real
 		// docutils' Line.short_overline, reached from every branch below at

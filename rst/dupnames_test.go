@@ -92,3 +92,30 @@ func TestReferenceNameIsNotATargetClaim(t *testing.T) {
 		t.Errorf("a reference was wrongly treated as a duplicate target claim:\n%s", got)
 	}
 }
+
+// TestDuplicateSubstitutionDefinition covers the one duplicate rule that
+// runs BACKWARDS compared with every other: note_substitution_def keeps
+// only the LAST definition, so the OLD node is the one invalidated to
+// dupname and the new one keeps its name. The ERROR lands between them.
+// Byte-for-byte the reference's own output.
+func TestDuplicateSubstitutionDefinition(t *testing.T) {
+	got := doctree.Dump(Parse("x\n\n.. |s| image:: a.png\n.. |s| image:: b.png\n"))
+	want := "<document>\n    <paragraph>\n        x\n    <substitution_definition dupname=\"s\">\n        <image alt=\"s\" uri=\"a.png\">\n    <system_message level=\"3\" line=\"4\" type=\"ERROR\">\n        <paragraph>\n            Duplicate substitution definition name: \"s\".\n    <substitution_definition name=\"s\">\n        <image alt=\"s\" uri=\"b.png\">\n"
+	if got != want {
+		t.Errorf("dump =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestShortAdornmentNeedsATitleAttempt pins the guard on the
+// "Possible incomplete section title" INFO: a short uniform line is only
+// a title ATTEMPT when something follows it. Standing alone before a
+// blank line it is simply a paragraph, and docutils says nothing --
+// reported regardless, this fired on every stray "---" in a document.
+func TestShortAdornmentNeedsATitleAttempt(t *testing.T) {
+	if got := doctree.Dump(Parse("Short marker.\n\n---\n\nParagraph\n")); strings.Contains(got, "system_message") {
+		t.Errorf("a lone short marker drew a diagnostic:\n%s", got)
+	}
+	if got := doctree.Dump(Parse("Short marker.\n\n---\nTitle\n---\n\nx\n")); !strings.Contains(got, "Possible incomplete section title") {
+		t.Errorf("a genuine short-overline title attempt drew none:\n%s", got)
+	}
+}
