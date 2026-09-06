@@ -729,13 +729,19 @@ whitespace on the title line) is stripped rather than rejected, but
 still counts toward the overline-width comparison exactly as docutils
 computes it (before the strip, not after — an inset title can trigger
 "Title overline too short." on its own even when the stripped text
-alone would fit); a too-short overline or underline (under 4 columns)
-that's ALSO narrower than the title reverts the whole attempt to plain
-text with an INFO notice, while one that's merely narrower (but still
-≥4, or ≥ the title's own width) is a WARNING and the section is still
-created; a missing, mismatched, or absent-at-EOF underline, and two
-overlines with no title text between, are each their own ERROR with no
-section created. Title-STYLE consistency is enforced too: a style's
+alone would fit); an adornment under 4 columns is
+NOT wrong by itself — `===`/`One`/`===` is an ordinary section title
+(v0.82.0+). Its length only matters once something ELSE has already
+failed: `Line.text` and `Line.underline` reach `short_overline` from
+inside their failure branches only, so a short overline that is also
+narrower than its title, or has a mismatched underline, or none at all,
+or is followed straight by a second adornment, reverts the whole attempt
+to plain text with an INFO notice. At 4 columns and up the SAME three
+failures are a WARNING (`"Title overline too short."`, section still
+created) or an ERROR (missing, mismatched, or absent-at-EOF underline,
+and two overlines with no title text between — no section created).
+That is a threshold, not a blanket rule, and checking the length first
+suppressed every well-formed short title. Title-STYLE consistency is enforced too: a style's
 level is fixed by the order it's first seen in the whole document
 (`title_styles`, ported), reusing an established style returns to that
 level (closing any deeper-nested sections), and introducing more than
