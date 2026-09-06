@@ -497,6 +497,26 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 		block = block[1:]
 	}
 
+	// The same block, but with every continuation line's ORIGINAL
+	// indentation intact. Body.substitution_def calls
+	// get_first_known_indented(match.end(), strip_indent=False) -- the
+	// only caller in states.py that passes strip_indent=False -- so
+	// docutils' own block keeps its indentation and only its FIRST line
+	// (the text after the "|name|" marker) is stripped. That block is
+	// what an embedded directive's error message quotes, so a body
+	// indented relative to the directive shows up indented there.
+	// gatherExplicitBody dedents, which is right for PARSING and wrong
+	// for QUOTING; rebuilding from the source lines keeps both.
+	rawBlock := make([]string, 0, 1+next-(bodyStartIdx+1))
+	rawBlock = append(rawBlock, directiveRest)
+	if bodyStartIdx+1 < next {
+		rawBlock = append(rawBlock, lines[bodyStartIdx+1:next]...)
+	}
+	for len(rawBlock) > 0 && isBlankStr(rawBlock[len(rawBlock)-1]) {
+		rawBlock = rawBlock[:len(rawBlock)-1]
+	}
+	dirBlockText := strings.Join(rawBlock, "\n")
+
 	if len(block) == 0 {
 		return []doctree.Node{sectionMessage("2", "WARNING",
 			`Substitution definition "`+subname+`" missing contents.`, lineno, ".. |"+name+"|")}, next, true
@@ -531,7 +551,7 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 
 	switch {
 	case strings.EqualFold(dirName, "replace"):
-		msgs, errEl := p.fillReplaceSubstitution(el, subname, dirArgs, rest, lineno, blockText, strings.Join(block, "\n"))
+		msgs, errEl := p.fillReplaceSubstitution(el, subname, dirArgs, rest, lineno, blockText, dirBlockText)
 		if errEl != nil {
 			return append(msgs, errEl), next, true
 		}
@@ -563,7 +583,7 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 		// "Error in ..." message quotes the directive, while the
 		// "empty or invalid" warning that follows quotes the substitution.
 		// Same pairing as the replace directive's content checks.
-		nodes := finishImageDirective("image", argument, options, content, subname, lineno, strings.Join(block, "\n"))
+		nodes := finishImageDirective("image", argument, options, content, subname, lineno, dirBlockText)
 		if len(nodes) != 1 {
 			return []doctree.Node{sectionMessage("2", "WARNING",
 				`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
@@ -593,7 +613,7 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 		// warning quotes.
 		var out []doctree.Node
 		if p.opts.ReportUnknownDirectives && !isImplementedDirective(dirName) {
-			out = append(out, unknownDirectiveBlockDiagnostics(dirName, strings.Join(block, "\n"), lineno)...)
+			out = append(out, unknownDirectiveBlockDiagnostics(dirName, dirBlockText, lineno)...)
 		}
 		return append(out, sectionMessage("2", "WARNING",
 			`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)), next, true

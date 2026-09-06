@@ -88,13 +88,14 @@ func TestPipeNameRejectsEdgeWhitespace(t *testing.T) {
 // Only the first of the two used to be emitted, and it quoted the
 // substitution line.
 //
-// KNOWN RESIDUAL: inside the ERROR's literal block, content indented
-// relative to the directive comes out dedented, because
-// gatherExplicitBody strips the body's own minimum indent before the
-// block is rebuilt. docutils keeps it. One corpus fixture differs on
-// exactly that and nothing else; recovering the original indentation
-// means threading an undedented body through, which is a larger change
-// than a quoted string's leading spaces justify.
+// The ERROR's quoted block keeps the body's ORIGINAL indentation, which
+// is the whole reason the block is rebuilt from the source lines rather
+// than from gatherExplicitBody's dedented body: Body.substitution_def is
+// the one caller in states.py passing strip_indent=False, so docutils'
+// own block keeps its indentation and only its first line is stripped.
+// v0.78.0 recorded this as a residual "larger than a quoted string's
+// leading spaces justify" -- that estimate was wrong, it was fifteen
+// lines, and the fixture it left red is now green.
 func TestFailedImageInSubstitution(t *testing.T) {
 	got := doctree.Dump(parseResolvingReferences(".. |symbol 1| image:: symbol.png\n\n    Followed by a block quote.\n"))
 	if !strings.Contains(got, `Error in "image" directive:`) {
@@ -111,5 +112,16 @@ func TestFailedImageInSubstitution(t *testing.T) {
 	}
 	if strings.Contains(got[i:j], ".. |symbol 1|") {
 		t.Errorf("the ERROR quoted the substitution line rather than the directive:\n%s", got[i:j])
+	}
+	// The content's own indentation RELATIVE to the directive survives
+	// into the quoted block. Dumped inside a <literal_block> the whole
+	// block carries the dump's indent, so what is pinned here is the
+	// four extra columns.
+	if !strings.Contains(got[i:j], "\n                Followed by a block quote.\n") {
+		t.Errorf("the ERROR's quoted block lost the body's own indentation:\n%s", got[i:j])
+	}
+	// And the WARNING, which quotes the whole substitution, keeps it too.
+	if !strings.Contains(got[j:], "\n                Followed by a block quote.\n") {
+		t.Errorf("the WARNING's quoted block lost the body's own indentation:\n%s", got[j:])
 	}
 }
