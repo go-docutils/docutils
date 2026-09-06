@@ -203,7 +203,14 @@ lines, real docutils progressively re-matching its own substitution
 pattern against the growing text until the closing `|` is found
 (`matchPipeLabelMultiline`, explicit.go, v0.50.0+) — its content is
 always an embedded directive invocation,
-real semantics for `replace::` (inline-parsed as one paragraph's worth
+real semantics for `replace::` (its two content checks are ported too,
+v0.73.0+: NO content is
+`Content block expected for the "replace" directive; none found.` and
+more than one paragraph is
+`Error in "replace" directive: may contain a single paragraph only.` —
+each an ERROR quoting the DIRECTIVE block, followed by the
+"empty or invalid" WARNING quoting the whole substitution line; content
+is otherwise inline-parsed as one paragraph's worth
 of content, nested directly as the substitution's own children — a
 prohibited construct inside it, an anonymous reference, an
 auto-numbered/auto-symbol footnote reference, or anything carrying its
