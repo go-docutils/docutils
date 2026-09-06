@@ -1025,8 +1025,15 @@ func (p *parser) parseComment(lines []string, i, lineBase int, rest string) ([]d
 // it with a substitution reference).
 func (p *parser) parseHyperlinkTarget(lines []string, i int, rest string) (doctree.Node, int) {
 	body, _, next := gatherExplicitBody(lines, i)
+	// The name ends at the first colon FOLLOWED BY whitespace or the end
+	// of the line -- not at the first colon of any kind. A reference name
+	// may itself contain colons (".. _figure:caption:" is the single name
+	// "figure:caption"), and so may the URI ("http://..."), so neither
+	// "first colon" nor "last colon" is right. Checked against the
+	// reference for "figure:caption:", "a:b:c: http://x", "name: uri" and
+	// a bare "plain:".
 	name, uri := rest, ""
-	if idx := strings.IndexByte(rest, ':'); idx >= 0 {
+	if idx := targetNameEnd(rest); idx >= 0 {
 		name = rest[:idx]
 		uri = rest[idx+1:]
 	}
@@ -1041,7 +1048,10 @@ func (p *parser) parseHyperlinkTarget(lines []string, i int, rest string) (doctr
 	el.SetAttr("id", p.explicitTargetID("target", normalized))
 	if indirect, ok := bareIndirectTargetName(uri); ok {
 		el.SetAttr("refname", normalizeName(indirect))
-	} else {
+	} else if uri != "" {
+		// A target with NO uri at all ("..  _figure:caption:") carries
+		// neither attribute -- it is an internal anchor. Setting an empty
+		// refuri produced refuri="" where docutils omits it entirely.
 		el.SetAttr("refuri", uri)
 	}
 	return el, next
@@ -1072,7 +1082,10 @@ func parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int
 	el.SetAttr("anonymous", anonymousAttrValue)
 	if indirect, ok := bareIndirectTargetName(uri); ok {
 		el.SetAttr("refname", normalizeName(indirect))
-	} else {
+	} else if uri != "" {
+		// A target with NO uri at all ("..  _figure:caption:") carries
+		// neither attribute -- it is an internal anchor. Setting an empty
+		// refuri produced refuri="" where docutils omits it entirely.
 		el.SetAttr("refuri", uri)
 	}
 	return el, next
@@ -1458,4 +1471,18 @@ func hasBlankSeparatedParagraphs(body []string) bool {
 		seen = true
 	}
 	return false
+}
+
+// targetNameEnd returns the index of the colon terminating a hyperlink
+// target's name, or -1 if there is none.
+func targetNameEnd(rest string) int {
+	for i := 0; i < len(rest); i++ {
+		if rest[i] != ':' {
+			continue
+		}
+		if i+1 == len(rest) || rest[i+1] == ' ' || rest[i+1] == '\t' {
+			return i
+		}
+	}
+	return -1
 }

@@ -177,3 +177,52 @@ func TestResolveTargetsForwardReference(t *testing.T) {
 		t.Errorf("forward-referenced target was not resolved:\n%s", got)
 	}
 }
+
+// TestTargetNameTerminator pins where a hyperlink target's NAME ends: at
+// the first colon FOLLOWED BY whitespace or the end of the line -- not at
+// the first colon of any kind, and not the last. A reference name may
+// itself contain colons and so may a URI, so both simpler rules are
+// wrong, in opposite directions. Every case checked against the
+// reference.
+func TestTargetNameTerminator(t *testing.T) {
+	cases := []struct{ source, wantName, wantURI string }{
+		// The name holds a colon; the trailing one terminates it, and
+		// there is no URI at all -- so no refuri attribute either.
+		{".. _figure:caption:\n\nx\n", "figure:caption", ""},
+		// "first colon" would stop at "http", "last colon" inside the URI.
+		{".. _name: http://example.org\n\nx\n", "name", "http://example.org"},
+		// Both at once.
+		{".. _a:b:c: http://x\n\ny\n", "a:b:c", "http://x"},
+		{".. _plain:\n\nz\n", "plain", ""},
+	}
+	for _, tc := range cases {
+		got := doctree.Dump(Parse(tc.source))
+		if !strings.Contains(got, `name="`+tc.wantName+`"`) {
+			t.Errorf("Parse(%q) did not name the target %q:\n%s", tc.source, tc.wantName, got)
+		}
+		switch tc.wantURI {
+		case "":
+			if strings.Contains(got, "refuri=") {
+				t.Errorf("Parse(%q) gave a URI-less target a refuri:\n%s", tc.source, got)
+			}
+		default:
+			if !strings.Contains(got, `refuri="`+tc.wantURI+`"`) {
+				t.Errorf("Parse(%q) did not set refuri %q:\n%s", tc.source, tc.wantURI, got)
+			}
+		}
+	}
+}
+
+// TestUnimplementedRoleIsNotUnknown covers the one role name that IS in
+// docutils' registry purely so its function can raise a DIFFERENT error:
+// roles.unimplemented_role. The name is not unknown, it is unimplemented,
+// and the message says so.
+func TestUnimplementedRoleIsNotUnknown(t *testing.T) {
+	got := doctree.Dump(Parse(":restructuredtext-unimplemented-role:`interpreted`\n"))
+	if !strings.Contains(got, `Interpreted text role "restructuredtext-unimplemented-role" not implemented.`) {
+		t.Errorf("expected the not-implemented message:\n%s", got)
+	}
+	if strings.Contains(got, "Unknown interpreted text role") {
+		t.Errorf("a REGISTERED role was reported as unknown:\n%s", got)
+	}
+}

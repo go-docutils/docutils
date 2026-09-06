@@ -942,6 +942,13 @@ func (p *parser) unknownRoleProblematic(name, rawSource string) *doctree.Element
 	p.messages = append(p.messages, sectionMessage("1", "INFO",
 		`No role entry for "`+name+`" in module "docutils.parsers.rst.languages.en".`+
 			"\n"+`Trying "`+name+`" as canonical role name.`, line, ""))
+	// "restructuredtext-unimplemented-role" IS in docutils' role registry;
+	// its function exists only to raise a DIFFERENT error, so the name is
+	// not unknown -- it is unimplemented. roles.unimplemented_role.
+	if strings.EqualFold(name, "restructuredtext-unimplemented-role") {
+		return p.problematicMessage("3", "ERROR", rawSource,
+			`Interpreted text role "`+name+`" not implemented.`)
+	}
 	return p.problematicMessage("3", "ERROR", rawSource,
 		`Unknown interpreted text role "`+name+`".`)
 }
