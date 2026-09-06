@@ -743,7 +743,7 @@ func (p *parser) parseBulletList(lines []string, i, lineBase int) (*doctree.Elem
 		if len(lines[i]) > col {
 			first = lines[i][col:]
 		}
-		itemLines, next := gatherListItemLines(lines, i, col, first)
+		itemLines, next := gatherListItemLines(lines, i, col, first, false)
 		item := doctree.NewElement(doctree.TagListItem)
 		p.parseBlockLines(itemLines, item, nestedLineBase(i, lineBase))
 		list.Append(item)
@@ -808,7 +808,7 @@ func (p *parser) parseEnumeratedList(lines []string, i, lineBase int) (*doctree.
 		if len(lines[i]) > col {
 			first = lines[i][col:]
 		}
-		itemLines, next := gatherListItemLines(lines, i, col, first)
+		itemLines, next := gatherListItemLines(lines, i, col, first, false)
 		item := doctree.NewElement(doctree.TagListItem)
 		p.parseBlockLines(itemLines, item, nestedLineBase(i, lineBase))
 		list.Append(item)

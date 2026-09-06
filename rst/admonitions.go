@@ -223,7 +223,7 @@ func parseFieldListBlock(lines []string) map[string]string {
 		if len(lines[i]) > col {
 			first = lines[i][col:]
 		}
-		valueLines, next := gatherListItemLines(lines, i, col, first)
+		valueLines, next := gatherListItemLines(lines, i, col, first, true)
 		options[strings.ToLower(key)] = strings.TrimSpace(strings.Join(valueLines, "\n"))
 		i = next
 		for i < len(lines) && isBlankStr(lines[i]) {

@@ -185,7 +185,7 @@ func (p *parser) parseOptionList(lines []string, i, lineBase int) (el *doctree.E
 		if len(lines[i]) > col {
 			first = lines[i][col:]
 		}
-		bodyLines, n := gatherListItemLines(lines, i, col, first)
+		bodyLines, n := gatherListItemLines(lines, i, col, first, true)
 		if len(bodyLines) == 0 {
 			break
 		}

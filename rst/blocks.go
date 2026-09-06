@@ -119,7 +119,7 @@ func isEnumListStart(lines []string, i int) bool {
 // surfaces as nested content (e.g. a block quote) inside the item.
 // Returns the item's lines (local coordinate system) and the index of
 // the first line past the item.
-func gatherListItemLines(lines []string, i, markerCol int, firstLine string) ([]string, int) {
+func gatherListItemLines(lines []string, i, markerCol int, firstLine string, allowShallower bool) ([]string, int) {
 	contentCol := markerCol
 	for k := i + 1; k < len(lines); k++ {
 		if isBlankStr(lines[k]) {
@@ -138,7 +138,22 @@ func gatherListItemLines(lines []string, i, markerCol int, firstLine string) ([]
 		// of the item's own paragraph, caught by the corpus once
 		// alpha/roman enumerators made this shape common enough to
 		// surface (a bare "A.\n   text\n" reads identically).
-		if indent := leadingSpaces(lines[k]); indent > 0 && (indent < markerCol || (firstLine == "" && indent > markerCol)) {
+		// allowShallower separates two constructs docutils treats
+		// differently. A FIELD BODY and an OPTION DESCRIPTION discover their
+		// own indent (get_first_known_indented), so a continuation indented
+		// LESS than the marker column still belongs to them —
+		// ":date: 2026-08-30\n  continuation" is one field. A LIST ITEM does
+		// not: its content column is fixed by the marker, and a shallower
+		// line ENDS the list, becoming a block quote with an
+		// "ends without a blank line" warning. Shrinking for lists too
+		// silently swallowed that line into the item. All four constructs
+		// were checked against the reference.
+		// A BARE marker ("1." with nothing after it) has no anchor at all,
+		// so its content column is wherever the first indented line starts,
+		// NARROWER or wider alike — that half is independent of
+		// allowShallower, and a first version of this guard dropped it,
+		// emptying every "1.\n  foo" item.
+		if indent := leadingSpaces(lines[k]); indent > 0 && ((firstLine == "" && indent != markerCol) || (allowShallower && indent < markerCol)) {
 			contentCol = indent
 		}
 		break

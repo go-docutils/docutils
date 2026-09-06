@@ -75,7 +75,7 @@ func (p *parser) runMetaDirective(lines []string, i int, body []string, lineno i
 		}
 		fieldLine := bodyStart + j + 1
 		markerLine := content[j]
-		valueLines, next := gatherListItemLines(content, j, col, first)
+		valueLines, next := gatherListItemLines(content, j, col, first, true)
 		p.metaNodes = append(p.metaNodes, buildMetaField(name, valueLines, fieldLine, markerLine))
 		j = next
 		for j < len(content) && isBlankStr(content[j]) {

@@ -108,7 +108,7 @@ func (p *parser) parseFieldList(lines []string, i, lineBase int) (*doctree.Eleme
 		if len(lines[i]) > col {
 			first = lines[i][col:]
 		}
-		bodyLines, next := gatherListItemLines(lines, i, col, first)
+		bodyLines, next := gatherListItemLines(lines, i, col, first, true)
 		bodyNext = next
 		field := doctree.NewElement(doctree.TagField)
 		nameLineno := 0
