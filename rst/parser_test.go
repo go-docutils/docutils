@@ -41,6 +41,9 @@ func TestParse(t *testing.T) {
 		name   string
 		source string
 		want   string
+		// captureDirectives keeps the structural <directive> node for an
+		// unimplemented directive instead of the DEFAULT diagnostics pair.
+		captureDirectives bool
 	}{
 		{
 			name:   "sections, paragraph with inline markup, lists",
@@ -72,16 +75,18 @@ func TestParse(t *testing.T) {
 			// implemented directives (note/table/list-table/raw/role) —
 			// an earlier version of this test used ".. note::" here,
 			// which predates note becoming a real, implemented directive.
-			name:   "comment, unimplemented directive (generic capture), hyperlink target with reference resolution, literal block",
-			source: "Intro paragraph.\n\n.. This is a comment.\n   Second comment line.\n\n.. some-directive::\n\n   This is directive content.\n   Second line.\n\nSee `Example`_ for details.\n\n.. _Example: https://example.com\n\nHere is a code sample::\n\n    def f():\n        return 1\n\nDone.\n",
-			want:   "<document>\n    <paragraph>\n        Intro paragraph.\n    <comment>\n        This is a comment.\n        Second comment line.\n    <directive name=\"some-directive\">\n        This is directive content.\n        Second line.\n    <paragraph>\n        See \n        <reference name=\"Example\" refname=\"example\" refuri=\"https://example.com\">\n            Example\n         for details.\n    <target id=\"example\" name=\"example\" refuri=\"https://example.com\">\n    <paragraph>\n        Here is a code sample:\n    <literal_block>\n        def f():\n            return 1\n    <paragraph>\n        Done.\n",
+			name:              "comment, unimplemented directive (generic capture), hyperlink target with reference resolution, literal block",
+			source:            "Intro paragraph.\n\n.. This is a comment.\n   Second comment line.\n\n.. some-directive::\n\n   This is directive content.\n   Second line.\n\nSee `Example`_ for details.\n\n.. _Example: https://example.com\n\nHere is a code sample::\n\n    def f():\n        return 1\n\nDone.\n",
+			want:              "<document>\n    <paragraph>\n        Intro paragraph.\n    <comment>\n        This is a comment.\n        Second comment line.\n    <directive name=\"some-directive\">\n        This is directive content.\n        Second line.\n    <paragraph>\n        See \n        <reference name=\"Example\" refname=\"example\" refuri=\"https://example.com\">\n            Example\n         for details.\n    <target id=\"example\" name=\"example\" refuri=\"https://example.com\">\n    <paragraph>\n        Here is a code sample:\n    <literal_block>\n        def f():\n            return 1\n    <paragraph>\n        Done.\n",
+			captureDirectives: true,
 		},
 		{
 			// an earlier version of this test used ".. figure::" here,
 			// which predates figure becoming a real, implemented directive.
-			name:   "unresolved reference (now problematic, plus a trailing system-messages section), empty comment, plain comment, directive with no content",
-			source: "An unresolved `Nowhere`_ reference.\n\n..\n\n.. plain comment no directive shape\n\n.. some-directive-with-no-content::\n",
-			want:   "<document>\n    <paragraph>\n        An unresolved \n        <reference name=\"Nowhere\" refname=\"nowhere\">\n            Nowhere\n         reference.\n    <comment>\n    <comment>\n        plain comment no directive shape\n    <directive name=\"some-directive-with-no-content\">\n",
+			name:              "unresolved reference (now problematic, plus a trailing system-messages section), empty comment, plain comment, directive with no content",
+			source:            "An unresolved `Nowhere`_ reference.\n\n..\n\n.. plain comment no directive shape\n\n.. some-directive-with-no-content::\n",
+			want:              "<document>\n    <paragraph>\n        An unresolved \n        <reference name=\"Nowhere\" refname=\"nowhere\">\n            Nowhere\n         reference.\n    <comment>\n    <comment>\n        plain comment no directive shape\n    <directive name=\"some-directive-with-no-content\">\n",
+			captureDirectives: true,
 		},
 		{
 			name:   "list item containing a comment and a literal block",
@@ -172,7 +177,9 @@ func TestParse(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := doctree.Dump(Parse(tc.source))
+			opts := DefaultOptions()
+			opts.ReportUnknownDirectives = !tc.captureDirectives
+			got := doctree.Dump(ParseWithOptions(tc.source, opts))
 			if got != tc.want {
 				t.Errorf("mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, tc.want)
 			}
@@ -228,4 +235,16 @@ func TestInline(t *testing.T) {
 			}
 		})
 	}
+}
+
+// parseCapturingDirectives parses with Options.ReportUnknownDirectives
+// OFF, which keeps the structural <directive> capture for a directive
+// this parser has no implementation for. The DEFAULT is docutils' own
+// pair of diagnostics instead (its Body.unknown_directive lives in the
+// parser, so emitting them is the faithful behaviour); the cases using
+// this helper are the ones whose subject IS the structural capture.
+func parseCapturingDirectives(src string) *doctree.Element {
+	opts := DefaultOptions()
+	opts.ReportUnknownDirectives = false
+	return ParseWithOptions(src, opts)
 }

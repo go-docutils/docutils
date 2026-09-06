@@ -60,9 +60,22 @@ irrelevant, since the indented lines after a prompt are the
 interpreter's own OUTPUT (docutils reads it with `get_text_block()` and
 no `flush_left`; stopping at the first indented line instead handed that
 output to a spurious block quote, v0.62.0), block
-quotes, literal blocks (`::`), comments, directives (captured
-structurally — name, arguments, raw content — never dispatched to
-per-directive semantics, with these exceptions: `raw` (`.. raw::
+quotes, literal blocks (`::`), comments, directives (an unrecognized name draws docutils' own pair of
+diagnostics — an INFO for the failed lookup, then
+`Unknown directive type "X".` carrying the whole directive source as a
+`<literal_block>`; both live in the PARSER, not in a transform, so
+`Options.ReportUnknownDirectives` defaults TRUE, and a consumer that
+would rather keep an unknown directive's CONTENT — a Sphinx
+`.. toctree::` in a document this package was never told about — sets it
+false for the structural capture below, v0.68.0+. Note this is what the
+corpus's German admonition fixtures need: docutils' own default language
+is English, so `.. Achtung::` is simply unknown to it too, not a
+localization gap. A directive this package DOES implement never draws
+that diagnostic even when a particular invocation fails its own
+validation — `.. raw::` with no format argument is
+`Error in "raw" directive: ...` in docutils, and still the structural
+capture here. Structural capture is name, arguments and raw content —
+never dispatched to per-directive semantics, with these exceptions: `raw` (`.. raw::
 FORMAT`, whose content passes through completely unprocessed, tagged
 with its target format; see `Options.RawEnabled`, on by default matching
 real docutils' own default despite its confusingly-named `--no-raw`
