@@ -35,10 +35,12 @@ import (
 // including an INDIRECT anonymous target (`.. __: othername_`, chased the
 // same way a named indirect target is). An
 // unresolved reference (no matching target) is left as a bare
-// `reference` node with no `refuri` attribute; real docutils instead
-// runs an error transform that rewrites it to a `problematic` node and
-// appends a system-message section to the document — not implemented
-// here. Footnote/citation numbering and symbol assignment (docutils'
+// `reference` node with no `refuri` attribute, which is exactly what
+// real docutils' own bare parse produces: the rewrite to `problematic`
+// plus a trailing system-message section is its DanglingReferences +
+// Messages TRANSFORMS, which run after the parser and which a caller may
+// never run. Those are available here behind
+// Options.ReportDanglingReferences, OFF by default (v0.66.0). Footnote/citation numbering and symbol assignment (docutils'
 // note_autofootnote/note_symbol_footnote bookkeeping) IS implemented —
 // see footnotenum.go's resolveFootnoteNumbers, run at the end of Parse
 // alongside resolveTargets. Citations are never auto-numbered (see
@@ -1064,7 +1066,7 @@ func normalizeName(s string) string {
 // parse_messages (ids assigned first, parsing finishes before any
 // transform runs) with document.transform_messages (this function's own,
 // assigned next).
-func resolveTargets(doc *doctree.Element, initMsgCount int) {
+func resolveTargets(doc *doctree.Element, initMsgCount int, reportDangling bool) {
 	direct := map[string]string{}
 	indirect := map[string]string{}
 	var anonTargets []anonTarget
@@ -1093,7 +1095,7 @@ func resolveTargets(doc *doctree.Element, initMsgCount int) {
 	var messages []*doctree.Element
 	msgCount := initMsgCount
 	var anonMismatch *doctree.Element
-	if n := countAnonymousReferences(doc); n != len(anonURIs) {
+	if n := countAnonymousReferences(doc); reportDangling && n != len(anonURIs) {
 		msgCount++
 		anonMismatch = doctree.NewElement(doctree.TagSystemMessage,
 			doctree.NewElement(doctree.TagParagraph, &doctree.Text{
@@ -1102,7 +1104,7 @@ func resolveTargets(doc *doctree.Element, initMsgCount int) {
 		anonMismatch.SetAttr("id", "system-message-"+strconv.Itoa(msgCount))
 		messages = append(messages, anonMismatch)
 	}
-	linkReferences(doc, targets, anonURIs, anonMismatch, &anonIndex, &messages, &msgCount)
+	linkReferences(doc, targets, anonURIs, anonMismatch, &anonIndex, &messages, &msgCount, reportDangling)
 	if len(messages) > 0 {
 		doc.Append(systemMessagesSection(messages))
 	}
@@ -1240,7 +1242,7 @@ func resolveIndirect(name string, direct, indirect map[string]string, depth int)
 // (docutils' own "Anonymous hyperlink mismatch", a whole-document
 // condition, not a per-reference one — see resolveTargets); otherwise
 // anonymous references resolve by position exactly as before.
-func linkReferences(parent *doctree.Element, targets map[string]string, anonTargets []string, anonMismatch *doctree.Element, anonIndex *int, messages *[]*doctree.Element, msgCount *int) {
+func linkReferences(parent *doctree.Element, targets map[string]string, anonTargets []string, anonMismatch *doctree.Element, anonIndex *int, messages *[]*doctree.Element, msgCount *int, reportDangling bool) {
 	for i, c := range parent.Children {
 		el, ok := c.(*doctree.Element)
 		if !ok {
@@ -1262,13 +1264,13 @@ func linkReferences(parent *doctree.Element, targets map[string]string, anonTarg
 			case el.Attr("refname") != "":
 				if uri, found := targets[normalizeName(el.Attr("refname"))]; found {
 					el.SetAttr("refuri", uri)
-				} else {
+				} else if reportDangling {
 					parent.Children[i] = problematicReference(el, messages, msgCount)
 					continue // the replacement has no children of its own to recurse into
 				}
 			}
 		}
-		linkReferences(el, targets, anonTargets, anonMismatch, anonIndex, messages, msgCount)
+		linkReferences(el, targets, anonTargets, anonMismatch, anonIndex, messages, msgCount, reportDangling)
 	}
 }
 

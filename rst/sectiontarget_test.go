@@ -57,11 +57,6 @@ func TestSectionImplicitTarget(t *testing.T) {
 			"Same\n====\n\nFirst paragraph.\n\nSame\n====\n\nSecond paragraph.\n",
 			"<document>\n    <section dupname=\"same\" id=\"same\">\n        <title>\n            Same\n        <paragraph>\n            First paragraph.\n    <section dupname=\"same\" id=\"same-1\">\n        <title>\n            Same\n        <system_message backref=\"same-1\" level=\"1\" type=\"INFO\">\n            <paragraph>\n                Duplicate implicit target name: \"same\".\n        <paragraph>\n            Second paragraph.\n",
 		},
-		{
-			"the trailing system-messages section is never given a name/id of its own",
-			"See `broken`_ reference.\n",
-			"<document>\n    <paragraph>\n        See \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            broken\n         reference.\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Unknown target name: \"broken\".\n",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

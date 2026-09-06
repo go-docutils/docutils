@@ -40,7 +40,7 @@ func TestDanglingReferenceBecomesProblematic(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := doctree.Dump(Parse(tc.source))
+			got := doctree.Dump(parseReportingDangling(tc.source))
 			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}
@@ -107,7 +107,7 @@ func TestUnclosedInlineMarkupBecomesProblematic(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := doctree.Dump(Parse(tc.source))
+			got := doctree.Dump(parseReportingDangling(tc.source))
 			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}
@@ -147,10 +147,86 @@ func TestAnonymousMismatchBecomesProblematic(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := doctree.Dump(Parse(tc.source))
+			got := doctree.Dump(parseReportingDangling(tc.source))
 			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}
 		})
+	}
+}
+
+// parseReportingDangling parses with Options.ReportDanglingReferences on.
+// That rewriting is OFF by default (docutils does it in a TRANSFORM, not
+// in the parser, so a bare Parse leaves an unresolved reference alone),
+// but every test in this file exists to check the rewriting itself.
+func parseReportingDangling(src string) *doctree.Element {
+	opts := DefaultOptions()
+	opts.ReportDanglingReferences = true
+	return ParseWithOptions(src, opts)
+}
+
+// TestDanglingDiagnosticsOptedIn holds the cases that used to live in
+// sectiontarget_test.go and anonymoustarget_test.go. They check the
+// <problematic> rewriting itself, which is opt-in as of v0.66.0, so they
+// belong beside the other tests of it rather than in a table whose every
+// other case exercises the DEFAULT behaviour.
+func TestDanglingDiagnosticsOptedIn(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			"the trailing system-messages section is never given a name/id of its own",
+			"See `broken`_ reference.\n",
+			"<document>\n    <paragraph>\n        See \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            broken\n         reference.\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-1\" id=\"system-message-1\">\n            <paragraph>\n                Unknown target name: \"broken\".\n",
+		},
+		{
+			"anonymous references with no matching targets become problematic, not a crash",
+			"See first__ and second__ but no target defined at all.\n",
+			"<document>\n    <paragraph>\n        See \n        <problematic id=\"problematic-2\" refid=\"system-message-1\">\n            first\n         and \n        <problematic id=\"problematic-3\" refid=\"system-message-1\">\n            second\n         but no target defined at all.\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-2 problematic-3\" id=\"system-message-1\">\n            <paragraph>\n                Anonymous hyperlink mismatch: 2 references but 0 targets.\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := doctree.Dump(parseReportingDangling(tc.source)); got != tc.want {
+				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDanglingReferencesAreOptIn pins BOTH sides of
+// Options.ReportDanglingReferences, which is the whole point of making it
+// an option rather than a behaviour.
+//
+// The default is docutils-faithful: its DanglingReferences and Messages
+// TRANSFORMS run after the parser, and a caller may never run them, so a
+// bare parse leaves an unresolved reference as a <reference> carrying its
+// refname and no refuri. A reference that DOES resolve is unaffected
+// either way -- filling in refuri during parsing is what makes this
+// package usable without a transform pipeline at all, and that has not
+// changed.
+func TestDanglingReferencesAreOptIn(t *testing.T) {
+	const src = "ref_\n"
+
+	byDefault := doctree.Dump(Parse(src))
+	if want := "<document>\n    <paragraph>\n        <reference name=\"ref\" refname=\"ref\">\n            ref\n"; byDefault != want {
+		t.Errorf("default Parse dump =\n%s\nwant:\n%s", byDefault, want)
+	}
+
+	optedIn := doctree.Dump(parseReportingDangling(src))
+	if !strings.Contains(optedIn, "<problematic") || !strings.Contains(optedIn, `Unknown target name: "ref".`) {
+		t.Errorf("ReportDanglingReferences did not produce the diagnostic:\n%s", optedIn)
+	}
+
+	// A RESOLVABLE reference behaves identically under both.
+	const resolvable = ".. _ref: https://example.org\n\nref_\n"
+	a, b := doctree.Dump(Parse(resolvable)), doctree.Dump(parseReportingDangling(resolvable))
+	if a != b {
+		t.Errorf("the option changed a RESOLVABLE reference:\n%s\nvs\n%s", a, b)
+	}
+	if !strings.Contains(a, `refuri="https://example.org"`) {
+		t.Errorf("a resolvable reference lost its refuri:\n%s", a)
 	}
 }

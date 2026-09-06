@@ -432,7 +432,15 @@ is docutils' own `simplename`, so `.`, `_`, `+` and `:` are all legal in
 it (`` :very.long-role_name:`x` ``, and `` :a:b:`x` `` is greedily the
 single role `a:b`) — this used to scan letters/digits/`-` only, missing
 such a role entirely and leaving it as plain text beside a bare
-`<title_reference>`. Standalone URI recognition (no backtick
+`<title_reference>`. An unresolved reference stays a bare `<reference>` carrying its
+refname, matching docutils' own bare parse; the rewrite to
+`<problematic>` plus a trailing "Docutils System Messages" section is
+its `DanglingReferences` + `Messages` TRANSFORMS, which run after the
+parser and which a caller may never run at all. They are available via
+`Options.ReportDanglingReferences`, **off by default** (v0.66.0+). A
+reference that DOES resolve gets its `refuri` filled in during parsing
+either way — that is what makes this package usable with no transform
+pipeline, and it has not changed. Standalone URI recognition (no backtick
 quoting or trailing `_` needed at all, `inline.go`) uses docutils' own
 two character classes rather than a punctuation heuristic (v0.63.0+):
 the body class `[-_.!~*'()[\];/:@&=+$,%a-zA-Z0-9]` contains neither `<`
