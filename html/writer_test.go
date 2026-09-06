@@ -179,7 +179,7 @@ func TestRender(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			doc := rst.Parse(tc.source)
+			doc := parseFullyTransformed(tc.source)
 			got := Render(doc)
 			if got != tc.want {
 				t.Errorf("Render(%q) =\n%s\nwant:\n%s", tc.source, got, tc.want)
@@ -271,4 +271,17 @@ func TestRenderCapturedDirective(t *testing.T) {
 	if got != want {
 		t.Errorf("Render = %q, want %q", got, want)
 	}
+}
+
+// parseFullyTransformed parses with the options a CONSUMER of rendered
+// output typically wants rather than the docutils-faithful defaults:
+// docinfo promoted, and an unknown role kept as text rather than turned
+// into an error message. Both defaults exist to make a bare Parse match
+// docutils' own bare parse; a writer test is about the RENDERING of a
+// shape, so it asks for the shape directly.
+func parseFullyTransformed(src string) *doctree.Element {
+	opts := rst.DefaultOptions()
+	opts.PromoteDocInfo = true
+	opts.ReportUnknownRoles = false
+	return rst.ParseWithOptions(src, opts)
 }

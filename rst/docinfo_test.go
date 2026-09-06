@@ -46,10 +46,35 @@ func TestDocInfoPromotion(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := doctree.Dump(Parse(tc.source))
+			got := doctree.Dump(parsePromotingDocInfo(tc.source))
 			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}
 		})
+	}
+}
+
+// parsePromotingDocInfo parses with Options.PromoteDocInfo on. It is OFF
+// by default (docutils promotes a leading field list in its DocInfo
+// TRANSFORM, so its bare parse leaves an ordinary <field_list>), and
+// every test in this file exists to check the promotion itself.
+func parsePromotingDocInfo(src string) *doctree.Element {
+	opts := DefaultOptions()
+	opts.PromoteDocInfo = true
+	return ParseWithOptions(src, opts)
+}
+
+// TestDocInfoPromotionIsOptIn pins both sides. Promotion is docutils'
+// DocInfo TRANSFORM, so a bare parse leaves an ordinary <field_list> --
+// the same parser-vs-transform rule that decides every one of these
+// options' defaults.
+func TestDocInfoPromotionIsOptIn(t *testing.T) {
+	const src = ":author: Jane\n\nBody.\n"
+
+	if got := doctree.Dump(Parse(src)); !strings.Contains(got, "<field_list>") || strings.Contains(got, "<docinfo>") {
+		t.Errorf("the DEFAULT parse promoted a leading field list:\n%s", got)
+	}
+	if got := doctree.Dump(parsePromotingDocInfo(src)); !strings.Contains(got, "<docinfo>") {
+		t.Errorf("PromoteDocInfo did not promote:\n%s", got)
 	}
 }

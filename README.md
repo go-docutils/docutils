@@ -759,6 +759,24 @@ document's own `title` ATTRIBUTE and leaves no node behind at all.
 that need directive-level OPTION VALIDATION (an unknown option, an
 option missing its value) — the general gap described further down.
 
+**Four `Options` fields decide whether a docutils behaviour that is NOT
+part of parsing happens at parse time here**, and each default follows
+one rule rather than taste: *does the reference implementation do this in
+the PARSER, or in a TRANSFORM?*
+
+| option | default | because |
+|---|---|---|
+| `ReportUnknownDirectives` | **true** | `Body.unknown_directive` is in the parser |
+| `ReportUnknownRoles` | **true** | `Inliner.interpreted` is in the parser |
+| `ReportDanglingReferences` | **false** | `DanglingReferences`/`Messages` are transforms |
+| `PromoteDocInfo` | **false** | `DocInfo` is a transform |
+
+A consumer picks per field. `go-richdoc/rst` turns the two report
+options OFF (a diagnostic aimed at someone WRITING reST becomes
+fabricated content once it reaches a converted document) and
+`PromoteDocInfo` ON (its `Document.Meta` is built from it). Resolving a
+reference that DOES have a target stays unconditional — see above.
+
 **Duplicate reference names** are diagnosed and resolved (`dupnames.go`,
 v0.57.0+), a full port of docutils' own `set_duplicate_name` transition
 table. What happens when two elements claim one name depends on whether
