@@ -162,10 +162,38 @@ func parseOptionToken(s string) (optionToken, bool) {
 	case 1:
 		return optionToken{Flag: tokens[0]}, true
 	case 2:
+		if !isOptionArgument(tokens[1]) {
+			return optionToken{}, false
+		}
 		return optionToken{Flag: tokens[0], Arg: tokens[1], Delimiter: delimiter}, true
 	default:
 		return optionToken{}, false
 	}
+}
+
+// isOptionArgument applies docutils' own option_argument class from its
+// option_marker pattern: "([a-zA-Z][a-zA-Z0-9_-]*|<[^<>]+>)". An argument
+// must START WITH A LETTER and hold only letters, digits, "_" and "-" --
+// or be a <placeholder>. Anything else means the line is not an option
+// list item at all and stays an ordinary paragraph, which is what
+// "--option=arg,arg", "--option=arg=arg" and "--option=" (empty) each
+// are. Accepting any non-empty token made all three into option lists.
+func isOptionArgument(arg string) bool {
+	if arg == "" {
+		return false
+	}
+	if strings.HasPrefix(arg, "<") && strings.HasSuffix(arg, ">") {
+		return len(arg) > 2 && !strings.ContainsAny(arg[1:len(arg)-1], "<>")
+	}
+	for i, r := range arg {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+		case i > 0 && (r >= '0' && r <= '9' || r == '_' || r == '-'):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // parseOptionList consumes consecutive option-list items starting at
