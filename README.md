@@ -323,7 +323,18 @@ document, reusing the SAME base-role validation `.. role::` already
 has (an unresolvable name is the identical INFO+ERROR pair); a bare
 `.. default-role::` with no argument at all RESETS it back to real
 docutils' own standard default, `title-reference` — `DefaultRole.run`,
-`misc.py`, read directly. `.. date::` (usable ONLY inside a substitution
+`misc.py`, read directly. `.. reStructuredText-test-directive::` (one of the 43 entries in
+docutils' own `_directive_registry`, `misc.TestDirective` — a real
+registered directive, not something its test suite adds. It builds
+nothing: it reports back exactly how the directive block was SPLIT,
+`Directive processed. Type="...", arguments=[...], options={...},
+content:` plus the content as a `<literal_block>`, or `content: None`.
+That makes its twelve corpus fixtures a conformance suite for the
+argument/option/content split itself — which is why they are worth
+having: whether an indented block is the ARGUMENT or the CONTENT turns
+entirely on the blank line between it and the directive marker.
+`optional_arguments=1` with `final_argument_whitespace`, one option
+(`:option:`, required value), content allowed). `.. date::` (usable ONLY inside a substitution
 definition — anywhere else is an ERROR with the same "Invalid context"
 sentence `.. replace::` gets, since `misc.Date.run` opens by refusing
 any state that is not a `SubstitutionDef`. The directive declares no

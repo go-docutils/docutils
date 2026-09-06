@@ -46,12 +46,43 @@ func pendingNode(transform string, details []pendingDetail) *doctree.Element {
 // integer is not, a list of strings prints as ['a', 'b']).
 type pendingDetail struct{ key, value string }
 
-// pyRepr renders a string the way Python's %r does for the plain cases
-// these details actually contain. A value with a single quote in it would
-// need Python's own quote-switching rule; no directive option here can
-// produce one, and inventing the rule unverified would be worse than
-// this note.
-func pyRepr(s string) string { return "'" + s + "'" }
+// pyRepr renders a string the way Python's %r does. The quote-switching
+// rule is real: a string holding a single quote and no double quote is
+// printed in DOUBLE quotes and its single quote left bare; otherwise
+// single quotes, with backslashes and any single quote escaped.
+// Non-printing characters take their usual escapes.
+//
+// This used to be the naive "'"+s+"'" with a note saying no option value
+// here could hold a quote. That was true of the directives that existed
+// then; misc.TestDirective echoes an ARBITRARY argument back, so it is
+// not true any more.
+func pyRepr(s string) string {
+	quote := byte('\'')
+	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
+		quote = '"'
+	}
+	var b strings.Builder
+	b.WriteByte(quote)
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
+		case '\\':
+			b.WriteString(`\\`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		case quote:
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte(quote)
+	return b.String()
+}
 
 func pyReprList(items []string) string {
 	quoted := make([]string, len(items))
