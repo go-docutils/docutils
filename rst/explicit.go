@@ -511,7 +511,7 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 
 	switch {
 	case strings.EqualFold(dirName, "replace"):
-		msgs, errEl := p.fillReplaceSubstitution(el, subname, dirArgs, rest, lineno, blockText)
+		msgs, errEl := p.fillReplaceSubstitution(el, subname, dirArgs, rest, lineno, blockText, strings.Join(block, "\n"))
 		if errEl != nil {
 			return append(msgs, errEl), next, true
 		}
@@ -543,20 +543,25 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 			return []doctree.Node{nodes[0]}, next, true
 		}
 	default:
-		// Any OTHER directive name — a real but non-inline directive
-		// (real docutils would run it, then filter its non-Inline result
-		// out, ending up empty the same way the "text" fallback above
-		// does) or one this project's own directive registry has never
-		// heard of (real docutils' own "No directive entry..."/"Unknown
-		// directive type" diagnostic pair — deliberately NOT reproduced
-		// here, matching this project's already-established, deliberate
-		// leniency toward unrecognized directive names elsewhere, e.g.
-		// role.go's own scope note: this parser's registry exists to
-		// serve specific directives, not to police every name a document
-		// might use). Either way, "empty or invalid" is the correct
-		// eventual outcome for a real docutils document too.
-		return []doctree.Node{sectionMessage("2", "WARNING",
-			`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
+		// Any OTHER directive name: either a real but non-inline directive
+		// (real docutils runs it, then filters its non-Inline result out,
+		// ending up empty the same way the "text" fallback above does) or
+		// one this package has never heard of. "empty or invalid" is the
+		// right eventual outcome either way.
+		//
+		// An UNKNOWN name also draws the same diagnostics pair the
+		// top-level directive dispatch raises (v0.68.0), which this branch
+		// used to opt out of with a comment about "already-established
+		// leniency" -- a note that outlived the leniency it described. The
+		// pair comes FIRST, and its <literal_block> is the DIRECTIVE
+		// block, not the whole substitution line the "empty or invalid"
+		// warning quotes.
+		var out []doctree.Node
+		if p.opts.ReportUnknownDirectives && !isImplementedDirective(dirName) {
+			out = append(out, unknownDirectiveBlockDiagnostics(dirName, strings.Join(block, "\n"), lineno)...)
+		}
+		return append(out, sectionMessage("2", "WARNING",
+			`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)), next, true
 	}
 
 	if len(el.Children) == 0 {
@@ -600,7 +605,7 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 // the way a full nested_parse would, and the two real, more specific
 // diagnostics that distinction unlocks are low corpus value on their
 // own (test_directives/test_replace.py, 2 of its 5 cases).
-func (p *parser) fillReplaceSubstitution(el *doctree.Element, subname, dirArgs string, rest []string, lineno int, blockText string) (msgs []doctree.Node, errEl *doctree.Element) {
+func (p *parser) fillReplaceSubstitution(el *doctree.Element, subname, dirArgs string, rest []string, lineno int, blockText, dirBlock string) (msgs []doctree.Node, errEl *doctree.Element) {
 	text := dirArgs
 	body := trimLeadingBlanks(rest)
 	for len(body) > 0 && isBlankStr(body[len(body)-1]) {
@@ -613,8 +618,28 @@ func (p *parser) fillReplaceSubstitution(el *doctree.Element, subname, dirArgs s
 		text += strings.Join(body, "\n")
 	}
 	if strings.TrimSpace(text) == "" {
-		return nil, sectionMessage("2", "WARNING",
-			`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)
+		// Replace.run's own required-content check (misc.py). The ERROR
+		// quotes the DIRECTIVE block, while the "empty or invalid"
+		// warning that follows quotes the whole substitution line.
+		return []doctree.Node{sectionMessage("3", "ERROR",
+				`Content block expected for the "replace" directive; none found.`, lineno, dirBlock)},
+			sectionMessage("2", "WARNING",
+				`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)
+	}
+	// Replace.run rejects anything but ONE paragraph. An internal blank
+	// line between content lines is a second paragraph, and the directive
+	// fails rather than joining them -- this used to concatenate both into
+	// a single substitution, which the README described as a deliberate
+	// simplification.
+	// The blank line can sit between the SAME-LINE argument and the body
+	// (".. |n| replace:: para 1" + blank + "para 2"), which the body's own
+	// leading-blank trim has already removed by here -- so the check runs
+	// over the combined shape, not over body alone.
+	if hasBlankSeparatedParagraphs(append([]string{dirArgs}, rest...)) {
+		return []doctree.Node{sectionMessage("3", "ERROR",
+				`Error in "replace" directive: may contain a single paragraph only.`, lineno, "")},
+			sectionMessage("2", "WARNING",
+				`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)
 	}
 	inlineNodes, inlineMsgs := p.parseInline(text, lineno)
 	for _, m := range inlineMsgs {
@@ -922,11 +947,18 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 // get_first_known_indented(0, strip_indent=False), not the dedenting
 // form every implemented directive's body goes through.
 func unknownDirectiveDiagnostics(name string, lines []string, i, next, lineBase int) []doctree.Node {
-	lineno := msgLine(i, lineBase)
+	return unknownDirectiveBlockDiagnostics(name,
+		strings.Join(trimTrailingBlankLines(lines[i:next]), "\n"), msgLine(i, lineBase))
+}
+
+// unknownDirectiveBlockDiagnostics is the same pair for a caller that
+// already has the directive's own source block — a substitution
+// definition, whose block starts AFTER the "|name| " marker rather than
+// at the ".." line.
+func unknownDirectiveBlockDiagnostics(name, block string, lineno int) []doctree.Node {
 	info := sectionMessage("1", "INFO",
 		`No directive entry for "`+name+`" in module "docutils.parsers.rst.languages.en".`+
 			"\n"+`Trying "`+name+`" as canonical directive name.`, lineno, "")
-	block := strings.Join(trimTrailingBlankLines(lines[i:next]), "\n")
 	err := sectionMessage("3", "ERROR", `Unknown directive type "`+name+`".`, lineno, block)
 	return []doctree.Node{info, err}
 }
@@ -1407,6 +1439,23 @@ func isImplementedDirective(name string) bool {
 		"role", "rst-class", "rubric", "section-numbering", "sectnum",
 		"sidebar", "table", "target-notes", "title", "topic":
 		return true
+	}
+	return false
+}
+
+// hasBlankSeparatedParagraphs reports whether body holds a blank line
+// with real content on BOTH sides -- i.e. more than one paragraph. Its
+// leading and trailing blanks have already been trimmed by the caller.
+func hasBlankSeparatedParagraphs(body []string) bool {
+	seen := false
+	for _, l := range body {
+		if isBlankStr(l) {
+			if seen {
+				return true
+			}
+			continue
+		}
+		seen = true
 	}
 	return false
 }

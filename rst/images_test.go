@@ -176,9 +176,15 @@ func TestSubstitutionEmbeddedDirectives(t *testing.T) {
 			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            References to auto-numbered and auto-symbol footnotes are not supported in a substitution definition.\n        <literal_block>\n            .. |auto-numbered footnote| replace:: [#]_\n",
 		},
 		{
-			"replace with truly no content at all is empty or invalid, matching this project's own simplified diagnostic (real docutils gives a separate, more specific two-part error here — a deliberate scope simplification, see fillReplaceSubstitution's own doc comment)",
+			// The "separate, more specific two-part error" this case's name
+			// used to describe as out of scope IS the behaviour now
+			// (v0.73.0): Replace.run's own required-content check, whose
+			// ERROR quotes the DIRECTIVE block while the "empty or
+			// invalid" warning after it quotes the whole substitution
+			// line.
+			"replace with no content at all gives the content-expected ERROR and the empty-or-invalid WARNING",
 			".. |name| replace::\n",
-			"<document>\n    <system_message level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Substitution definition \"name\" empty or invalid.\n        <literal_block>\n            .. |name| replace::\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Content block expected for the \"replace\" directive; none found.\n        <literal_block>\n            replace::\n    <system_message level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Substitution definition \"name\" empty or invalid.\n        <literal_block>\n            .. |name| replace::\n",
 		},
 		{
 			// The WARNING messages parseInline generates for the unclosed

@@ -66,3 +66,36 @@ func TestParseUsesDefaultOptions(t *testing.T) {
 		t.Errorf("Parse did not use DefaultOptions (RawEnabled=true):\n%s", got)
 	}
 }
+
+// TestReplaceContentValidation covers Replace.run's two content checks
+// (misc.py). Each produces an ERROR followed by the "empty or invalid"
+// WARNING every failed substitution gets, and the two quote DIFFERENT
+// blocks: the ERROR quotes the DIRECTIVE, the WARNING the whole
+// substitution line.
+func TestReplaceContentValidation(t *testing.T) {
+	empty := doctree.Dump(Parse(".. |name| replace::\n"))
+	for _, want := range []string{
+		`Content block expected for the "replace" directive; none found.`,
+		`Substitution definition "name" empty or invalid.`,
+	} {
+		if !strings.Contains(empty, want) {
+			t.Errorf("missing %q for empty content:\n%s", want, empty)
+		}
+	}
+
+	// The blank line here sits between the SAME-LINE argument and the
+	// body, which is where a first version of the check missed it.
+	multi := doctree.Dump(Parse(".. |name| replace:: paragraph 1\n\n                    paragraph 2\n"))
+	if !strings.Contains(multi, `Error in "replace" directive: may contain a single paragraph only.`) {
+		t.Errorf("two paragraphs were accepted as one substitution:\n%s", multi)
+	}
+	if strings.Contains(multi, "<substitution_definition") {
+		t.Errorf("a rejected replace still produced a definition:\n%s", multi)
+	}
+
+	// The control: ONE paragraph across several lines is still fine.
+	ok := doctree.Dump(Parse(".. |name| replace:: line one\n   line two\n"))
+	if !strings.Contains(ok, "<substitution_definition") || strings.Contains(ok, "system_message") {
+		t.Errorf("a valid multi-LINE single paragraph was rejected:\n%s", ok)
+	}
+}
