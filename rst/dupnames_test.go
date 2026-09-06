@@ -119,3 +119,19 @@ func TestShortAdornmentNeedsATitleAttempt(t *testing.T) {
 		t.Errorf("a genuine short-overline title attempt drew none:\n%s", got)
 	}
 }
+
+// TestDuplicateFootnoteNamePlacement pins where the message goes when the
+// duplicate is a FOOTNOTE. It is a child of the footnote itself, ahead of
+// the footnote's own content -- not a sibling.
+//
+// That follows from the same "what was attached when the name was
+// registered" reasoning as every other placement here: a footnote can
+// hold body elements, so it IS the msgnode, and its body has not been
+// built yet. A section differs only because its <title> HAS been.
+func TestDuplicateFootnoteNamePlacement(t *testing.T) {
+	got := doctree.Dump(Parse(".. [#five] One.\n.. [#five] Two.\n"))
+	want := "<document>\n    <footnote auto=\"1\" dupname=\"five\" id=\"five\">\n        <paragraph>\n            One.\n    <footnote auto=\"1\" dupname=\"five\" id=\"five-1\">\n        <system_message backref=\"five-1\" level=\"2\" line=\"2\" type=\"WARNING\">\n            <paragraph>\n                Duplicate explicit target name: \"five\".\n        <paragraph>\n            Two.\n"
+	if got != want {
+		t.Errorf("dump =\n%s\nwant:\n%s", got, want)
+	}
+}

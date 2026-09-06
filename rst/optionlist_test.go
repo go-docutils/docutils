@@ -169,3 +169,30 @@ func TestParseOptionListDump(t *testing.T) {
 		})
 	}
 }
+
+// TestOptionArgumentClass covers docutils' own option_argument class from
+// its option_marker pattern: "([a-zA-Z][a-zA-Z0-9_-]*|<[^<>]+>)". An
+// argument must START WITH A LETTER and hold only letters, digits, "_"
+// and "-", or else be a <placeholder>. A line whose argument fails that
+// is not an option list item at all -- it stays an ordinary paragraph.
+func TestOptionArgumentClass(t *testing.T) {
+	rejected := []string{
+		"--option=arg,arg  not supported\n",
+		"--option=arg=arg  too many arguments\n",
+		"--option=         argument missing\n",
+	}
+	for _, src := range rejected {
+		if got := doctree.Dump(Parse(src)); strings.Contains(got, "<option_list>") {
+			t.Errorf("Parse(%q) built an option list from an invalid argument:\n%s", src, got)
+		}
+	}
+	accepted := []string{
+		"--option=arg  fine\n",
+		"--option=<file>  a placeholder is fine too\n",
+	}
+	for _, src := range accepted {
+		if got := doctree.Dump(Parse(src)); !strings.Contains(got, "<option_list>") {
+			t.Errorf("Parse(%q) rejected a VALID option argument:\n%s", src, got)
+		}
+	}
+}

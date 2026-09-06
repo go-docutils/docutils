@@ -352,7 +352,11 @@ argument joined by a space/`=`/embedded delimiter, reusing the same
 marker+indented-continuation machinery as field lists — a marker with
 no following content at all, on its own line or indented beneath it,
 is not really an option list item and falls back to plain paragraph
-text, matching docutils' own TransitionCorrection); and inline
+text, matching docutils' own TransitionCorrection; the ARGUMENT follows
+docutils' own `option_argument` class from its `option_marker` pattern,
+`[a-zA-Z][a-zA-Z0-9_-]*` or a `<placeholder>`, so it must start with a
+LETTER — `--option=arg,arg`, `--option=arg=arg` and `--option=` are each
+an ordinary paragraph rather than an option list, v0.72.0+); and inline
 internal targets (`` _`text` `` — a target INSIDE a paragraph, as
 opposed to the block-level `.. _name: uri` hyperlink target above,
 docutils' own target pattern in `Inliner.patterns`). Unlike a

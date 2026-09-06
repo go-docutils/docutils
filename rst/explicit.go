@@ -285,6 +285,17 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label,
 
 	var el *doctree.Element
 	contentKind := "Footnote"
+	defer func() {
+		// The duplicate-name pass runs after parsing and reports against
+		// the construct's own line; a footnote/citation is block-level, so
+		// noteNameLine's inline p.currentLine is never set for one.
+		if el != nil {
+			if p.nameLines == nil {
+				p.nameLines = map[*doctree.Element]int{}
+			}
+			p.nameLines[el] = msgLine(i, lineBase)
+		}
+	}()
 	switch {
 	case label == "*":
 		// An auto footnote's id is assigned at PARSE time

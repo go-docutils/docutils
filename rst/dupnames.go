@@ -299,8 +299,18 @@ func (p *parser) emitDuplicateMessage(el, body *doctree.Element, level int, msgT
 	//
 	// Both were read off the reference's own output rather than reasoned
 	// about in the abstract.
+	// An element that can itself hold body elements IS the msgnode, so
+	// the message goes INSIDE it. Where inside follows from what was
+	// already attached when docutils registered the name: a section's
+	// <title> is built with the section, so the message lands after it; a
+	// footnote's or citation's own body is not, so the message lands
+	// first, after only the <label> that was built alongside it.
 	if el.Tag == doctree.TagSection {
 		insertAfterTitle(el, msg)
+		return
+	}
+	if el.Tag == doctree.TagFootnote || el.Tag == doctree.TagCitation {
+		insertAfterLabel(el, msg)
 		return
 	}
 	host := inlineHost(body, el)
@@ -350,6 +360,19 @@ func hostMsgnodeTag(host, body *doctree.Element) string {
 		return body.Tag
 	}
 	return host.Tag
+}
+
+// insertAfterLabel puts msg at the front of el's children, after a
+// <label> if it has one.
+func insertAfterLabel(el, msg *doctree.Element) {
+	at := 0
+	if len(el.Children) > 0 {
+		if ce, ok := el.Children[0].(*doctree.Element); ok && ce.Tag == doctree.TagLabel {
+			at = 1
+		}
+	}
+	rest := append([]doctree.Node{msg}, el.Children[at:]...)
+	el.Children = append(el.Children[:at:at], rest...)
 }
 
 // insertAfterTitle puts msg immediately after section's <title> child.
