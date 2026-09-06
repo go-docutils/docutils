@@ -124,7 +124,7 @@ func TestAdjacentFootnoteAndCitationReferencesRejectEachOther(t *testing.T) {
 		{
 			"four adjacent footnote references with no separating whitespace are all rejected, left as plain text",
 			"[*]_[#label]_ [#]_[2]_ [1]_[*]_\n\n.. [#] test1\n.. [*] test2\n",
-			"<document>\n    <paragraph>\n        [*]_[#label]_ [#]_[2]_ [1]_[*]_\n    <footnote auto=\"1\" name=\"footnote-1\">\n        <label>\n            1\n        <paragraph>\n            test1\n    <footnote auto=\"*\" name=\"footnote-2\">\n        <label>\n            *\n        <paragraph>\n            test2\n",
+			"<document>\n    <paragraph>\n        [*]_[#label]_ [#]_[2]_ [1]_[*]_\n    <footnote auto=\"1\" id=\"footnote-1\">\n        <paragraph>\n            test1\n    <footnote auto=\"*\" id=\"footnote-2\">\n        <paragraph>\n            test2\n",
 		},
 		{
 			"two adjacent citation references with no separating whitespace are both rejected",

@@ -247,5 +247,8 @@ func parseFullyTransformed(src string) *doctree.Element {
 	opts := rst.DefaultOptions()
 	opts.PromoteDocInfo = true
 	opts.ReportUnknownRoles = false
+	// Footnote numbering likewise: a writer renders the NUMBERED shape,
+	// which docutils produces in transforms.references.Footnotes.
+	opts.NumberAutoFootnotes = true
 	return rst.ParseWithOptions(src, opts)
 }
