@@ -953,7 +953,7 @@ func columnWidth(s string) int {
 }
 
 func matchTitle(lines []string, i int) (title string, style titleStyle, consumed int, warning *doctree.Element, ok bool) {
-	if char, isLine := isUniformLine(lines[i]); isLine && len([]rune(trimTrailingSpace(lines[i]))) >= 4 {
+	if char, isLine := isUniformLine(lines[i]); isLine {
 		if i+2 < len(lines) {
 			text := lines[i+1]
 			// A title inset under its overline (leading whitespace on the
@@ -982,6 +982,15 @@ func matchTitle(lines []string, i int) (title string, style titleStyle, consumed
 					// the inset" narrower, and can trigger the warning on
 					// its own even when the stripped text alone would fit.
 					if columnWidth(titleRaw) > len([]rune(overline)) {
+						// Too narrow for its title. Real docutils warns
+						// -- unless the overline is ALSO shorter than 4
+						// characters, in which case Line.text calls
+						// short_overline instead and no section is built
+						// at all. Left to titleDiagnostic, exactly as the
+						// underline path leaves its own short case.
+						if len([]rune(overline)) < 4 {
+							return "", titleStyle{}, 0, nil, false
+						}
 						source := overline + "\n" + titleRaw + "\n" + underline
 						warning = sectionMessage("2", "WARNING", "Title overline too short.", i+1, source)
 					}
@@ -1115,11 +1124,19 @@ func titleDiagnostic(lines []string, i int) (msg *doctree.Element, consumed int,
 	if i+1 >= len(lines) || isBlankStr(lines[i+1]) {
 		return nil, 0, false
 	}
-	if len([]rune(overline)) < 4 {
-		// Too short to be either an overline or a transition at all (real
-		// docutils' Line.short_overline, reached from every branch below at
-		// this same length threshold) — never consumed, just annotated
-		// before the line falls through to ordinary text handling.
+	// A SHORT overline (under four characters) is not wrong by itself:
+	// real docutils' Line.text and Line.underline reach short_overline
+	// only from inside their FAILURE branches, so "===\nOne\n===" is an
+	// ordinary section title and only a short overline that ALSO fails
+	// -- no underline, a mismatched one, or one too narrow for its title
+	// -- becomes this INFO. Checking the length first, as this function
+	// used to, annotated every well-formed short title and refused to
+	// build it.
+	short := len([]rune(overline)) < 4
+	shortInfo := func(consumed int) (*doctree.Element, int, bool) {
+		// short_overline calls previous_line(), putting the lines back
+		// for ordinary text handling, so nothing is consumed here either.
+		_ = consumed
 		return sectionMessage("1", "INFO",
 			"Possible incomplete section title.\nTreating the overline as ordinary text because it's so short.",
 			overlineLine, ""), 0, true
@@ -1133,11 +1150,17 @@ func titleDiagnostic(lines []string, i int) (msg *doctree.Element, consumed int,
 	if _, isLine2 := isUniformLine(title); isLine2 {
 		// The "title" line is itself a uniform line: Line.underline, not
 		// Line.text — two overlines back to back with no title between.
+		if short {
+			return shortInfo(1)
+		}
 		source := overline + "\n" + trimTrailingSpace(title)
 		return sectionMessage("3", "ERROR", "Invalid section title or transition marker.", overlineLine, source), 2, true
 	}
 	titleTrimmed := trimTrailingSpace(title)
 	if i+2 >= len(lines) {
+		if short {
+			return shortInfo(2)
+		}
 		source := overline + "\n" + titleTrimmed
 		return sectionMessage("3", "ERROR", "Incomplete section title.", overlineLine, source), 2, true
 	}
@@ -1158,14 +1181,24 @@ func titleDiagnostic(lines []string, i int) (msg *doctree.Element, consumed int,
 		source += "\n" + underline
 	}
 	if underline == "" {
+		if short {
+			return shortInfo(2)
+		}
 		return sectionMessage("3", "ERROR", "Missing matching underline for section title overline.", overlineLine, source), 3, true
 	}
 	if underline != overline {
+		if short {
+			return shortInfo(2)
+		}
 		return sectionMessage("3", "ERROR", "Title overline & underline mismatch.", overlineLine, source), 3, true
 	}
-	// underline == overline: matchTitle should already have accepted this
-	// as a valid title (columnWidth is the only remaining reason it
-	// wouldn't have) — not this function's concern either way.
+	// underline == overline. matchTitle accepts this as a real title
+	// unless the title is too WIDE for it -- which for a short overline
+	// is short_overline's last branch, and for a long one is the
+	// "Title overline too short." warning matchTitle emits itself.
+	if short && columnWidth(titleTrimmed) > len([]rune(overline)) {
+		return shortInfo(2)
+	}
 	return nil, 0, false
 }
 
