@@ -121,7 +121,7 @@ func TestParse(t *testing.T) {
 		{
 			name:   "bare and embedded-link references, indirect alias, default-role bare text",
 			source: "A bare_ reference and an anon__ one.\n\n.. _bare: https://bare.example.com\n\nEmbedded `Python <https://python.org>`_ link, an anonymous `embedded <https://anon.example.com>`__ link,\nand an indirect `alias name <target_>`_ reference.\n\n.. _target: https://indirect.example.com\n\nPlain `text` uses the default role.\n",
-			want:   "<document>\n    <paragraph>\n        A \n        <reference name=\"bare\" refname=\"bare\" refuri=\"https://bare.example.com\">\n            bare\n         reference and an \n        <reference anonymous=\"true\" name=\"anon\">\n            anon\n         one.\n    <target id=\"bare\" name=\"bare\" refuri=\"https://bare.example.com\">\n    <paragraph>\n        Embedded \n        <reference name=\"Python\" refuri=\"https://python.org\">\n            Python\n        <target id=\"python\" name=\"python\" refuri=\"https://python.org\">\n         link, an anonymous \n        <reference name=\"embedded\" refuri=\"https://anon.example.com\">\n            embedded\n         link,\n        and an indirect \n        <reference name=\"alias name\" refname=\"target\" refuri=\"https://indirect.example.com\">\n            alias name\n        <target id=\"alias-name\" name=\"alias name\" refname=\"target\">\n         reference.\n    <target id=\"target\" name=\"target\" refuri=\"https://indirect.example.com\">\n    <paragraph>\n        Plain \n        <title_reference>\n            text\n         uses the default role.\n",
+			want:   "<document>\n    <paragraph>\n        A \n        <reference name=\"bare\" refname=\"bare\" refuri=\"https://bare.example.com\">\n            bare\n         reference and an \n        <reference anonymous=\"1\" name=\"anon\">\n            anon\n         one.\n    <target id=\"bare\" name=\"bare\" refuri=\"https://bare.example.com\">\n    <paragraph>\n        Embedded \n        <reference name=\"Python\" refuri=\"https://python.org\">\n            Python\n        <target id=\"python\" name=\"python\" refuri=\"https://python.org\">\n         link, an anonymous \n        <reference name=\"embedded\" refuri=\"https://anon.example.com\">\n            embedded\n         link,\n        and an indirect \n        <reference name=\"alias name\" refname=\"target\" refuri=\"https://indirect.example.com\">\n            alias name\n        <target id=\"alias-name\" name=\"alias name\" refname=\"target\">\n         reference.\n    <target id=\"target\" name=\"target\" refuri=\"https://indirect.example.com\">\n    <paragraph>\n        Plain \n        <title_reference>\n            text\n         uses the default role.\n",
 		},
 		{
 			name:   "interpreted text roles: prefix, suffix, aliases, unknown role, literal unaffected",
@@ -195,7 +195,7 @@ func TestInline(t *testing.T) {
 		{"no nested markup inside strong", "**a *b* c**", "<strong>\n    a *b* c\n"},
 		{"unmatched marker stays literal", "2 * 3 = 6", "2 * 3 = 6\n"},
 		{"backslash escape suppresses markup", "\\*not emphasis\\*", "*not emphasis*\n"},
-		{"anonymous reference", "see `some text`__ end", "see \n<reference anonymous=\"true\" name=\"some text\">\n    some text\n end\n"},
+		{"anonymous reference", "see `some text`__ end", "see \n<reference anonymous=\"1\" name=\"some text\">\n    some text\n end\n"},
 		{"unclosed marker becomes problematic", "an *unclosed emphasis stays plain", "an \n<problematic id=\"problematic-1\" refid=\"system-message-1\">\n    *\nunclosed emphasis stays plain\n"},
 		{"substitution reference", "see |name| here", "see \n<substitution_reference refname=\"name\">\n    name\n here\n"},
 		{"manually numbered footnote reference", "see [1]_ here", "see \n<footnote_reference id=\"footnote-reference-1\" refname=\"1\">\n    1\n here\n"},
@@ -204,7 +204,7 @@ func TestInline(t *testing.T) {
 		{"auto-symbol footnote reference", "see [*]_ here", "see \n<footnote_reference auto=\"*\" id=\"footnote-reference-1\">\n here\n"},
 		{"citation reference", "see [CIT2002]_ here", "see \n<citation_reference id=\"citation-reference-1\" refname=\"cit2002\">\n    CIT2002\n here\n"},
 		{"bare word reference", "see bare_ here", "see \n<reference name=\"bare\" refname=\"bare\">\n    bare\n here\n"},
-		{"bare anonymous word reference", "see anon__ here", "see \n<reference anonymous=\"true\" name=\"anon\">\n    anon\n here\n"},
+		{"bare anonymous word reference", "see anon__ here", "see \n<reference anonymous=\"1\" name=\"anon\">\n    anon\n here\n"},
 		{"bare default-role text", "see `plain text` here", "see \n<title_reference>\n    plain text\n here\n"},
 		{"embedded URI phrase reference", "see `Python <https://python.org>`_ here", "see \n<reference name=\"Python\" refuri=\"https://python.org\">\n    Python\n<target id=\"python\" name=\"python\" refuri=\"https://python.org\">\n here\n"},
 		{"embedded indirect alias phrase reference", "see `alias <target_>`_ here", "see \n<reference name=\"alias\" refname=\"target\">\n    alias\n<target id=\"alias\" name=\"alias\" refname=\"target\">\n here\n"},

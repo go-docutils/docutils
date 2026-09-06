@@ -367,7 +367,7 @@ func (p *parser) tryMarker(runes []rune, i int) (doctree.Node, int, bool) {
 			if after := i + total; after < len(runes) && runes[after] == '_' {
 				ref := doctree.NewElement(doctree.TagReference, el)
 				if after+1 < len(runes) && runes[after+1] == '_' {
-					ref.SetAttr("anonymous", "true")
+					ref.SetAttr("anonymous", anonymousAttrValue)
 					return ref, total + 2, true
 				}
 				ref.SetAttr("refname", normalizeName(content))
@@ -490,7 +490,7 @@ func (p *parser) referenceOrPhrase(contentRunes []rune, afterClose int, runes []
 	case hasEmbedded && kind == "name":
 		el.SetAttr("refname", targetValue)
 	case anonymous:
-		el.SetAttr("anonymous", "true")
+		el.SetAttr("anonymous", anonymousAttrValue)
 	default:
 		el.SetAttr("refname", normalizeName(text))
 	}
@@ -1072,7 +1072,7 @@ func tryBareReference(runes []rune, i int) (doctree.Node, int, bool) {
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: name})
 	el.SetAttr("name", normalizeWhitespace(name))
 	if anonymous {
-		el.SetAttr("anonymous", "true")
+		el.SetAttr("anonymous", anonymousAttrValue)
 	} else {
 		el.SetAttr("refname", normalizeName(name))
 	}
