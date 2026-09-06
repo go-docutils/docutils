@@ -447,7 +447,10 @@ func (p *parser) referenceOrPhrase(contentRunes []rune, afterClose int, runes []
 	content := unescapeRunes(contentRunes)
 	if !(afterClose < len(runes) && runes[afterClose] == '_') {
 		if p.defaultRole != "" {
-			return []doctree.Node{p.roleElement(p.defaultRole, contentRunes)}, 0
+			// No rawSource: ".. default-role::" validates its argument when
+			// it runs (see runDefaultRoleDirective), so an UNKNOWN role
+			// name can never reach this call site.
+			return []doctree.Node{p.roleElement(p.defaultRole, contentRunes, "")}, 0
 		}
 		return []doctree.Node{doctree.NewElement(doctree.TagTitleReference, &doctree.Text{Data: content})}, 0
 	}
@@ -739,7 +742,7 @@ func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) ([]doctree.Node,
 			return []doctree.Node{p.problematicMessage("2", "WARNING", string(runes[i:refEnd]),
 				"Mismatch: both interpreted text role "+position+" and reference suffix.")}, refEnd - i, true
 		}
-		return []doctree.Node{p.roleElement(role, contentRunes)}, end - i, true
+		return []doctree.Node{p.roleElement(role, contentRunes, string(runes[i:end]))}, end - i, true
 	}
 
 	nodes, extra := p.referenceOrPhrase(contentRunes, afterClose, runes)
@@ -851,7 +854,7 @@ var roleTags = map[string]string{
 // a "latex"-based custom role must keep the backslash; unescapeRunes
 // alone turned it into bare "textbf{bold}", breaking the LaTeX it was
 // supposed to be).
-func (p *parser) roleElement(role string, contentRunes []rune) *doctree.Element {
+func (p *parser) roleElement(role string, contentRunes []rune, rawSource string) *doctree.Element {
 	name := strings.ToLower(role)
 	switch name {
 	case "pep", "pep-reference":
@@ -915,10 +918,37 @@ func (p *parser) roleElement(role string, contentRunes []rune) *doctree.Element 
 			return el
 		}
 	}
+	// Only a role this parser genuinely does not know. Reaching here with
+	// a REGISTERED name means ".. role::" chained it onto a base that is
+	// itself custom (".. role:: widget(gadget)"), which resolves to no
+	// entry in roleTags but is certainly not unknown -- the same trap the
+	// unknown-DIRECTIVE fallback hit with ".. raw::" in v0.68.0.
+	_, registered := p.roles[name]
+	if p.opts.ReportUnknownRoles && rawSource != "" && !registered && !p.isKnownRoleName(name) {
+		return p.unknownRoleProblematic(name, rawSource)
+	}
 	el := doctree.NewElement(doctree.TagInline, &doctree.Text{Data: unescapeRunes(contentRunes)})
 	el.SetAttr("role", name)
 	return el
 }
+
+// unknownRoleProblematic ports Inliner.interpreted's failure path:
+// roles.role() reports the lookup miss as an INFO carrying no backref,
+// then the caller raises an ERROR whose <problematic> replaces the whole
+// construct. The two are NOT a matched pair — only the ERROR is
+// cross-linked — which is why this cannot reuse problematicMessage alone.
+func (p *parser) unknownRoleProblematic(name, rawSource string) *doctree.Element {
+	line := p.inlineDiagnosticLine()
+	p.messages = append(p.messages, sectionMessage("1", "INFO",
+		`No role entry for "`+name+`" in module "docutils.parsers.rst.languages.en".`+
+			"\n"+`Trying "`+name+`" as canonical role name.`, line, ""))
+	return p.problematicMessage("3", "ERROR", rawSource,
+		`Unknown interpreted text role "`+name+`".`)
+}
+
+// inlineDiagnosticLine is p.currentLine, or 0 when unknown — the same
+// value problematicMessage stamps on its own message.
+func (p *parser) inlineDiagnosticLine() int { return p.currentLine }
 
 // codeRoleClasses replicates docutils.parsers.rst.roles.code_role's own
 // class-list/highlight-language derivation (roles.py, read directly):

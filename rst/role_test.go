@@ -52,9 +52,14 @@ func TestRoleDirective(t *testing.T) {
 			"<document>\n    <paragraph>\n        Some \n        <inline class=\"custom\">\n            text\n         here.\n",
 		},
 		{
-			"an unregistered role name is unaffected — same fallback as before this feature existed",
+			// Byte-for-byte the reference's own output. The name of this case
+			// used to promise "the same fallback as before this feature
+			// existed"; that fallback is now the OPT-OUT (see
+			// TestUnknownRoleFallbackIsOptOut below), so the name would have
+			// been a lie about what the case checks.
+			"an unregistered role name draws docutils' unknown-role diagnostics",
 			"Some :unregistered:`text` here.\n",
-			"<document>\n    <paragraph>\n        Some \n        <inline role=\"unregistered\">\n            text\n         here.\n",
+			"<document>\n    <paragraph>\n        Some \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            :unregistered:`text`\n         here.\n    <system_message level=\"1\" line=\"1\" type=\"INFO\">\n        <paragraph>\n            No role entry for \"unregistered\" in module \"docutils.parsers.rst.languages.en\".\n            Trying \"unregistered\" as canonical role name.\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Unknown interpreted text role \"unregistered\".\n",
 		},
 		{
 			"an EXPLICIT :class: option overrides the role-name default entirely, not just adds to it",
@@ -228,8 +233,14 @@ func TestRoleNameGrammar(t *testing.T) {
 		{":a:b:`x`\n", "a:b"},
 		{":a_b:`x`\n", "a_b"},
 	}
+	// ReportUnknownRoles OFF: every role name here is deliberately one
+	// this parser has never heard of, and the subject of this test is
+	// whether the NAME is recognized at all, not what happens afterwards
+	// to an unknown one (TestUnknownRoleFallbackIsOptOut covers that).
+	opts := DefaultOptions()
+	opts.ReportUnknownRoles = false
 	for _, tc := range cases {
-		got := doctree.Dump(Parse(tc.source))
+		got := doctree.Dump(ParseWithOptions(tc.source, opts))
 		want := `<inline role="` + tc.wantRole + `">`
 		if !strings.Contains(got, want) {
 			t.Errorf("Parse(%q) did not produce %s:\n%s", tc.source, want, got)
@@ -283,5 +294,20 @@ func TestRolePositionDiagnostics(t *testing.T) {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestUnknownRoleFallbackIsOptOut keeps coverage of the lenient shape
+// that used to be the only behaviour: with Options.ReportUnknownRoles
+// off, interpreted text whose role this parser has never heard of -- a
+// Sphinx ":doc:" reference, say -- keeps its TEXT as
+// <inline role="...">, rather than becoming an error message.
+func TestUnknownRoleFallbackIsOptOut(t *testing.T) {
+	opts := DefaultOptions()
+	opts.ReportUnknownRoles = false
+	got := doctree.Dump(ParseWithOptions("Some :unregistered:`text` here.\n", opts))
+	want := "<document>\n    <paragraph>\n        Some \n        <inline role=\"unregistered\">\n            text\n         here.\n"
+	if got != want {
+		t.Errorf("dump =\n%s\nwant:\n%s", got, want)
 	}
 }

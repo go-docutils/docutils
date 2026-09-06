@@ -92,12 +92,34 @@ type Options struct {
 	// ".. toctree::" in a document this package was not told about, say —
 	// sets it false and gets the structural capture back.
 	ReportUnknownDirectives bool
+
+	// PromoteDocInfo turns a document's own LEADING field list into a
+	// typed <docinfo> — author, date, version and friends becoming typed
+	// children, with dedication/abstract split off as sibling <topic>s.
+	//
+	// It defaults FALSE for the same reason ReportDanglingReferences does:
+	// docutils performs it in the DocInfo TRANSFORM, so its bare parse
+	// leaves an ordinary <field_list> in place. Set it true to get the
+	// promoted shape — go-richdoc/rst does, because its Document.Meta is
+	// built from it.
+	PromoteDocInfo bool
+
+	// ReportUnknownRoles emits docutils' diagnostics for interpreted text
+	// whose role this parser does not know: an INFO for the failed lookup,
+	// then an ERROR carrying the whole construct as a <problematic>.
+	//
+	// Like ReportUnknownDirectives — and for the same reason — this
+	// defaults TRUE: Inliner.interpreted raises it in the PARSER, not in a
+	// transform. A consumer that would rather keep the text of a role it
+	// has never heard of (a Sphinx ":doc:" reference, say) sets it false
+	// and gets the lenient <inline role="..."> back.
+	ReportUnknownRoles bool
 }
 
 // DefaultOptions returns the Options Parse itself uses, matching real
 // docutils' own defaults.
 func DefaultOptions() Options {
-	return Options{RawEnabled: true, ReportUnknownDirectives: true}
+	return Options{RawEnabled: true, ReportUnknownDirectives: true, ReportUnknownRoles: true}
 }
 
 type parser struct {
@@ -320,7 +342,9 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	resolveFootnoteNumbers(doc)
 	hoistMetaNodes(doc, p.metaNodes)
 	hoistDecoration(doc, p.headerEl, p.footerEl)
-	promoteDocInfo(doc)
+	if opts.PromoteDocInfo {
+		promoteDocInfo(doc)
+	}
 	if p.docTitle != "" {
 		doc.SetAttr("title", p.docTitle)
 	}
