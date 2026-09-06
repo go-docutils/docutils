@@ -549,6 +549,13 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 			raw.Append(&doctree.Text{Data: strings.Join(rawBody, "\n")})
 		}
 		el.Append(raw)
+	case strings.EqualFold(dirName, "date"):
+		// misc.Date declares no arguments and has_content=True, so the
+		// text after "::" folds into the content block -- exactly what
+		// parseDirectiveBlock's hasArgument=false path does.
+		combined := append([]string{dirArgs}, rest...)
+		_, _, content := parseDirectiveBlock(combined, false)
+		el.Append(&doctree.Text{Data: dateDirectiveText(content)})
 	case strings.EqualFold(dirName, "image"):
 		combined := append([]string{dirArgs}, rest...)
 		argument, options, content := parseDirectiveBlock(combined, true)
@@ -822,7 +829,7 @@ func matchDirectiveName(rest string) (name, args string, ok bool) {
 // capture any other unimplemented directive gets.
 func (p *parser) parseDirective(lines []string, i, lineBase int, name, args string, parent *doctree.Element) ([]doctree.Node, int) {
 	body, blankFinish, next := gatherExplicitBody(lines, i)
-	if strings.EqualFold(name, "replace") {
+	if strings.EqualFold(name, "replace") || strings.EqualFold(name, "date") {
 		// Real docutils' Replace.run (misc.py, read directly) is only
 		// ever invoked FROM WITHIN a substitution definition's own
 		// dispatch (SubstitutionDef.run calls run_directive with the
@@ -835,10 +842,14 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		// handling, called directly by parseSubstitutionDef, never
 		// through this function — so this case can only ever fire for
 		// the invalid-context shape, matching real docutils exactly.
+		//
+		// "date" is the second directive of that shape: misc.Date.run
+		// opens by refusing any state that is not a SubstitutionDef,
+		// with the same sentence and the same ERROR level.
 		lineno := i + 1
 		blockText := strings.Join(lines[i:next], "\n")
 		return []doctree.Node{sectionMessage("3", "ERROR",
-			`Invalid context: the "replace" directive can only be used within a substitution definition.`, lineno, blockText)}, next
+			`Invalid context: the "`+strings.ToLower(name)+`" directive can only be used within a substitution definition.`, lineno, blockText)}, next
 	}
 	if name == "raw" && p.opts.RawEnabled && args != "" {
 		el := doctree.NewElement(doctree.TagRaw)
@@ -1474,7 +1485,7 @@ func isImplementedDirective(name string) bool {
 		return true
 	}
 	switch strings.ToLower(name) {
-	case "admonition", "class", "code", "compound", "container",
+	case "admonition", "class", "code", "compound", "container", "date",
 		"default-role", "figure", "footer", "header", "image", "line-block",
 		"list-table", "math", "meta", "parsed-literal", "raw", "replace",
 		"role", "rst-class", "rubric", "section-numbering", "sectnum",
