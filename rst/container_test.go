@@ -52,7 +52,7 @@ func TestContainerDirective(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := doctree.Dump(Parse(tc.source))
+			got := doctree.Dump(parseResolvingReferences(tc.source))
 			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}
@@ -72,7 +72,7 @@ func TestContainerDirective(t *testing.T) {
 // a <problematic> node with a spurious system_message.
 func TestContainerNameRegistersAsTarget(t *testing.T) {
 	src := ".. container::\n   :name: my name\n\n   The name argument allows hyperlinks to `my name`_.\n"
-	got := doctree.Dump(Parse(src))
+	got := doctree.Dump(parseResolvingReferences(src))
 	if strings.Contains(got, "problematic") {
 		t.Errorf("Parse(%q) dump still contains a dangling <problematic> reference:\n%s", src, got)
 	}

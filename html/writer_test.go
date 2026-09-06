@@ -286,5 +286,9 @@ func parseFullyTransformed(src string) *doctree.Element {
 	// Footnote numbering likewise: a writer renders the NUMBERED shape,
 	// which docutils produces in transforms.references.Footnotes.
 	opts.NumberAutoFootnotes = true
+	// And reference resolution, from transforms.references.Hyperlinks: a
+	// renderer needs somewhere to send the reader, so an href/hyperlink
+	// is exactly the shape these cases are about.
+	opts.ResolveReferences = true
 	return rst.ParseWithOptions(src, opts)
 }

@@ -63,7 +63,7 @@ func TestIndirectTargetResolution(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := doctree.Dump(Parse(tc.source))
+			got := doctree.Dump(parseResolvingReferences(tc.source))
 			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
 				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
 			}
@@ -84,7 +84,7 @@ func TestIndirectTargetResolution(t *testing.T) {
 // (test_directives/test_replace.py[3]).
 func TestExplicitTargetGetsAnID(t *testing.T) {
 	src := ".. _Python: http://www.python.org/\n"
-	got := doctree.Dump(Parse(src))
+	got := doctree.Dump(parseResolvingReferences(src))
 	want := "<document>\n    <target id=\"python\" name=\"python\" refuri=\"http://www.python.org/\">\n"
 	if strings.TrimRight(got, "\n") != strings.TrimRight(want, "\n") {
 		t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", src, got, want)

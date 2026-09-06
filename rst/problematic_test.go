@@ -140,9 +140,13 @@ func TestAnonymousMismatchBecomesProblematic(t *testing.T) {
 			"<document>\n    <target anonymous=\"1\" refuri=\"https://a.example\">\n    <target anonymous=\"1\" refuri=\"https://b.example\">\n    <paragraph>\n        Only one used: \n        <problematic id=\"problematic-2\" refid=\"system-message-1\">\n            first\n        .\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-2\" id=\"system-message-1\">\n            <paragraph>\n                Anonymous hyperlink mismatch: 1 references but 2 targets.\n",
 		},
 		{
+			// The anonymous references carry no refuri here because
+			// resolution is opt-in (Options.ResolveReferences); the
+			// PAIRING itself is TestAnonymousTargetResolution's subject.
+			// What this case checks is the absence of the diagnostic.
 			"a balanced count is unaffected, no trailing section at all",
 			".. __: https://a.example\n.. __: https://b.example\n\nBoth used: first__ and second__.\n",
-			"<document>\n    <target anonymous=\"1\" refuri=\"https://a.example\">\n    <target anonymous=\"1\" refuri=\"https://b.example\">\n    <paragraph>\n        Both used: \n        <reference anonymous=\"1\" name=\"first\" refuri=\"https://a.example\">\n            first\n         and \n        <reference anonymous=\"1\" name=\"second\" refuri=\"https://b.example\">\n            second\n        .\n",
+			"<document>\n    <target anonymous=\"1\" refuri=\"https://a.example\">\n    <target anonymous=\"1\" refuri=\"https://b.example\">\n    <paragraph>\n        Both used: \n        <reference anonymous=\"1\" name=\"first\">\n            first\n         and \n        <reference anonymous=\"1\" name=\"second\">\n            second\n        .\n",
 		},
 	}
 	for _, tc := range cases {
@@ -203,10 +207,10 @@ func TestDanglingDiagnosticsOptedIn(t *testing.T) {
 // The default is docutils-faithful: its DanglingReferences and Messages
 // TRANSFORMS run after the parser, and a caller may never run them, so a
 // bare parse leaves an unresolved reference as a <reference> carrying its
-// refname and no refuri. A reference that DOES resolve is unaffected
-// either way -- filling in refuri during parsing is what makes this
-// package usable without a transform pipeline at all, and that has not
-// changed.
+// refname and no refuri. A reference that DOES resolve is unaffected by
+// THIS option either way; whether it gains a refuri at all is
+// Options.ResolveReferences' separate question, and both are checked
+// here so the two cannot quietly merge.
 func TestDanglingReferencesAreOptIn(t *testing.T) {
 	const src = "ref_\n"
 
@@ -220,13 +224,22 @@ func TestDanglingReferencesAreOptIn(t *testing.T) {
 		t.Errorf("ReportDanglingReferences did not produce the diagnostic:\n%s", optedIn)
 	}
 
-	// A RESOLVABLE reference behaves identically under both.
+	// A RESOLVABLE reference behaves identically under both -- this
+	// option is only ever about the UNRESOLVED ones. Whether the
+	// resolvable one gains a refuri is the SEPARATE
+	// Options.ResolveReferences question, checked last.
 	const resolvable = ".. _ref: https://example.org\n\nref_\n"
 	a, b := doctree.Dump(Parse(resolvable)), doctree.Dump(parseReportingDangling(resolvable))
 	if a != b {
 		t.Errorf("the option changed a RESOLVABLE reference:\n%s\nvs\n%s", a, b)
 	}
-	if !strings.Contains(a, `refuri="https://example.org"`) {
-		t.Errorf("a resolvable reference lost its refuri:\n%s", a)
+	// The <target> keeps a refuri of its own -- that one comes from the
+	// target definition and IS parsing. It is the <reference> that must
+	// not have gained one.
+	if strings.Contains(a, `<reference name="ref" refname="ref" refuri=`) {
+		t.Errorf("a bare Parse resolved a reference it should have left alone:\n%s", a)
+	}
+	if resolved := doctree.Dump(parseResolvingReferences(resolvable)); !strings.Contains(resolved, `refuri="https://example.org"`) {
+		t.Errorf("ResolveReferences did not fill the refuri in:\n%s", resolved)
 	}
 }

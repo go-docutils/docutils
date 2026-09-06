@@ -44,6 +44,11 @@ func TestParse(t *testing.T) {
 		// captureDirectives keeps the structural <directive> node for an
 		// unimplemented directive instead of the DEFAULT diagnostics pair.
 		captureDirectives bool
+		// resolveReferences fills a reference's refuri in from the target
+		// it names. docutils does that in transforms.references.Hyperlinks,
+		// so a bare Parse leaves the refname alone; the cases setting this
+		// are the ones whose expectation IS the resolved shape.
+		resolveReferences bool
 	}{
 		{
 			name:   "sections, paragraph with inline markup, lists",
@@ -76,6 +81,7 @@ func TestParse(t *testing.T) {
 			// an earlier version of this test used ".. note::" here,
 			// which predates note becoming a real, implemented directive.
 			name:              "comment, unimplemented directive (generic capture), hyperlink target with reference resolution, literal block",
+			resolveReferences: true,
 			source:            "Intro paragraph.\n\n.. This is a comment.\n   Second comment line.\n\n.. some-directive::\n\n   This is directive content.\n   Second line.\n\nSee `Example`_ for details.\n\n.. _Example: https://example.com\n\nHere is a code sample::\n\n    def f():\n        return 1\n\nDone.\n",
 			want:              "<document>\n    <paragraph>\n        Intro paragraph.\n    <comment>\n        This is a comment.\n        Second comment line.\n    <directive name=\"some-directive\">\n        This is directive content.\n        Second line.\n    <paragraph>\n        See \n        <reference name=\"Example\" refname=\"example\" refuri=\"https://example.com\">\n            Example\n         for details.\n    <target id=\"example\" name=\"example\" refuri=\"https://example.com\">\n    <paragraph>\n        Here is a code sample:\n    <literal_block>\n        def f():\n            return 1\n    <paragraph>\n        Done.\n",
 			captureDirectives: true,
@@ -124,9 +130,10 @@ func TestParse(t *testing.T) {
 			want:   "<document>\n    <bullet_list bullet=\"-\">\n        <list_item>\n            <paragraph>\n                item with a footnote\n            <footnote id=\"footnote-1\" name=\"1\">\n                <label>\n                    1\n                <paragraph>\n                    A footnote inside a list item.\n        <list_item>\n            <paragraph>\n                item with a substitution definition\n            <substitution_definition name=\"x\">\n                y\n",
 		},
 		{
-			name:   "bare and embedded-link references, indirect alias, default-role bare text",
-			source: "A bare_ reference and an anon__ one.\n\n.. _bare: https://bare.example.com\n\nEmbedded `Python <https://python.org>`_ link, an anonymous `embedded <https://anon.example.com>`__ link,\nand an indirect `alias name <target_>`_ reference.\n\n.. _target: https://indirect.example.com\n\nPlain `text` uses the default role.\n",
-			want:   "<document>\n    <paragraph>\n        A \n        <reference name=\"bare\" refname=\"bare\" refuri=\"https://bare.example.com\">\n            bare\n         reference and an \n        <reference anonymous=\"1\" name=\"anon\">\n            anon\n         one.\n    <target id=\"bare\" name=\"bare\" refuri=\"https://bare.example.com\">\n    <paragraph>\n        Embedded \n        <reference name=\"Python\" refuri=\"https://python.org\">\n            Python\n        <target id=\"python\" name=\"python\" refuri=\"https://python.org\">\n         link, an anonymous \n        <reference name=\"embedded\" refuri=\"https://anon.example.com\">\n            embedded\n         link,\n        and an indirect \n        <reference name=\"alias name\" refname=\"target\" refuri=\"https://indirect.example.com\">\n            alias name\n        <target id=\"alias-name\" name=\"alias name\" refname=\"target\">\n         reference.\n    <target id=\"target\" name=\"target\" refuri=\"https://indirect.example.com\">\n    <paragraph>\n        Plain \n        <title_reference>\n            text\n         uses the default role.\n",
+			name:              "bare and embedded-link references, indirect alias, default-role bare text",
+			resolveReferences: true,
+			source:            "A bare_ reference and an anon__ one.\n\n.. _bare: https://bare.example.com\n\nEmbedded `Python <https://python.org>`_ link, an anonymous `embedded <https://anon.example.com>`__ link,\nand an indirect `alias name <target_>`_ reference.\n\n.. _target: https://indirect.example.com\n\nPlain `text` uses the default role.\n",
+			want:              "<document>\n    <paragraph>\n        A \n        <reference name=\"bare\" refname=\"bare\" refuri=\"https://bare.example.com\">\n            bare\n         reference and an \n        <reference anonymous=\"1\" name=\"anon\">\n            anon\n         one.\n    <target id=\"bare\" name=\"bare\" refuri=\"https://bare.example.com\">\n    <paragraph>\n        Embedded \n        <reference name=\"Python\" refuri=\"https://python.org\">\n            Python\n        <target id=\"python\" name=\"python\" refuri=\"https://python.org\">\n         link, an anonymous \n        <reference name=\"embedded\" refuri=\"https://anon.example.com\">\n            embedded\n         link,\n        and an indirect \n        <reference name=\"alias name\" refname=\"target\" refuri=\"https://indirect.example.com\">\n            alias name\n        <target id=\"alias-name\" name=\"alias name\" refname=\"target\">\n         reference.\n    <target id=\"target\" name=\"target\" refuri=\"https://indirect.example.com\">\n    <paragraph>\n        Plain \n        <title_reference>\n            text\n         uses the default role.\n",
 		},
 		{
 			name:   "interpreted text roles: prefix, suffix, aliases, unknown role, literal unaffected",
@@ -179,6 +186,7 @@ func TestParse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			opts := DefaultOptions()
 			opts.ReportUnknownDirectives = !tc.captureDirectives
+			opts.ResolveReferences = tc.resolveReferences
 			got := doctree.Dump(ParseWithOptions(tc.source, opts))
 			if got != tc.want {
 				t.Errorf("mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, tc.want)
