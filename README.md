@@ -856,6 +856,23 @@ footnote gets its `id` — `note_autofootnote` calls `set_id`, so an auto
 footnote is `footnote-1` with no label at all, and auto and symbol
 footnotes share one positional counter.
 
+**Two line conventions** live side by side (v0.85.0+). `Inliner.parse`
+passes its own `lineno` — the paragraph's FIRST line — to every
+diagnostic it raises, so an unclosed-markup or unknown-role message
+reports that line however long the paragraph is. A message reported
+WITHOUT one (`code_role`'s "Cannot analyze code", `set_duplicate_name`'s
+duplicate-name notices, whose `base_node` is not yet attached and
+carries no line) falls back to `StateMachine.get_source_and_line()`
+instead. For a top-level paragraph that is `max(firstLine+1, lastLine)`:
+`Text.text()` steps at least one line past the first looking for a
+continuation, then stops on the last line of the block it read. Three
+earlier attempts guessed a single formula for both and were each
+contradicted by the next probe; what settled it was instrumenting the
+reference rather than re-reading it. Inside a NESTED block the enclosing
+block's own extent clamps the value, and that extent is not threaded
+through the recursion — so a duplicate inside a block quote or a list
+item still reports this parser's ordinary line.
+
 **Duplicate reference names** are diagnosed and resolved (`dupnames.go`,
 v0.57.0+), a full port of docutils' own `set_duplicate_name` transition
 table. What happens when two elements claim one name depends on whether

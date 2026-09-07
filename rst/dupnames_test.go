@@ -13,17 +13,19 @@ import (
 // "name" and which is invalidated to "dupname", the ids, and the message's
 // own text, level, backref and POSITION.
 //
-// The one thing deliberately not matched is the `line` attribute on these
-// particular messages. docutils reports them against its own node.line
-// bookkeeping rather than the line the duplicate sits on, and that is not
-// a constant offset: probing it gave line 4 for a duplicate on line 3, 5
-// for one on line 5, 6 for one on line 5 in a different shape, and 3 for
-// one on line 3 inside a block quote. Three separate hypotheses ("the line
-// after the paragraph", "the paragraph's first line + 1", "the duplicate's
-// own line") each fitted some probes and failed others. Rather than invent
-// a formula that happens to fit the corpus fixture, these carry this
-// parser's ordinary convention -- the real source line -- and the one
-// corpus case riding on the difference stays an honest mismatch.
+// That INCLUDES the `line` attribute, which three earlier attempts got
+// wrong (v0.85.0). These messages do not carry the line the duplicate
+// sits on: set_duplicate_name hands Reporter.system_message a base_node
+// that is not yet attached and has no line of its own, so it falls back
+// to the STATE MACHINE's position. For a top-level paragraph that is
+// max(firstLine+1, lastLine) -- Text.text() steps at least one line past
+// the first looking for a continuation, then stops on the last line it
+// actually read. Hence line 4 for a one-line paragraph on line 3, which
+// is what the reference gives and what these expectations now say.
+//
+// A duplicate inside a NESTED block still differs: the enclosing block's
+// own extent clamps the value there, and that extent is not threaded
+// through the recursion. See parser.currentSMLine.
 func TestDuplicateNames(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -41,14 +43,14 @@ func TestDuplicateNames(t *testing.T) {
 			// name; only the newcomer is invalidated.
 			"an implicit target loses to an explicit one already holding the name",
 			"_`dup` here.\n\n`<dup>`_ there.\n",
-			"<document>\n    <paragraph>\n        <target id=\"dup\" name=\"dup\">\n            dup\n         here.\n    <system_message level=\"1\" line=\"3\" type=\"INFO\">\n        <paragraph>\n            Duplicate implicit target name: \"dup\".\n    <paragraph>\n        <reference name=\"dup\" refuri=\"dup\">\n            dup\n        <target dupname=\"dup\" id=\"dup-1\" refuri=\"dup\">\n         there.\n",
+			"<document>\n    <paragraph>\n        <target id=\"dup\" name=\"dup\">\n            dup\n         here.\n    <system_message level=\"1\" line=\"4\" type=\"INFO\">\n        <paragraph>\n            Duplicate implicit target name: \"dup\".\n    <paragraph>\n        <reference name=\"dup\" refuri=\"dup\">\n            dup\n        <target dupname=\"dup\" id=\"dup-1\" refuri=\"dup\">\n         there.\n",
 		},
 		{
 			// explicit over implicit: the explicit one OVERRIDES, taking
 			// the name from the implicit one rather than colliding.
 			"an explicit target overrides an implicit one already holding the name",
 			"`<dup>`_ there.\n\n_`dup` here.\n",
-			"<document>\n    <paragraph>\n        <reference name=\"dup\" refuri=\"dup\">\n            dup\n        <target dupname=\"dup\" id=\"dup\" refuri=\"dup\">\n         there.\n    <system_message backref=\"dup-1\" level=\"1\" line=\"3\" type=\"INFO\">\n        <paragraph>\n            Target name overrides implicit target name \"dup\".\n    <paragraph>\n        <target id=\"dup-1\" name=\"dup\">\n            dup\n         here.\n",
+			"<document>\n    <paragraph>\n        <reference name=\"dup\" refuri=\"dup\">\n            dup\n        <target dupname=\"dup\" id=\"dup\" refuri=\"dup\">\n         there.\n    <system_message backref=\"dup-1\" level=\"1\" line=\"4\" type=\"INFO\">\n        <paragraph>\n            Target name overrides implicit target name \"dup\".\n    <paragraph>\n        <target id=\"dup-1\" name=\"dup\">\n            dup\n         here.\n",
 		},
 		{
 			// The case checked AHEAD of the table: same destination, so

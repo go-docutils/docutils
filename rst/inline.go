@@ -414,6 +414,21 @@ func (p *parser) markupProblematic(kind, marker string) *doctree.Element {
 // (markupProblematic's start-string case is always a WARNING; a role's
 // own validation failure — see roleError, codeRoleElement — can be
 // either, per docutils' own choice for that specific role).
+// problematicMessageAtStateMachineLine is problematicMessage for a role
+// function that reports through the reporter WITHOUT a line argument.
+// Inliner's own diagnostics all pass their lineno (the paragraph's FIRST
+// line); one that does not falls back to
+// StateMachine.get_source_and_line() instead, which is a different line
+// for any paragraph longer than one line. See parser.currentSMLine.
+func (p *parser) problematicMessageAtStateMachineLine(level, msgType, rawtext, message string) *doctree.Element {
+	saved := p.currentLine
+	if p.currentSMLine != 0 {
+		p.currentLine = p.currentSMLine
+	}
+	defer func() { p.currentLine = saved }()
+	return p.problematicMessage(level, msgType, rawtext, message)
+}
+
 func (p *parser) problematicMessage(level, msgType, rawtext, message string) *doctree.Element {
 	p.msgCount++
 	n := strconv.Itoa(p.msgCount)
@@ -1017,7 +1032,7 @@ func containsString(list []string, s string) bool {
 func (p *parser) codeRoleElement(role string, classes []string, language string, hasLanguage bool, contentRunes []rune) *doctree.Element {
 	rawtext := restoreEscapes(contentRunes)
 	if language != "" && hasLanguage {
-		return p.problematicMessage("2", "WARNING", ":"+role+":`"+rawtext+"`",
+		return p.problematicMessageAtStateMachineLine("2", "WARNING", ":"+role+":`"+rawtext+"`",
 			"Cannot analyze code. Pygments package not found.")
 	}
 	el := doctree.NewElement(doctree.TagLiteral, &doctree.Text{Data: rawtext})
