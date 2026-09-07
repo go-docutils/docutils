@@ -856,6 +856,23 @@ footnote gets its `id` — `note_autofootnote` calls `set_id`, so an auto
 footnote is `footnote-1` with no label at all, and auto and symbol
 footnotes share one positional counter.
 
+A standalone **email address may end on the same `end_string_suffix`
+class a standalone URI may** (v0.87.0+) — notably `>`, which Unicode
+classifies as a math SYMBOL rather than punctuation, so an ad-hoc
+"space or punctuation" test rejects `<user@host>` while accepting
+`(user@host)`. That is how essentially every PEP writes an author, and
+it accounted for 386 of the 1564 real-world corpus files on its own.
+
+One documented divergence remains beside it: docutils' `implicit_inline`
+tries each implicit pattern in turn and, when `standalone_uri` matches
+but the scheme is not in `urischemes.schemes`, raises `MarkupMismatch` —
+after which the WHOLE remaining text becomes one plain `Text` node, so
+any address later in the same paragraph is lost too. `PEP:9002` (no
+space after the colon) does exactly that to the author line beneath it.
+This parser rescans instead, so it finds the address docutils drops. One
+real-world file rides on it, and it had been matching only because two
+errors cancelled.
+
 **Two line conventions** live side by side (v0.85.0+). `Inliner.parse`
 passes its own `lineno` — the paragraph's FIRST line — to every
 diagnostic it raises, so an unclosed-markup or unknown-role message
