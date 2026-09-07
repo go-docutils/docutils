@@ -974,7 +974,7 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 	if strings.EqualFold(name, "figure") {
 		return p.runFigureDirective(lines, i, next, args, body), next
 	}
-	if strings.EqualFold(name, "code") {
+	if isCodeDirectiveName(name) {
 		return p.runCodeDirective(lines, i, next, args, body), next
 	}
 	if strings.EqualFold(name, "rubric") {
@@ -1508,6 +1508,31 @@ func systemMessagesSection(messages []*doctree.Element) *doctree.Element {
 // from this parser on nothing else at all.
 const anonymousAttrValue = "1"
 
+// isCodeDirectiveName covers "code" and the two ALIASES docutils'
+// English language module gives it, "code-block" and "sourcecode"
+// (languages/en.py, read directly). That module is a layer this project
+// had no equivalent of at all: a written directive name is looked up
+// there FIRST and only the canonical name it returns reaches the
+// registry, which is why the lookup-failure INFO names the module by
+// path ("No directive entry for ... in module
+// docutils.parsers.rst.languages.en").
+//
+// Of its four directive aliases these two were missing; "rst-class" and
+// "section-numbering" were already handled at their own call sites, and
+// deliberately are NOT routed through here -- runClassDirective needs
+// the name as WRITTEN, since "class" and "rst-class" produce different
+// details. All eleven ROLE aliases were already in roleTags.
+//
+// Invisible in the docutils testsuite corpus, which never writes
+// ".. code-block::"; 130 of the real-world corpus's files do.
+func isCodeDirectiveName(name string) bool {
+	switch strings.ToLower(name) {
+	case "code", "code-block", "sourcecode":
+		return true
+	}
+	return false
+}
+
 // isImplementedDirective reports whether this package has real semantics
 // for a directive name, however that dispatch turned out for the
 // particular invocation. Reaching the generic capture with an
@@ -1522,7 +1547,7 @@ func isImplementedDirective(name string) bool {
 		return true
 	}
 	switch strings.ToLower(name) {
-	case testDirectiveName:
+	case testDirectiveName, "code-block", "sourcecode":
 		return true
 	}
 	switch strings.ToLower(name) {

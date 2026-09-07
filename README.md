@@ -856,6 +856,16 @@ footnote gets its `id` — `note_autofootnote` calls `set_id`, so an auto
 footnote is `footnote-1` with no label at all, and auto and symbol
 footnotes share one positional counter.
 
+docutils resolves a written directive or role name through its
+**language module** (`languages/en.py`) BEFORE the registry — which is
+what the lookup-failure INFO means when it names that module by path.
+Its English table has four directive aliases and eleven role ones; the
+roles were all already present here, `rst-class`/`section-numbering`
+were handled at their own call sites, and `code-block`/`sourcecode` were
+missing until v0.88.0. `rst-class` deliberately stays out of the shared
+helper: `runClassDirective` distinguishes `class` from its alias by the
+name as WRITTEN, so canonicalizing it would erase a real difference.
+
 A standalone **email address may end on the same `end_string_suffix`
 class a standalone URI may** (v0.87.0+) — notably `>`, which Unicode
 classifies as a math SYMBOL rather than punctuation, so an ad-hoc
