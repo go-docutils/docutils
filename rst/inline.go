@@ -1328,11 +1328,14 @@ func tryEmail(runes []rune, i int) (doctree.Node, int, bool) {
 	if end-domainStart < 2 {
 		return nil, 0, false
 	}
-	if end < len(runes) {
-		next := runes[end]
-		if !unicode.IsSpace(next) && !unicode.IsPunct(next) {
-			return nil, 0, false
-		}
+	// The SAME end_string_suffix class the URI scan above uses, and for
+	// the same reason its own comment gives: ">" is a MATH SYMBOL in
+	// Unicode, not punctuation, so the ad-hoc IsSpace||IsPunct test
+	// rejected every address written "<user@host>" -- the shape almost
+	// every PEP header uses. The URI path was corrected in v0.63.0 and
+	// this one, sixteen lines below the comment explaining why, was not.
+	if end < len(runes) && !isValidEndBoundaryChar(runes[end]) {
+		return nil, 0, false
 	}
 	text := unescapeRunes(runes[i:end])
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
