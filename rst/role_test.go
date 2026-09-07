@@ -102,7 +102,7 @@ func TestRoleDirective(t *testing.T) {
 			// much-larger undertaking — not something this round widens.
 			"a role based on code with an EXPLICIT :language: option warns instead of degrading silently",
 			".. role:: tex(code)\n   :language: latex\n\n:tex:`x`.\n",
-			"<document>\n    <paragraph>\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            :tex:`x`\n        .\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"4\" type=\"WARNING\">\n        <paragraph>\n            Cannot analyze code. Pygments package not found.\n",
+			"<document>\n    <paragraph>\n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            :tex:`x`\n        .\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"5\" type=\"WARNING\">\n        <paragraph>\n            Cannot analyze code. Pygments package not found.\n",
 		},
 	}
 	for _, tc := range cases {

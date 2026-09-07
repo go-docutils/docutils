@@ -213,6 +213,30 @@ type parser struct {
 	// separate, much larger undertaking (see README/PR description), not
 	// a small extension of this fix.
 	currentLine int
+	// currentSMLine is the line docutils' own STATE MACHINE would report
+	// while the current paragraph is being parsed, which is NOT
+	// currentLine. Two message families need it, because neither is
+	// raised by Inliner.parse (which passes its lineno explicitly):
+	// code_role's "Cannot analyze code" and set_duplicate_name's
+	// duplicate-name notices both reach Reporter.system_message with no
+	// line and no usable base_node, so it falls back to
+	// StateMachine.get_source_and_line().
+	//
+	// For a TOP-LEVEL paragraph that position is
+	// max(firstLine+1, lastLine): Text.text() steps at least one line
+	// past the first looking for a continuation, then stops on the last
+	// line of the block it actually read. Verified against the reference
+	// for twelve shapes (paragraph lengths 1-5, at four different
+	// positions, with and without a trailing block).
+	//
+	// It is deliberately NOT set inside a nested block. There the
+	// enclosing block's own extent clamps the value -- a one-line
+	// paragraph at the end of a block quote reports its own line, not
+	// one past -- and reproducing that needs the nested block's extent
+	// threaded through the recursion, the same larger undertaking
+	// currentLine's own doc comment describes. Zero means "unknown", and
+	// the two callers fall back to currentLine.
+	currentSMLine int
 	// docTitle is the ".. title::" directive's argument, which becomes an
 	// attribute on <document> rather than a node.
 	docTitle string
@@ -1361,8 +1385,18 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 		if lineBase >= 0 {
 			lineno = i + lineBase + 1
 		}
+		savedSM := p.currentSMLine
+		if lineBase >= 0 {
+			// max(first+1, last) -- see parser.currentSMLine.
+			if last := j + lineBase; last > lineno+1 {
+				p.currentSMLine = last
+			} else {
+				p.currentSMLine = lineno + 1
+			}
+		}
 		var nodes []doctree.Node
 		nodes, msgs = p.parseInline(data, lineno)
+		p.currentSMLine = savedSM
 		para = doctree.NewElement(doctree.TagParagraph, nodes...)
 	}
 	if indentBreak {

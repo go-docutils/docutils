@@ -65,13 +65,21 @@ func registersName(tag string) bool {
 // an attribute so it never reaches the tree, the same reason
 // implicitTargets is one.
 func (p *parser) noteNameLine(el *doctree.Element) {
-	if p.currentLine == 0 {
+	// The STATE MACHINE's line, not the Inliner's: set_duplicate_name
+	// passes a base_node that is not yet attached and carries no line of
+	// its own, so Reporter.system_message falls back to
+	// StateMachine.get_source_and_line() -- see parser.currentSMLine.
+	line := p.currentSMLine
+	if line == 0 {
+		line = p.currentLine
+	}
+	if line == 0 {
 		return
 	}
 	if p.nameLines == nil {
 		p.nameLines = map[*doctree.Element]int{}
 	}
-	p.nameLines[el] = p.currentLine
+	p.nameLines[el] = line
 }
 
 // nameEntry is one row of docutils' document.names + document.nametypes.
