@@ -322,6 +322,23 @@ func (p *parser) parseDefinitionList(lines []string, i, lineBase int) (*doctree.
 	dl := doctree.NewElement(doctree.TagDefinitionList)
 	bodyNext := i
 	for i < len(lines) && isDefinitionTermLine(lines, i) {
+		// An adornment-shaped line is never a CONTINUING term: docutils'
+		// definition list ends on the unindent, Body dispatches the line
+		// itself (a short one draws the "so short" INFO and comes back as
+		// the FIRST term of a NEW list, a long one is an "Incomplete
+		// section title" ERROR), and the two lists stay separate -- the
+		// corpus fixture's own prose calls that "an acceptable limitation
+		// given that this will probably never happen in real life".
+		//
+		// Only for a term after the first: reaching here at all means the
+		// caller already dispatched lines[i], so the opening term of a
+		// list may perfectly well be one (that is exactly what a demoted
+		// short adornment becomes).
+		if len(dl.Children) > 0 {
+			if _, uniform := isUniformLine(trimTrailingSpace(lines[i])); uniform {
+				break
+			}
+		}
 		term := trimTrailingSpace(lines[i])
 		indent := leadingSpaces(lines[i+1])
 		block, next := consumeIndentedBlock(lines, i+1, indent)

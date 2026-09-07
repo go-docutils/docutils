@@ -873,6 +873,15 @@ block's own extent clamps the value, and that extent is not threaded
 through the recursion — so a duplicate inside a block quote or a list
 item still reports this parser's ordinary line.
 
+An **adornment-shaped line is never a CONTINUING definition term**
+(v0.86.0+): the list ends there on the unindent (with the usual
+`"Definition list ends without a blank line"` warning), the line itself
+goes back through the ordinary dispatch — a short one drawing the "so
+short" INFO and coming back as the FIRST term of a NEW list, a long one
+becoming an `"Incomplete section title."` ERROR — so two items that look
+like one list are two. It may still OPEN a list, which is exactly what a
+demoted short adornment does.
+
 **Duplicate reference names** are diagnosed and resolved (`dupnames.go`,
 v0.57.0+), a full port of docutils' own `set_duplicate_name` transition
 table. What happens when two elements claim one name depends on whether
