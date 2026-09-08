@@ -208,6 +208,20 @@ func unescapeRunes(rs []rune) string {
 // reST at all (an inline raw role's content — see roleElement), the
 // backslash itself is part of the real payload, not reST escape syntax to
 // strip.
+// roleText renders a generic role's content. Every roleTags entry
+// unescapes it -- ":literal:`A \\land R`" is "A land R" -- EXCEPT math:
+// math_role calls unescape(text, restore_backslashes=True) because a
+// backslash there is TeX syntax, not reST escaping (roles.py, read
+// directly). The math DIRECTIVE already kept its source verbatim for the
+// same reason; the ROLE did not, so ":math:`A \\land R`" lost the
+// command that gives it meaning.
+func roleText(name string, contentRunes []rune) string {
+	if strings.EqualFold(name, "math") {
+		return restoreEscapes(contentRunes)
+	}
+	return unescapeRunes(contentRunes)
+}
+
 func restoreEscapes(rs []rune) string {
 	var b strings.Builder
 	for _, r := range rs {
@@ -897,7 +911,7 @@ func (p *parser) roleElement(role string, contentRunes []rune, rawSource string)
 		}
 	}
 	if tag, ok := roleTags[name]; ok {
-		return doctree.NewElement(tag, &doctree.Text{Data: unescapeRunes(contentRunes)})
+		return doctree.NewElement(tag, &doctree.Text{Data: roleText(name, contentRunes)})
 	}
 	if def, ok := p.roles[name]; ok {
 		if def.base == "raw" && !p.opts.RawEnabled {
@@ -916,7 +930,7 @@ func (p *parser) roleElement(role string, contentRunes []rune, rawSource string)
 			return p.codeRoleElement(role, classes, lang, def.hasLanguage, contentRunes)
 		} else if def.base != "" {
 			if tag, ok := roleTags[def.base]; ok {
-				el := doctree.NewElement(tag, &doctree.Text{Data: unescapeRunes(contentRunes)})
+				el := doctree.NewElement(tag, &doctree.Text{Data: roleText(def.base, contentRunes)})
 				if len(def.classes) > 0 {
 					el.SetAttr("class", strings.Join(def.classes, " "))
 				}

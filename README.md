@@ -917,6 +917,19 @@ combined block. **Still `-1`**: a table CELL, which needs a per-row
 offset — so the table directives' own threading, while correct, cannot
 be observed until that is done.
 
+A directive argument spanning two source lines keeps its LINE BREAK
+(v0.100.0+): `parse_directive_arguments` joins the argument block with
+`"\n"`, and a directive declaring `final_argument_whitespace` passes the
+whole text through with its internal whitespace intact — so a two-line
+`.. rubric::` or admonition title is two lines, not one. The `image`
+URI goes the other way, `directives.uri` removing all whitespace so a
+split URI closes up.
+
+The `:math:` ROLE keeps its backslashes, alone among the generic roles:
+`math_role` calls `unescape(text, restore_backslashes=True)`, a
+backslash in math being TeX syntax rather than reST escaping. `:literal:`
+and `:emphasis:` still consume them.
+
 `.. contents::` (v0.99.0+) produces its PARSE-TIME shape: a `<topic>`
 classed `contents` (plus `local`, plus any `:class:`), an optional
 `<title>` — the argument, or the default label, or NONE at all under
