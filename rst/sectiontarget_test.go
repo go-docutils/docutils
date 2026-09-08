@@ -55,7 +55,7 @@ func TestSectionImplicitTarget(t *testing.T) {
 			// support entirely.
 			"duplicate section titles are BOTH invalidated, with distinct ids",
 			"Same\n====\n\nFirst paragraph.\n\nSame\n====\n\nSecond paragraph.\n",
-			"<document>\n    <section dupname=\"same\" id=\"same\">\n        <title>\n            Same\n        <paragraph>\n            First paragraph.\n    <section dupname=\"same\" id=\"same-1\">\n        <title>\n            Same\n        <system_message backref=\"same-1\" level=\"1\" type=\"INFO\">\n            <paragraph>\n                Duplicate implicit target name: \"same\".\n        <paragraph>\n            Second paragraph.\n",
+			"<document>\n    <section dupname=\"same\" id=\"same\">\n        <title>\n            Same\n        <paragraph>\n            First paragraph.\n    <section dupname=\"same\" id=\"same-1\">\n        <title>\n            Same\n        <system_message backref=\"same-1\" level=\"1\" line=\"7\" type=\"INFO\">\n            <paragraph>\n                Duplicate implicit target name: \"same\".\n        <paragraph>\n            Second paragraph.\n",
 		},
 	}
 	for _, tc := range cases {

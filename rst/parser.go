@@ -521,6 +521,20 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			}
 			p.commitStyleLevel(style, newlevel)
 			sec := doctree.NewElement(doctree.TagSection)
+			// The duplicate-name pass runs after parsing and reports a
+			// section against its UNDERLINE's line -- the last line of
+			// the title construct, which is where docutils' state machine
+			// sits once it has read the whole thing. Verified against the
+			// reference for five shapes: underlined and overlined,
+			// top-level and nested, with and without a trailing block.
+			// Nothing recorded a line for a SECTION at all before, so
+			// every duplicate section name was reported with no line: 83
+			// real-world files, and the whole of sphinx's own changelog
+			// set, which repeats "Bugs fixed" once per release.
+			if p.nameLines == nil {
+				p.nameLines = map[*doctree.Element]int{}
+			}
+			p.nameLines[sec] = i + consumed
 			titleNodes, titleMsgs := p.parseInline(title, titleLine)
 			sec.Append(doctree.NewElement(doctree.TagTitle, titleNodes...))
 			// real docutils' new_subsection: "section_node += messages;
