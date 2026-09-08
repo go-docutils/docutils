@@ -856,6 +856,15 @@ footnote gets its `id` — `note_autofootnote` calls `set_id`, so an auto
 footnote is `footnote-1` with no label at all, and auto and symbol
 footnotes share one positional counter.
 
+A **directive name is docutils' own `simplename`** (v0.90.0+):
+alphanumeric runs joined by `-._+:`, which is the same grammar
+`scanSimpleName` already applied to ROLE names. The directive path had
+its own character class, missing `:` entirely, so every namespaced
+directive — `.. rst:directive::`, `.. py:function::`, the shape Sphinx
+documentation is full of — fell through to the comment fallback instead
+of being reported as an unknown directive. 49 real-world files, and no
+docutils testsuite fixture at all.
+
 docutils resolves a written directive or role name through its
 **language module** (`languages/en.py`) BEFORE the registry — which is
 what the lookup-failure INFO means when it names that module by path.
