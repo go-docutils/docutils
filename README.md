@@ -907,9 +907,15 @@ definitions all compute one, and every directive passed `-1`. The
 mapping is exact rather than approximate: a directive's combined block is
 `[text after "::"] + [the blank lines under it] + [the body]`, mirroring
 `lines[i:]` one for one, so `parseDirectiveBlockAt` reports where the
-content begins and the caller adds `i`. **Still `-1`**: table cells, and
-the remaining directives that nest content (`decorations`, `image`'s
-figure body, `pending`, the table directives).
+content begins and the caller adds `i`. Every directive that nests content now
+threads one (v0.97.0): admonitions, `container`, `class`, `figure`,
+`header`/`footer` and the two table directives. Two derivations are
+needed, because `class` and the table directives split their options off
+themselves rather than through `parseDirectiveBlock`, so their content is
+a SUFFIX of the body (`bodyStartIndex`) rather than an offset into the
+combined block. **Still `-1`**: a table CELL, which needs a per-row
+offset — so the table directives' own threading, while correct, cannot
+be observed until that is done.
 
 The `code` directive VALIDATES its options (v0.96.0+): `CodeBlock`'s
 `option_spec` has exactly `class`, `name` and `number-lines`, and

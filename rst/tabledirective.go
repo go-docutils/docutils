@@ -233,10 +233,12 @@ func applyExplicitColWidths(table *doctree.Element, widths []int) {
 // directly: dispatch the body (after stripping options) through this
 // project's existing simple/grid table parser and require exactly one
 // <table> to result.
-func (p *parser) runTableDirective(lines []string, i, next int, args string, body []string) []doctree.Node {
+func (p *parser) runTableDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
 	lineno := i + 1
 	blockText := strings.Join(lines[i:next], "\n")
 	options, content := parseDirectiveOptions(body)
+	// content is a SUFFIX of body; see bodyStartIndex.
+	contentBase := nestedLineBase(bodyStartIndex(lines, i)+len(body)-len(content), lineBase)
 	if len(content) == 0 || allBlank(content) {
 		return []doctree.Node{sectionMessage("2", "WARNING",
 			`Content block expected for the "table" directive; none found.`, lineno, blockText)}
@@ -245,7 +247,7 @@ func (p *parser) runTableDirective(lines []string, i, next int, args string, bod
 	title, titleMsgs := p.parseTableTitle(args, lineno)
 
 	container := doctree.NewElement(doctree.TagDocument)
-	p.parseBlockLines(content, container, -1)
+	p.parseBlockLines(content, container, contentBase)
 	table, ok := singleChildOfTag(container, doctree.TagTable)
 	if !ok {
 		return []doctree.Node{sectionMessage("3", "ERROR",
@@ -280,10 +282,12 @@ func singleChildOfTag(container *doctree.Element, tag string) (*doctree.Element,
 // (each outer item's own single child is a bullet_list of cells, every
 // row with the same number of cells) — each innermost list item's
 // already-parsed children become one <entry>'s content directly.
-func (p *parser) runListTableDirective(lines []string, i, next int, args string, body []string) []doctree.Node {
+func (p *parser) runListTableDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
 	lineno := i + 1
 	blockText := strings.Join(lines[i:next], "\n")
 	options, content := parseDirectiveOptions(body)
+	// content is a SUFFIX of body; see bodyStartIndex.
+	contentBase := nestedLineBase(bodyStartIndex(lines, i)+len(body)-len(content), lineBase)
 	if len(content) == 0 || allBlank(content) {
 		return []doctree.Node{sectionMessage("3", "ERROR",
 			`The "list-table" directive is empty; content required.`, lineno, blockText)}
@@ -292,7 +296,7 @@ func (p *parser) runListTableDirective(lines []string, i, next int, args string,
 	title, titleMsgs := p.parseTableTitle(args, lineno)
 
 	container := doctree.NewElement(doctree.TagDocument)
-	p.parseBlockLines(content, container, -1)
+	p.parseBlockLines(content, container, contentBase)
 	outerList, ok := singleChildOfTag(container, doctree.TagBulletList)
 	if !ok {
 		return []doctree.Node{sectionMessage("3", "ERROR",

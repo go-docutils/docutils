@@ -96,7 +96,7 @@ func pyReprList(items []string) string {
 // normalized the same way every other :class: option is, and the
 // directive's own name is recorded because "class" and its alias
 // "rst-class" produce different details.
-func (p *parser) runClassDirective(name, args string, body []string) []doctree.Node {
+func (p *parser) runClassDirective(name, args string, body []string, bodyStart, lineBase int) []doctree.Node {
 	// NOT parseDirectiveBlock: gatherExplicitBody has already trimmed the
 	// blank line that separates a same-line argument from the content, so
 	// that split would run past it and read the first content paragraph as
@@ -130,7 +130,10 @@ func (p *parser) runClassDirective(name, args string, body []string) []doctree.N
 	// ['c1','c2','the','classes','are','applied', ...].
 	if len(content) > 0 {
 		container := doctree.NewElement(doctree.TagDocument)
-		p.parseBlockLines(content, container, -1)
+		// content is a SUFFIX of body, so its first line is
+		// bodyStart + however many body lines were consumed as the
+		// argument or trimmed as blanks.
+		p.parseBlockLines(content, container, nestedLineBase(bodyStart+len(body)-len(content), lineBase))
 		out := make([]doctree.Node, 0, len(container.Children))
 		for _, c := range container.Children {
 			if ce, ok := c.(*doctree.Element); ok && len(classes) > 0 {

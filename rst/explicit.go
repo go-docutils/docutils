@@ -886,7 +886,7 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		return []doctree.Node{el}, next
 	}
 	if strings.EqualFold(name, "class") || strings.EqualFold(name, "rst-class") {
-		return p.runClassDirective(name, args, body), next
+		return p.runClassDirective(name, args, body, bodyStartIndex(lines, i), lineBase), next
 	}
 	if strings.EqualFold(name, "sectnum") || strings.EqualFold(name, "section-numbering") {
 		return runSectnumDirective(args, body), next
@@ -932,10 +932,10 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		return p.registerRole(lines, i, next, args, body), next
 	}
 	if name == "table" {
-		return p.runTableDirective(lines, i, next, args, body), next
+		return p.runTableDirective(lines, i, next, lineBase, args, body), next
 	}
 	if name == "list-table" {
-		return p.runListTableDirective(lines, i, next, args, body), next
+		return p.runListTableDirective(lines, i, next, lineBase, args, body), next
 	}
 	// Directive names are matched case-INSENSITIVELY — real docutils'
 	// own directive registry does the same (directives.directive,
@@ -954,10 +954,10 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		return p.runContainerDirective(lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "header") {
-		return p.runHeaderOrFooterDirective(true, lines, i, next, args, body), next
+		return p.runHeaderOrFooterDirective(true, lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "footer") {
-		return p.runHeaderOrFooterDirective(false, lines, i, next, args, body), next
+		return p.runHeaderOrFooterDirective(false, lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "default-role") {
 		return p.runDefaultRoleDirective(lines, i, next, args), next
@@ -978,7 +978,7 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		return p.runImageDirective(lines, i, next, args, body, ""), next
 	}
 	if strings.EqualFold(name, "figure") {
-		return p.runFigureDirective(lines, i, next, args, body), next
+		return p.runFigureDirective(lines, i, next, lineBase, args, body), next
 	}
 	if isCodeDirectiveName(name) {
 		return p.runCodeDirective(name, lines, i, next, args, body), next
@@ -1012,6 +1012,20 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		el.Append(&doctree.Text{Data: strings.Join(body, "\n")})
 	}
 	return []doctree.Node{el}, next
+}
+
+// bodyStartIndex is the absolute index of body[0] as gatherExplicitBody
+// returns it: the first non-blank line under the directive, that
+// function having trimmed the leading blanks. A caller whose content is
+// a SUFFIX of body (the class and table directives, which split options
+// off themselves rather than through parseDirectiveBlock) turns a
+// content index into a source line with it.
+func bodyStartIndex(lines []string, i int) int {
+	j := i + 1
+	for j < len(lines) && isBlankStr(lines[j]) {
+		j++
+	}
+	return j
 }
 
 // unknownDirectiveDiagnostics ports the pair docutils raises for a
