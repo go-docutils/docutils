@@ -917,6 +917,18 @@ combined block. **Still `-1`**: a table CELL, which needs a per-row
 offset — so the table directives' own threading, while correct, cannot
 be observed until that is done.
 
+`.. csv-table::` (v0.101.0+) reads its content — and its `:header:`
+option — as CSV and lays the result out with the same
+`tgroup`/`colspec`/`thead`/`tbody` assembly the `list-table` directive
+uses. The dialect is docutils' own `DocutilsDialect` defaults (comma,
+`"` quote, doubled quotes, whitespace after a delimiter discarded),
+which is Go's `encoding/csv` with `TrimLeadingSpace`. Ragged rows are
+padded to the widest rather than rejected. **Not ported**: `:file:` and
+`:url:`, which read from the filesystem or network while parsing, and
+`:delim:`/`:quote:`/`:escape:`/`:keepspace:`, which change the dialect —
+such an invocation falls back to the structural `<directive>` capture
+rather than producing a wrong table.
+
 A directive argument spanning two source lines keeps its LINE BREAK
 (v0.100.0+): `parse_directive_arguments` joins the argument block with
 `"\n"`, and a directive declaring `final_argument_whitespace` passes the
