@@ -813,20 +813,26 @@ func normalizeWhitespace(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-func isDirectiveNameChar(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
-		(b >= '0' && b <= '9') || b == '-' || b == '_' || b == '+' || b == '.'
-}
-
 // matchDirectiveName recognizes "name:: arguments" at the start of rest.
+//
+// The name is docutils' own `simplename` -- alphanumeric runs joined by
+// "-._+:" -- which scanSimpleName already implements for ROLES (v0.54.0).
+// This function had its own character-class loop, missing ":" entirely,
+// so a namespaced directive like ".. rst:directive:: x" fell through to
+// the comment fallback instead of being reported as an unknown directive.
+// The two sibling scans had drifted apart exactly the way the email and
+// URI end-boundary tests had (v0.87.0).
+//
+// Using the shared grammar also makes a LEADING "_" stop being a name
+// character, matching simplename's own "(?<!_)(?:(?!_)\w)+": ".. _x:: y"
+// is not a directive in docutils either.
 func matchDirectiveName(rest string) (name, args string, ok bool) {
-	j := 0
-	for j < len(rest) && isDirectiveNameChar(rest[j]) {
-		j++
-	}
-	if j == 0 {
+	runes := []rune(rest)
+	end := scanSimpleName(runes, 0)
+	if end == 0 {
 		return "", "", false
 	}
+	j := len(string(runes[:end]))
 	k := j
 	if k < len(rest) && rest[k] == ' ' {
 		k++
