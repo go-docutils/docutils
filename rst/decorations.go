@@ -19,7 +19,7 @@ import (
 // footer always last, regardless of declaration order) is deferred to
 // hoistDecoration, run once at the end of Parse — see headerEl/footerEl's
 // own doc comment on the parser struct.
-func (p *parser) runHeaderOrFooterDirective(isHeader bool, lines []string, i, next int, args string, body []string) []doctree.Node {
+func (p *parser) runHeaderOrFooterDirective(isHeader bool, lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
 	lineno := i + 1
 	blockText := strings.Join(lines[i:next], "\n")
 	directiveName := "footer"
@@ -37,8 +37,13 @@ func (p *parser) runHeaderOrFooterDirective(isHeader bool, lines []string, i, ne
 		content = append(content, "")
 	}
 	content = append(content, body...)
+	// content is built as [args] + blanks + body, mirroring lines[i:] one
+	// for one, so the trimmed leading blanks are exactly the offset from
+	// line i to the content's own first line.
+	contentStart := 0
 	for len(content) > 0 && isBlankStr(content[0]) {
 		content = content[1:]
+		contentStart++
 	}
 	for len(content) > 0 && isBlankStr(content[len(content)-1]) {
 		content = content[:len(content)-1]
@@ -60,7 +65,7 @@ func (p *parser) runHeaderOrFooterDirective(isHeader bool, lines []string, i, ne
 	if *el == nil {
 		*el = doctree.NewElement(tag)
 	}
-	p.parseBlockLines(content, *el, -1)
+	p.parseBlockLines(content, *el, nestedLineBase(i+contentStart, lineBase))
 	return nil
 }
 

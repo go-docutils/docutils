@@ -39,6 +39,19 @@ func TestDiagnosticInsideDirectiveContentHasALine(t *testing.T) {
 			".. note::\n\n    one\n\n    See :issue:`7`.\n", `line="5"`,
 		},
 		{"a container body", "text\n\n.. container:: cls\n\n    See :issue:`7`.\n", `line="5"`},
+		// v0.97.0 wired the rest of the directives that nest content.
+		// The class and table directives split their options off
+		// themselves rather than through parseDirectiveBlock, so their
+		// content is a SUFFIX of the body and needs bodyStartIndex
+		// instead of the block offset -- two derivations, both pinned.
+		{"a class directive body", "x\n\n.. class:: c1\n\n   See :issue:`7`.\n", `line="5"`},
+		{"a figure body", "x\n\n.. figure:: a.png\n\n   See :issue:`7`.\n", `line="5"`},
+		// The table directives are threaded too, but their content IS a
+		// table, and a table CELL still parses at -1 -- so nothing
+		// diagnosed inside one can show it yet. Deliberately not tested
+		// here rather than tested against the wrong shape: a cell needs
+		// a per-row offset this round does not derive.
+		{"a header directive body", ".. header::\n\n   See :issue:`7`.\n", `line="3"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

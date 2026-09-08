@@ -263,7 +263,7 @@ func directiveError(directiveName, detail string, lineno int, blockText string) 
 // package's own scope notes elsewhere), so a content body opening with
 // something like ".. class:: custom" before its caption is not
 // reproduced byte-for-byte; the <target> pass-through alone still works.
-func (p *parser) runFigureDirective(lines []string, i, next int, args string, body []string) []doctree.Node {
+func (p *parser) runFigureDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
 	lineno := i + 1
 	blockText := strings.Join(lines[i:next], "\n")
 	blanks := 0
@@ -276,7 +276,7 @@ func (p *parser) runFigureDirective(lines []string, i, next int, args string, bo
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content := parseDirectiveBlock(combined, true)
+	argument, options, content, contentStart := parseDirectiveBlockAt(combined, true)
 	if argument == "" {
 		return []doctree.Node{directiveError("figure", "1 argument(s) required, 0 supplied", lineno, blockText)}
 	}
@@ -326,7 +326,7 @@ func (p *parser) runFigureDirective(lines []string, i, next int, args string, bo
 
 	if len(content) > 0 && !allBlank(content) {
 		tmp := doctree.NewElement("")
-		p.parseBlockLines(content, tmp, -1)
+		p.parseBlockLines(content, tmp, nestedLineBase(i+contentStart, lineBase))
 		captionIdx := -1
 		for j, c := range tmp.Children {
 			ce, ok := c.(*doctree.Element)
