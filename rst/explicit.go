@@ -980,6 +980,9 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 	if strings.EqualFold(name, "figure") {
 		return p.runFigureDirective(lines, i, next, lineBase, args, body), next
 	}
+	if _, ok := blockQuoteDirectiveClasses[strings.ToLower(name)]; ok {
+		return p.runBlockQuoteDirective(name, args, body, bodyStartIndex(lines, i), lineBase), next
+	}
 	if isCodeDirectiveName(name) {
 		return p.runCodeDirective(name, lines, i, next, args, body), next
 	}
@@ -1610,7 +1613,7 @@ func isImplementedDirective(name string) bool {
 		return true
 	}
 	switch strings.ToLower(name) {
-	case testDirectiveName, "code-block", "sourcecode":
+	case testDirectiveName, "code-block", "sourcecode", "epigraph", "highlights", "pull-quote":
 		return true
 	}
 	switch strings.ToLower(name) {

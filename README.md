@@ -917,6 +917,13 @@ combined block. **Still `-1`**: a table CELL, which needs a per-row
 offset — so the table directives' own threading, while correct, cannot
 be observed until that is done.
 
+`.. epigraph::`, `.. highlights::` and `.. pull-quote::` (v0.98.0+) are
+a block quote carrying a class and nothing else: `BlockQuote.run` calls
+`state.block_quote()` on its own content and appends its class list, so
+an attribution line inside one becomes an `<attribution>` exactly as in
+a bare quote. They declare NO options, so a `:class:` line under one is
+CONTENT and parses as a field list inside the quote.
+
 The `code` directive VALIDATES its options (v0.96.0+): `CodeBlock`'s
 `option_spec` has exactly `class`, `name` and `number-lines`, and
 anything else — sphinx's `:caption:`, `:emphasize-lines:` — is an
