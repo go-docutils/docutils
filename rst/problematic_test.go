@@ -137,7 +137,7 @@ func TestAnonymousMismatchBecomesProblematic(t *testing.T) {
 		{
 			"MORE TARGETS than references also mismatches — not just an excess of references",
 			".. __: https://a.example\n.. __: https://b.example\n\nOnly one used: first__.\n",
-			"<document>\n    <target anonymous=\"1\" refuri=\"https://a.example\">\n    <target anonymous=\"1\" refuri=\"https://b.example\">\n    <paragraph>\n        Only one used: \n        <problematic id=\"problematic-2\" refid=\"system-message-1\">\n            first\n        .\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-2\" id=\"system-message-1\">\n            <paragraph>\n                Anonymous hyperlink mismatch: 1 references but 2 targets.\n",
+			"<document>\n    <target anonymous=\"1\" id=\"target-1\" refuri=\"https://a.example\">\n    <target anonymous=\"1\" id=\"target-2\" refuri=\"https://b.example\">\n    <paragraph>\n        Only one used: \n        <problematic id=\"problematic-2\" refid=\"system-message-1\">\n            first\n        .\n    <section class=\"system-messages\">\n        <title>\n            Docutils System Messages\n        <system_message backref=\"problematic-2\" id=\"system-message-1\">\n            <paragraph>\n                Anonymous hyperlink mismatch: 1 references but 2 targets.\n",
 		},
 		{
 			// The anonymous references carry no refuri here because
@@ -146,7 +146,7 @@ func TestAnonymousMismatchBecomesProblematic(t *testing.T) {
 			// What this case checks is the absence of the diagnostic.
 			"a balanced count is unaffected, no trailing section at all",
 			".. __: https://a.example\n.. __: https://b.example\n\nBoth used: first__ and second__.\n",
-			"<document>\n    <target anonymous=\"1\" refuri=\"https://a.example\">\n    <target anonymous=\"1\" refuri=\"https://b.example\">\n    <paragraph>\n        Both used: \n        <reference anonymous=\"1\" name=\"first\">\n            first\n         and \n        <reference anonymous=\"1\" name=\"second\">\n            second\n        .\n",
+			"<document>\n    <target anonymous=\"1\" id=\"target-1\" refuri=\"https://a.example\">\n    <target anonymous=\"1\" id=\"target-2\" refuri=\"https://b.example\">\n    <paragraph>\n        Both used: \n        <reference anonymous=\"1\" name=\"first\">\n            first\n         and \n        <reference anonymous=\"1\" name=\"second\">\n            second\n        .\n",
 		},
 	}
 	for _, tc := range cases {

@@ -911,6 +911,13 @@ content begins and the caller adds `i`. **Still `-1`**: table cells, and
 the remaining directives that nest content (`decorations`, `image`'s
 figure body, `pending`, the table directives).
 
+An anonymous hyperlink target may be written `__ uri` with no `.. `
+prefix (v0.95.0+). It is a Body transition of its own (`__( +|$)`), so
+it fires only at the START of a block — the same text inside a paragraph
+stays ordinary text. Both spellings now also carry the id
+`note_anonymous_target` gives them (`target-1`, `target-2`, …), which
+neither had before.
+
 **Ids come from ONE namespace, claimed in document order** (v0.94.0+).
 `document.set_id` has a single set per document, and `new_subsection`
 claims a section's id while the section is being parsed — so a section

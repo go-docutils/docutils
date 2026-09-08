@@ -162,7 +162,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i, lineBase int, parent *do
 		return p.parseFootnoteOrCitation(lines, i, lineBase, label, labelRest)
 	}
 	if strings.HasPrefix(rest, "__:") {
-		node, next := parseAnonymousTarget(lines, i, rest[3:])
+		node, next := p.parseAnonymousTarget(lines, i, rest[3:])
 		return []doctree.Node{node}, next
 	}
 	if len(rest) > 1 && rest[0] == '_' && rest[1] != ' ' {
@@ -1176,7 +1176,22 @@ func (p *parser) parseHyperlinkTarget(lines []string, i int, rest string) (doctr
 // refuri set, this codebase's usual treatment of an unresolved reference,
 // rather than docutils' own refid-to-the-target-itself fallback, which
 // depends on error-reporting machinery not implemented here).
-func parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int) {
+// isAnonymousTargetLine matches docutils' Body pattern `__( +|$)`: the
+// SHORTHAND spelling of an anonymous hyperlink target, with no ".. "
+// prefix at all. It is a Body-state transition of its own, listed
+// between explicit_markup and line, so it only ever fires at the start
+// of a block -- a "__ " inside a paragraph is ordinary text, which
+// consumeParagraph already handles by ignoring a continuation line's
+// shape.
+func isAnonymousTargetLine(s string) bool {
+	if !strings.HasPrefix(s, "__") {
+		return false
+	}
+	rest := s[2:]
+	return rest == "" || strings.HasPrefix(rest, " ")
+}
+
+func (p *parser) parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int) {
 	body, _, next := gatherExplicitBody(lines, i)
 	uri := strings.TrimSpace(rest)
 	for _, l := range body {
@@ -1184,6 +1199,10 @@ func parseAnonymousTarget(lines []string, i int, rest string) (doctree.Node, int
 	}
 	el := doctree.NewElement(doctree.TagTarget)
 	el.SetAttr("anonymous", anonymousAttrValue)
+	// note_anonymous_target calls set_id like every other target, so an
+	// anonymous one is "target-1", "target-2", ... -- neither spelling
+	// carried an id here at all.
+	el.SetAttr("id", p.autoID("target"))
 	if indirect, ok := bareIndirectTargetName(uri); ok {
 		el.SetAttr("refname", normalizeName(indirect))
 	} else if uri != "" {
