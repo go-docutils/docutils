@@ -29,8 +29,8 @@ var admonitionTags = map[string]string{
 // runAdmonitionDirective implements BaseAdmonition.run for one of the
 // nine generic admonitions — tag is already resolved by the caller
 // (case-insensitive directive-name lookup in admonitionTags).
-func (p *parser) runAdmonitionDirective(tag string, lines []string, i, next int, args string, body []string) []doctree.Node {
-	return p.runAdmonitionOrGeneric(tag, "", lines, i, next, args, body)
+func (p *parser) runAdmonitionDirective(tag string, lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
+	return p.runAdmonitionOrGeneric(tag, "", lines, i, next, lineBase, args, body)
 }
 
 // runGenericAdmonitionDirective implements Admonition.run (the
@@ -39,8 +39,8 @@ func (p *parser) runAdmonitionDirective(tag string, lines []string, i, next int,
 // directive title, and — unless an explicit :class: option overrides it
 // — the admonition's own default class becomes "admonition-<slug of the
 // title>" (nodes.make_id, read directly).
-func (p *parser) runGenericAdmonitionDirective(lines []string, i, next int, args string, body []string) []doctree.Node {
-	return p.runAdmonitionOrGeneric(doctree.TagAdmonition, "REQUIRED", lines, i, next, args, body)
+func (p *parser) runGenericAdmonitionDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
+	return p.runAdmonitionOrGeneric(doctree.TagAdmonition, "REQUIRED", lines, i, next, lineBase, args, body)
 }
 
 // runAdmonitionOrGeneric is the shared implementation: requireArg is ""
@@ -48,8 +48,8 @@ func (p *parser) runGenericAdmonitionDirective(lines []string, i, next int, args
 // after "::" is the directive's own FIRST content line, not an
 // argument) or "REQUIRED" for ".. admonition::" (exactly one argument,
 // becoming a <title>).
-func (p *parser) runAdmonitionOrGeneric(tag, requireArg string, lines []string, i, next int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+func (p *parser) runAdmonitionOrGeneric(tag, requireArg string, lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	directiveName := lines[i][3:]
 	if idx := strings.Index(directiveName, "::"); idx >= 0 {
@@ -73,7 +73,7 @@ func (p *parser) runAdmonitionOrGeneric(tag, requireArg string, lines []string, 
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content := parseDirectiveBlock(combined, requireArg != "")
+	argument, options, content, contentStart := parseDirectiveBlockAt(combined, requireArg != "")
 	if requireArg != "" && argument == "" {
 		return []doctree.Node{sectionMessage("3", "ERROR",
 			"Error in \""+directiveName+"\" directive:\n1 argument(s) required, 0 supplied.", lineno, blockText)}
@@ -101,7 +101,11 @@ func (p *parser) runAdmonitionOrGeneric(tag, requireArg string, lines []string, 
 			el.SetAttr("class", "admonition-"+makeID(argument))
 		}
 	}
-	p.parseBlockLines(content, el, -1)
+	// combined[k] is lines[i+k] one for one -- it was built from the
+	// same slice -- so the content's own first line is lines[i+contentStart]
+	// and a real base can be handed down. Every diagnostic raised inside
+	// an admonition's body used to carry no line at all.
+	p.parseBlockLines(content, el, nestedLineBase(i+contentStart, lineBase))
 
 	out := []doctree.Node{el}
 	for _, m := range titleMsgs {
@@ -127,7 +131,22 @@ func (p *parser) runAdmonitionOrGeneric(tag, requireArg string, lines []string, 
 // as the real argument text when hasArgument, or folds back into
 // content when the directive takes no argument at all (matching every
 // admonition here except ".. admonition::" itself).
+// parseDirectiveBlock is parseDirectiveBlockAt without the offset, for
+// the callers that only want the split.
 func parseDirectiveBlock(combined []string, hasArgument bool) (argument string, options map[string]string, content []string) {
+	argument, options, content, _ = parseDirectiveBlockAt(combined, hasArgument)
+	return argument, options, content
+}
+
+// parseDirectiveBlockAt also reports where the CONTENT begins as an index
+// into the combined block the caller passed in. Since combined is built
+// as [text after "::"] + [the blank lines under it] + [the body],
+// mirroring lines[i:] one for one, that index turns a content line back
+// into an absolute source line -- which is what a diagnostic raised
+// INSIDE a directive's content needs in order to carry a line number at
+// all. Without it every such message came out with none.
+func parseDirectiveBlockAt(combined []string, hasArgument bool) (argument string, options map[string]string, content []string, contentStart int) {
+	off := 0
 	for len(combined) > 0 && isBlankStr(combined[len(combined)-1]) {
 		combined = combined[:len(combined)-1]
 	}
@@ -144,6 +163,7 @@ func parseDirectiveBlock(combined []string, hasArgument bool) (argument string, 
 	// starts on a later line at all.
 	if len(combined) > 0 && isBlankStr(combined[0]) {
 		combined = combined[1:]
+		off++
 	}
 
 	blankAt := -1
@@ -176,6 +196,10 @@ func parseDirectiveBlock(combined []string, hasArgument bool) (argument string, 
 	options = parseFieldListBlock(optBlock)
 
 	content = rest
+	contentStart = off
+	if blankAt >= 0 {
+		contentStart = off + blankAt + 1
+	}
 	if len(argBlock) > 0 && !hasArgument {
 		// Body.parse_directive_block's own fold-back is "arg_block +
 		// indented[i:]" (read directly) — indented[i:], NOT indented[i+1:],
@@ -196,13 +220,17 @@ func parseDirectiveBlock(combined []string, hasArgument bool) (argument string, 
 		} else {
 			content = append([]string{}, argBlock...)
 		}
+		// The fold-back starts at the argument block, which is where the
+		// options were split off -- i.e. right at the top of combined.
+		contentStart = off
 		argBlock = nil
 	}
 	for len(content) > 0 && isBlankStr(content[0]) {
 		content = content[1:]
+		contentStart++
 	}
 	argument = strings.TrimSpace(strings.Join(argBlock, " "))
-	return argument, options, content
+	return argument, options, content, contentStart
 }
 
 // parseFieldListBlock parses lines as a plain ":key: value" run —

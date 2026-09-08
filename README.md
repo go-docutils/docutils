@@ -899,6 +899,18 @@ it. This parser kept the quotes in the `name` while dropping them from
 the `id` (`make_id` drops them anyway), so the two disagreed — on every
 phrase target pytest's and sphinx's documentation writes.
 
+A diagnostic raised INSIDE a directive's body now carries a real source
+line (v0.93.0+, admonitions and `container`). `parseBlockLines` takes a
+`lineBase` so a nested construct can map local indices back to absolute
+ones — block quotes, list items, field bodies, option lists and
+definitions all compute one, and every directive passed `-1`. The
+mapping is exact rather than approximate: a directive's combined block is
+`[text after "::"] + [the blank lines under it] + [the body]`, mirroring
+`lines[i:]` one for one, so `parseDirectiveBlockAt` reports where the
+content begins and the caller adds `i`. **Still `-1`**: table cells, and
+the remaining directives that nest content (`decorations`, `image`'s
+figure body, `pending`, the table directives).
+
 A duplicate SECTION name is reported against the title's **underline**
 (v0.91.0+) — the last line of the title construct, and so the state
 machine's own position once it has read the whole thing, overlined form
