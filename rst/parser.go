@@ -493,6 +493,12 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
+		if isAnonymousTargetLine(lines[i]) {
+			node, next := p.parseAnonymousTarget(lines, i, strings.TrimPrefix(lines[i][2:], " "))
+			current.Append(node)
+			i = next
+			continue
+		}
 		if title, style, consumed, warning, ok := matchTitle(lines, i, demotedAt == i); ok {
 			// The title TEXT's own line, not the overline's — verified
 			// against the foreign judge for both styles (an overlined
@@ -729,6 +735,12 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 			for _, n := range nodes {
 				parent.Append(n)
 			}
+			i = next
+			continue
+		}
+		if isAnonymousTargetLine(lines[i]) {
+			node, next := p.parseAnonymousTarget(lines, i, strings.TrimPrefix(lines[i][2:], " "))
+			parent.Append(node)
 			i = next
 			continue
 		}
