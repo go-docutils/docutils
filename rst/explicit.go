@@ -1021,8 +1021,25 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 // get_first_known_indented(0, strip_indent=False), not the dedenting
 // form every implemented directive's body goes through.
 func unknownDirectiveDiagnostics(name string, lines []string, i, next, lineBase int) []doctree.Node {
+	// Body.unknown_directive quotes get_first_known_indented(0)'s block,
+	// which runs through EVERY blank line under the directive; only the
+	// one that TERMINATES the block is dropped. So one blank line after
+	// the directive leaves nothing behind, two leave one blank inside the
+	// quoted block, three leave two -- checked against the reference for
+	// each of those. Trimming them all, as this did, is right for a
+	// single blank and wrong for every larger run: 68 real-world files
+	// (a PEP convention of two blank lines before a section) differed on
+	// exactly this.
+	end := next
+	for end < len(lines) && isBlankStr(lines[end]) {
+		end++
+	}
+	// Nothing is trimmed: joining the list keeps one "\n" per blank, and
+	// Text.pformat's own splitlines() drops exactly one trailing empty
+	// element at PRINT time (see doctree.Dump) -- which is where the
+	// asymmetry lives. Trimming here as well removed it twice.
 	return unknownDirectiveBlockDiagnostics(name,
-		strings.Join(trimTrailingBlankLines(lines[i:next]), "\n"), msgLine(i, lineBase))
+		strings.Join(lines[i:end], "\n"), msgLine(i, lineBase))
 }
 
 // unknownDirectiveBlockDiagnostics is the same pair for a caller that
