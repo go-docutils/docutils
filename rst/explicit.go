@@ -981,7 +981,7 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 		return p.runFigureDirective(lines, i, next, args, body), next
 	}
 	if isCodeDirectiveName(name) {
-		return p.runCodeDirective(lines, i, next, args, body), next
+		return p.runCodeDirective(name, lines, i, next, args, body), next
 	}
 	if strings.EqualFold(name, "rubric") {
 		return p.runRubricDirective(lines, i, next, args, body), next
