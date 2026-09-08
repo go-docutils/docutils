@@ -17,8 +17,8 @@ import (
 // exercises it, and classOption never fails validation the way the real
 // regex-based one can (it silently substitutes invalid characters
 // instead), matching this project's existing class_option port.
-func (p *parser) runContainerDirective(lines []string, i, next int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+func (p *parser) runContainerDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	directiveName := lines[i][3:]
 	if idx := strings.Index(directiveName, "::"); idx >= 0 {
@@ -35,7 +35,7 @@ func (p *parser) runContainerDirective(lines []string, i, next int, args string,
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content := parseDirectiveBlock(combined, true)
+	argument, options, content, contentStart := parseDirectiveBlockAt(combined, true)
 
 	if len(content) == 0 || allBlank(content) {
 		return []doctree.Node{sectionMessage("3", "ERROR",
@@ -51,6 +51,7 @@ func (p *parser) runContainerDirective(lines []string, i, next int, args string,
 		el.SetAttr("name", name)
 		el.SetAttr("id", makeID(name))
 	}
-	p.parseBlockLines(content, el, -1)
+	// combined[k] is lines[i+k]; see runAdmonitionOrGeneric.
+	p.parseBlockLines(content, el, nestedLineBase(i+contentStart, lineBase))
 	return []doctree.Node{el}
 }

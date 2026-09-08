@@ -942,16 +942,16 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 	// states.py, read directly) — ".. Attention::"/".. WARNING::" work
 	// exactly like ".. attention::"/".. warning::".
 	if tag, ok := admonitionTags[strings.ToLower(name)]; ok {
-		return p.runAdmonitionDirective(tag, lines, i, next, args, body), next
+		return p.runAdmonitionDirective(tag, lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "admonition") {
-		return p.runGenericAdmonitionDirective(lines, i, next, args, body), next
+		return p.runGenericAdmonitionDirective(lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "compound") {
-		return p.runAdmonitionOrGeneric(doctree.TagCompound, "", lines, i, next, args, body), next
+		return p.runAdmonitionOrGeneric(doctree.TagCompound, "", lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "container") {
-		return p.runContainerDirective(lines, i, next, args, body), next
+		return p.runContainerDirective(lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "header") {
 		return p.runHeaderOrFooterDirective(true, lines, i, next, args, body), next
