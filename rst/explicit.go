@@ -980,6 +980,13 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 	if strings.EqualFold(name, "figure") {
 		return p.runFigureDirective(lines, i, next, lineBase, args, body), next
 	}
+	if strings.EqualFold(name, "csv-table") {
+		if nodes, ok := p.runCSVTableDirective(lines, i, next, lineBase, args, body); ok {
+			return nodes, next
+		}
+		// An invocation this port does not cover (:file:, :url:, or a
+		// changed dialect): fall through to the structural capture.
+	}
 	if strings.EqualFold(name, "contents") {
 		return p.runContentsDirective(args, body, lineBase, i), next
 	}
@@ -1616,7 +1623,7 @@ func isImplementedDirective(name string) bool {
 		return true
 	}
 	switch strings.ToLower(name) {
-	case testDirectiveName, "code-block", "sourcecode", "epigraph", "highlights", "pull-quote", "contents":
+	case testDirectiveName, "code-block", "sourcecode", "epigraph", "highlights", "pull-quote", "contents", "csv-table":
 		return true
 	}
 	switch strings.ToLower(name) {
