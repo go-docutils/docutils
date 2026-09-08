@@ -911,6 +911,15 @@ content begins and the caller adds `i`. **Still `-1`**: table cells, and
 the remaining directives that nest content (`decorations`, `image`'s
 figure body, `pending`, the table directives).
 
+The `code` directive VALIDATES its options (v0.96.0+): `CodeBlock`'s
+`option_spec` has exactly `class`, `name` and `number-lines`, and
+anything else — sphinx's `:caption:`, `:emphasize-lines:` — is an
+`unknown option` ERROR with no `<literal_block>` produced at all. Both
+that message and the missing-content one name the directive AS WRITTEN,
+so `.. code-block::` says `code-block`. The option scan stops where the
+CONTENT begins: a code block's own content may start with something
+field-marker-shaped, which is not an option.
+
 An anonymous hyperlink target may be written `__ uri` with no `.. `
 prefix (v0.95.0+). It is a Body transition of its own (`__( +|$)`), so
 it fires only at the START of a block — the same text inside a paragraph

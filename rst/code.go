@@ -29,7 +29,7 @@ import (
 // lexical analysis (NumberLines, read directly): a leading <inline
 // class="ln"> line-number marker before the content and after every
 // embedded newline, right-padded to the width of the LAST line number.
-func (p *parser) runCodeDirective(lines []string, i, next int, args string, body []string) []doctree.Node {
+func (p *parser) runCodeDirective(name string, lines []string, i, next int, args string, body []string) []doctree.Node {
 	lineno := i + 1
 	blockText := strings.Join(lines[i:next], "\n")
 
@@ -43,11 +43,39 @@ func (p *parser) runCodeDirective(lines []string, i, next int, args string, body
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content := parseDirectiveBlock(combined, true)
+	argument, options, content, contentStart := parseDirectiveBlockAt(combined, true)
+
+	// CodeBlock.option_spec has exactly three entries; anything else is
+	// an "unknown option" ERROR and no <literal_block> is produced at
+	// all. Sphinx's own :caption:/:emphasize-lines: are the ones real
+	// documents carry, and this parser was silently ignoring them.
+	//
+	// Scanned from the block rather than from the options map, because
+	// docutils reports the FIRST unknown option in source order and a Go
+	// map has none -- but ONLY as far as the content begins. A code
+	// block's own CONTENT may perfectly well start with something
+	// field-marker-shaped (sphinx's docs show ":no-search:" inside a
+	// ".. code-block:: rst"), and scanning past that point rejected two
+	// real-world files that had been matching.
+	for _, l := range combined[:min(contentStart, len(combined))] {
+		key, _, ok := matchFieldMarker(l)
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "class", "name", "number-lines":
+		default:
+			return []doctree.Node{sectionMessage("3", "ERROR",
+				`Error in "`+name+`" directive:`+"\n"+`unknown option: "`+strings.TrimSpace(key)+`".`,
+				lineno, blockText)}
+		}
+	}
 
 	if len(content) == 0 || allBlank(content) {
+		// The name as WRITTEN: ".. code-block::" with no content says
+		// "code-block", not "code".
 		return []doctree.Node{sectionMessage("3", "ERROR",
-			`Content block expected for the "code" directive; none found.`, lineno, blockText)}
+			`Content block expected for the "`+name+`" directive; none found.`, lineno, blockText)}
 	}
 
 	classes := []string{"code"}
