@@ -917,6 +917,16 @@ combined block. **Still `-1`**: a table CELL, which needs a per-row
 offset — so the table directives' own threading, while correct, cannot
 be observed until that is done.
 
+`.. contents::` (v0.99.0+) produces its PARSE-TIME shape: a `<topic>`
+classed `contents` (plus `local`, plus any `:class:`), an optional
+`<title>` — the argument, or the default label, or NONE at all under
+`:local:` — and the `<pending>` a later transform replaces with the real
+table of contents. Its details carry the parsed options, so `:depth:`
+prints as a bare integer, a flag as `None`, and `:backlinks: none` as
+`None` while `:backlinks: top` keeps its string. **Not ported**: the
+"may not be used within topics or body elements" context check, which
+needs a parent-state notion this parser does not keep.
+
 `.. epigraph::`, `.. highlights::` and `.. pull-quote::` (v0.98.0+) are
 a block quote carrying a class and nothing else: `BlockQuote.run` calls
 `state.block_quote()` on its own content and appends its class list, so
