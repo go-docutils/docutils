@@ -911,6 +911,16 @@ content begins and the caller adds `i`. **Still `-1`**: table cells, and
 the remaining directives that nest content (`decorations`, `image`'s
 figure body, `pending`, the table directives).
 
+**Ids come from ONE namespace, claimed in document order** (v0.94.0+).
+`document.set_id` has a single set per document, and `new_subsection`
+claims a section's id while the section is being parsed — so a section
+ABOVE a colliding target keeps the bare id and the target takes the
+suffix, and below it the reverse. This parser assigned section ids in a
+pass AFTER parsing, from a private map, so `.. _get-started:` over a
+"Get Started" heading gave both nodes `id="get-started"` (not a valid
+document at all), and the ordering of the pair was inverted whenever a
+section came first.
+
 A duplicate SECTION name is reported against the title's **underline**
 (v0.91.0+) — the last line of the title construct, and so the state
 machine's own position once it has read the whole thing, overlined form

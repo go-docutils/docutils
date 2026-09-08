@@ -388,7 +388,6 @@ func ParseWithOptions(source string, opts Options) *doctree.Element {
 	p := &parser{opts: opts}
 	doc := doctree.NewElement(doctree.TagDocument)
 	p.parseDocument(splitLines(source), doc)
-	assignSectionTargets(doc)
 	p.resolveDuplicateNames(doc)
 	resolveTargets(doc, p.msgCount, opts.ReportDanglingReferences, opts.ResolveReferences)
 	if opts.NumberAutoFootnotes {
@@ -536,7 +535,18 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			}
 			p.nameLines[sec] = i + consumed
 			titleNodes, titleMsgs := p.parseInline(title, titleLine)
-			sec.Append(doctree.NewElement(doctree.TagTitle, titleNodes...))
+			titleEl := doctree.NewElement(doctree.TagTitle, titleNodes...)
+			sec.Append(titleEl)
+			// The id is claimed HERE, as the section is parsed, not in a
+			// later pass. docutils' set_id runs from new_subsection, so
+			// ids are taken in DOCUMENT ORDER: a section ABOVE a target
+			// that would collide keeps the bare id and the target gets
+			// the suffix. Assigning them afterwards inverted exactly that
+			// pair, which is why this moved out of assignSectionTargets.
+			if name := normalizeName(doctree.AsText(titleEl)); name != "" {
+				sec.SetAttr("name", name)
+				sec.SetAttr("id", p.explicitTargetID("section", name))
+			}
 			// real docutils' new_subsection: "section_node += messages;
 			// section_node += title_messages" — the too-short-underline/
 			// overline WARNING (if any) comes first, then the title's own
