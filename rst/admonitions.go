@@ -229,7 +229,13 @@ func parseDirectiveBlockAt(combined []string, hasArgument bool) (argument string
 		content = content[1:]
 		contentStart++
 	}
-	argument = strings.TrimSpace(strings.Join(argBlock, " "))
+	// Joined with a NEWLINE, not a space: parse_directive_arguments does
+	// "arg_text = '\n'.join(arg_block)" and, for a directive with
+	// final_argument_whitespace, hands the whole text through with its
+	// internal whitespace intact. A rubric or admonition title spanning
+	// two source lines keeps the line break; only a MULTI-line argument
+	// is affected at all, a single-line one being identical either way.
+	argument = strings.TrimSpace(strings.Join(argBlock, "\n"))
 	return argument, options, content, contentStart
 }
 
