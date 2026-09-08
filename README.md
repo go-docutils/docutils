@@ -892,6 +892,12 @@ This parser rescans instead, so it finds the address docutils drops. One
 real-world file rides on it, and it had been matching only because two
 errors cancelled.
 
+A duplicate SECTION name is reported against the title's **underline**
+(v0.91.0+) — the last line of the title construct, and so the state
+machine's own position once it has read the whole thing, overlined form
+included. Nothing recorded a line for a section before that, so every
+such message came out with none.
+
 **Two line conventions** live side by side (v0.85.0+). `Inliner.parse`
 passes its own `lineno` — the paragraph's FIRST line — to every
 diagnostic it raises, so an unclosed-markup or unknown-role message
