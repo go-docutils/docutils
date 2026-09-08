@@ -34,8 +34,13 @@ import (
 // ported, the same scope boundary already applied to title-style
 // consistency and table column-margin violations elsewhere in this
 // parser — see the package SCOPE note.
-func (p *parser) parseBlockQuotes(lines []string, i, lineBase int) ([]*doctree.Element, int) {
-	indented, next := consumeIndentedRun(lines, i)
+// blockQuotesFromBlock builds the block_quote siblings an already
+// DEDENTED block produces, splitting it on attribution lines. Factored
+// out of parseBlockQuotes so the epigraph/highlights/pull-quote
+// directives can reuse it: BlockQuote.run calls state.block_quote() on
+// its own content and then adds a class, so those three are this
+// routine plus one attribute (body.py, read directly).
+func (p *parser) blockQuotesFromBlock(indented []string, i, lineBase int) []*doctree.Element {
 	var out []*doctree.Element
 	// offset is how far into `indented` this iteration starts. Every entry
 	// of `indented` corresponds one-for-one to lines[i+offset+k]
@@ -68,6 +73,12 @@ func (p *parser) parseBlockQuotes(lines []string, i, lineBase int) ([]*doctree.E
 			offset++
 		}
 	}
+	return out
+}
+
+func (p *parser) parseBlockQuotes(lines []string, i, lineBase int) ([]*doctree.Element, int) {
+	indented, next := consumeIndentedRun(lines, i)
+	out := p.blockQuotesFromBlock(indented, i, lineBase)
 	// The same "ends without a blank line; unexpected unindent." warning
 	// every other indented construct already carries — docutils raises it
 	// from ONE shared RSTState.unindent_warning with nine call sites, of
