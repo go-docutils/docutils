@@ -1130,7 +1130,14 @@ func (p *parser) parseHyperlinkTarget(lines []string, i int, rest string) (doctr
 	// reference for "figure:caption:", "a:b:c: http://x", "name: uri" and
 	// a bare "plain:".
 	name, uri := rest, ""
-	if idx := targetNameEnd(rest); idx >= 0 {
+	if phrase, after, ok := splitPhraseTargetName(rest); ok {
+		// A PHRASE target: Body.patterns.target opens with an optional
+		// backquote and, when one is used, the name runs to its match --
+		// so the backquotes are delimiters, not part of the name, and a
+		// colon INSIDE them does not terminate it. ".. _`with: colon`:"
+		// is the single name "with: colon".
+		name, uri = phrase, after
+	} else if idx := targetNameEnd(rest); idx >= 0 {
 		name = rest[:idx]
 		uri = rest[idx+1:]
 	}
@@ -1599,6 +1606,37 @@ func hasBlankSeparatedParagraphs(body []string) bool {
 		seen = true
 	}
 	return false
+}
+
+// splitPhraseTargetName recognizes the BACKQUOTED form of a hyperlink
+// target name and returns the name without its quotes, plus whatever
+// follows the terminating colon. Body.patterns.target makes the quote
+// optional and pairs it with a back-reference, so an opened quote must
+// be closed and everything between is the name -- colons included.
+//
+// The quotes were being kept IN the name (name="`tmp_path handling`"),
+// which is how pytest and sphinx write every phrase target; the id was
+// already right, since make_id drops them anyway.
+func splitPhraseTargetName(rest string) (name, after string, ok bool) {
+	if !strings.HasPrefix(rest, "`") {
+		return "", "", false
+	}
+	for i := 1; i < len(rest); i++ {
+		if rest[i] == '\\' {
+			i++ // an escaped character cannot close the quote
+			continue
+		}
+		if rest[i] != '`' {
+			continue
+		}
+		tail := rest[i+1:]
+		tail = strings.TrimPrefix(tail, " ")
+		if !strings.HasPrefix(tail, ":") {
+			return "", "", false
+		}
+		return rest[1:i], tail[1:], true
+	}
+	return "", "", false
 }
 
 // targetNameEnd returns the index of the colon terminating a hyperlink

@@ -892,6 +892,13 @@ This parser rescans instead, so it finds the address docutils drops. One
 real-world file rides on it, and it had been matching only because two
 errors cancelled.
 
+A hyperlink target's name may be **backquoted** (v0.92.0+), and then the
+quotes are delimiters rather than part of the name: `.. _\`with: colon\`:`
+is the single name `with: colon`, the colon inside them not terminating
+it. This parser kept the quotes in the `name` while dropping them from
+the `id` (`make_id` drops them anyway), so the two disagreed — on every
+phrase target pytest's and sphinx's documentation writes.
+
 A duplicate SECTION name is reported against the title's **underline**
 (v0.91.0+) — the last line of the title construct, and so the state
 machine's own position once it has read the whole thing, overlined form
