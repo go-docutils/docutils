@@ -985,6 +985,11 @@ pass AFTER parsing, from a private map, so `.. _get-started:` over a
 document at all), and the ordering of the pair was inverted whenever a
 section came first.
 
+A duplicate-name message about an explicit hyperlink TARGET carries the
+target's OWN first line (v0.102.0+) — the `.. _name:` line, even when
+the URI continues below it. Footnotes, citations, substitution
+definitions and sections already recorded one; a target did not.
+
 A duplicate SECTION name is reported against the title's **underline**
 (v0.91.0+) — the last line of the title construct, and so the state
 machine's own position once it has read the whole thing, overlined form
