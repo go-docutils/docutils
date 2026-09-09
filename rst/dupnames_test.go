@@ -36,7 +36,7 @@ func TestDuplicateNames(t *testing.T) {
 			// explicit + explicit: BOTH invalidated, WARNING.
 			"two explicit targets with one name invalidate each other",
 			".. _dup: http://a\n.. _dup: http://b\n\ntext\n",
-			"<document>\n    <target dupname=\"dup\" id=\"dup\" refuri=\"http://a\">\n    <system_message level=\"2\" type=\"WARNING\">\n        <paragraph>\n            Duplicate explicit target name: \"dup\".\n    <target dupname=\"dup\" id=\"dup-1\" refuri=\"http://b\">\n    <paragraph>\n        text\n",
+			"<document>\n    <target dupname=\"dup\" id=\"dup\" refuri=\"http://a\">\n    <system_message level=\"2\" line=\"2\" type=\"WARNING\">\n        <paragraph>\n            Duplicate explicit target name: \"dup\".\n    <target dupname=\"dup\" id=\"dup-1\" refuri=\"http://b\">\n    <paragraph>\n        text\n",
 		},
 		{
 			// implicit over explicit: the EXPLICIT one wins and keeps its
@@ -58,7 +58,7 @@ func TestDuplicateNames(t *testing.T) {
 			// external target rather than a duplicate name.
 			"two targets naming the same URI keep the first and report an external duplicate",
 			".. _dup: http://a\n.. _dup: http://a\n\ntext\n",
-			"<document>\n    <target id=\"dup\" name=\"dup\" refuri=\"http://a\">\n    <system_message level=\"1\" type=\"INFO\">\n        <paragraph>\n            Duplicate name \"dup\" for external target \"http://a\".\n    <target dupname=\"dup\" id=\"dup-1\" refuri=\"http://a\">\n    <paragraph>\n        text\n",
+			"<document>\n    <target id=\"dup\" name=\"dup\" refuri=\"http://a\">\n    <system_message level=\"1\" line=\"2\" type=\"INFO\">\n        <paragraph>\n            Duplicate name \"dup\" for external target \"http://a\".\n    <target dupname=\"dup\" id=\"dup-1\" refuri=\"http://a\">\n    <paragraph>\n        text\n",
 		},
 		{
 			// The message is BUILT and then DROPPED when msgnode cannot

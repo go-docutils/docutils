@@ -166,7 +166,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i, lineBase int, parent *do
 		return []doctree.Node{node}, next
 	}
 	if len(rest) > 1 && rest[0] == '_' && rest[1] != ' ' {
-		node, next := p.parseHyperlinkTarget(lines, i, rest[1:])
+		node, next := p.parseHyperlinkTarget(lines, i, lineBase, rest[1:])
 		return []doctree.Node{node}, next
 	}
 	if subName, subRest, bodyStartIdx, ok := matchPipeLabelMultiline(lines, i, rest); ok {
@@ -1147,7 +1147,7 @@ func (p *parser) parseComment(lines []string, i, lineBase int, rest string) ([]d
 // embedded URI, both of which already set id correctly — so this
 // specific construct's own gap stayed invisible until a fixture combined
 // it with a substitution reference).
-func (p *parser) parseHyperlinkTarget(lines []string, i int, rest string) (doctree.Node, int) {
+func (p *parser) parseHyperlinkTarget(lines []string, i, lineBase int, rest string) (doctree.Node, int) {
 	body, _, next := gatherExplicitBody(lines, i)
 	// The name ends at the first colon FOLLOWED BY whitespace or the end
 	// of the line -- not at the first colon of any kind. A reference name
@@ -1176,6 +1176,16 @@ func (p *parser) parseHyperlinkTarget(lines []string, i int, rest string) (doctr
 	normalized := normalizeName(name)
 	el := doctree.NewElement(doctree.TagTarget)
 	el.SetAttr("name", normalized)
+	// The duplicate-name pass reports a target against its OWN first
+	// line -- the ".. _name:" line, even when the URI continues below.
+	// Footnotes, citations, substitution definitions and sections all
+	// recorded a line; an explicit hyperlink target did not, so every
+	// "Duplicate explicit target name" / "Target name overrides implicit
+	// target name" message about one came out with none.
+	if p.nameLines == nil {
+		p.nameLines = map[*doctree.Element]int{}
+	}
+	p.nameLines[el] = msgLine(i, lineBase)
 	el.SetAttr("id", p.explicitTargetID("target", normalized))
 	if indirect, ok := bareIndirectTargetName(uri); ok {
 		el.SetAttr("refname", normalizeName(indirect))
