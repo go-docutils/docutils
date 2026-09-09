@@ -91,6 +91,21 @@ func TestInlineLiteralBackslashes(t *testing.T) {
 		{"``a\\\\``\n", "<document>\n    <paragraph>\n        <literal>\n            a\\\\\n"},
 		// The end-boundary rule still applies after the close.
 		{"``a\\`` b\n", "<document>\n    <paragraph>\n        <literal>\n            a\\\n         b\n"},
+		// A LONE backslash is the whole content (v0.102.0+). The escaped
+		// backquote lends its backquote to the end string while the
+		// marker stays content, so the close lands at the very first
+		// content position -- which the "empty content" guard used to
+		// reject on position alone, making this a <problematic>. It is
+		// what PEP 12 writes when documenting line continuations.
+		{"``\\``\n", "<document>\n    <paragraph>\n        <literal>\n            \\\n"},
+		// And the guard that must SURVIVE that: four backquotes really
+		// are an empty literal, and docutils rejects them. Surrounded by
+		// text, because four identical characters ALONE on a line are a
+		// <transition> and never reach inline parsing at all -- which is
+		// how the first draft of this case tested the wrong layer.
+		{"x ```` y\n", "<document>\n    <paragraph>\n        x \n        <problematic id=\"problematic-1\" refid=\"system-message-1\">\n            ``\n        `` y\n    <system_message backref=\"problematic-1\" id=\"system-message-1\" level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            Inline literal start-string without end-string.\n"},
+		// Six give a literal whose content is two backquotes.
+		{"x `````` y\n", "<document>\n    <paragraph>\n        x \n        <literal>\n            ``\n         y\n"},
 		// The CONTRAST case: emphasis does honor the escape, so this is
 		// one <emphasis> spanning the escaped asterisk, not two.
 		{"*a\\*b*\n", "<document>\n    <paragraph>\n        <emphasis>\n            a*b\n"},

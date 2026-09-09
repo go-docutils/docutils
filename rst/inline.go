@@ -1562,8 +1562,15 @@ func findCloseLiteral(runes []rune, from int) (int, int, bool) {
 		if !isBackquote(runes[j]) || !isBackquote(runes[j+1]) {
 			continue
 		}
-		if j == from {
-			continue // empty content, e.g. "````"
+		if j == from && runes[j] == '`' {
+			// Genuinely empty content, e.g. "````". An ESCAPED backquote
+			// here is NOT empty: docutils keeps the escape marker inside
+			// the sliced text, so "``\``" is a literal holding one
+			// backslash -- the escaped backquote lends its backquote to
+			// the END string while its marker stays content. This guard
+			// tested the position only, so a literal whose whole content
+			// was a lone backslash became a <problematic>.
+			continue
 		}
 		if unicode.IsSpace(unescapeRune(runes[j-1])) {
 			continue

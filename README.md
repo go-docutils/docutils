@@ -937,6 +937,15 @@ whole text through with its internal whitespace intact — so a two-line
 URI goes the other way, `directives.uri` removing all whitespace so a
 split URI closes up.
 
+An inline literal whose whole content is a LONE BACKSLASH — ``` ``\`` ```,
+which is how PEP 12 documents line continuations — is a literal, not a
+`<problematic>` (v0.103.0+). Inside a literal a backslash is not an
+escape, so the escaped backquote lends its backquote to the end string
+while the marker stays content; the close therefore lands at the very
+first content position, which the "empty content" guard used to reject
+on position alone. Four backquotes ARE an empty literal and stay
+rejected.
+
 The `:math:` ROLE keeps its backslashes, alone among the generic roles:
 `math_role` calls `unescape(text, restore_backslashes=True)`, a
 backslash in math being TeX syntax rather than reST escaping. `:literal:`
