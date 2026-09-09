@@ -129,7 +129,7 @@ func (p *parser) runCSVTableDirective(lines []string, i, next, lineBase int, arg
 	tgroup.Append(tbody)
 	table.Append(tgroup)
 
-	applyTableCommonOptions(table, opts, false)
+	p.applyTableCommonOptions(table, opts, false)
 	if title != nil {
 		table.Children = append([]doctree.Node{title}, table.Children...)
 	}

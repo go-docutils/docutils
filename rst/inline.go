@@ -552,7 +552,12 @@ func (p *parser) referenceOrPhrase(contentRunes []rune, afterClose int, runes []
 	// display name ("| `uff <test1>`_" then "| `uff <test2>`_") used to
 	// produce two <target>s with the SAME id. docutils numbers them
 	// "uff"/"uff-1" via set_id like every other id.
-	target.SetAttr("id", p.claimID(makeID(displayName)))
+	// explicitTargetID, not claimID(makeID(...)): make_id of a name
+	// with no ASCII-alphanumeric start -- a footnote-style link named
+	// "1" -- is EMPTY, and claiming "" produced id="" and then id="-1".
+	// docutils falls back to make_id(tagname) + a counter, giving
+	// "target-1".
+	target.SetAttr("id", p.explicitTargetID(target.Tag, displayName))
 	// This target is IMPLICIT: Inliner.phrase_ref registers it with
 	// note_implicit_target, unlike an inline "_`name`" target or a
 	// ".. _name:" block target, both of which are explicit. The

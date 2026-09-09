@@ -51,7 +51,7 @@ func (p *parser) runRubricDirective(lines []string, i, next int, args string, bo
 	if v, ok := options["name"]; ok && v != "" {
 		name := normalizeName(v)
 		el.SetAttr("name", name)
-		el.SetAttr("id", makeID(name))
+		el.SetAttr("id", p.explicitTargetID(el.Tag, name))
 	}
 
 	out := []doctree.Node{el}

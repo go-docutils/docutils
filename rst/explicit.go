@@ -583,7 +583,7 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name,
 		// "Error in ..." message quotes the directive, while the
 		// "empty or invalid" warning that follows quotes the substitution.
 		// Same pairing as the replace directive's content checks.
-		nodes := finishImageDirective("image", argument, options, content, subname, lineno, dirBlockText)
+		nodes := p.finishImageDirective("image", argument, options, content, subname, lineno, dirBlockText)
 		if len(nodes) != 1 {
 			return []doctree.Node{sectionMessage("2", "WARNING",
 				`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true

@@ -60,7 +60,7 @@ func (p *parser) runImageDirective(lines []string, i, next int, args string, bod
 	}
 	combined = append(combined, body...)
 	argument, options, content := parseDirectiveBlock(combined, true)
-	return finishImageDirective("image", argument, options, content, presetAlt, lineno, blockText)
+	return p.finishImageDirective("image", argument, options, content, presetAlt, lineno, blockText)
 }
 
 // finishImageDirective is the shared tail of an already-split image
@@ -69,14 +69,14 @@ func (p *parser) runImageDirective(lines []string, i, next int, args string, bod
 // embedded-directive path (which derives them from the substitution's
 // own already-dedented, blank-preserved body directly, with no
 // lines/i re-derivation needed — see its own doc comment).
-func finishImageDirective(directiveName, argument string, options map[string]string, content []string, presetAlt string, lineno int, blockText string) []doctree.Node {
+func (p *parser) finishImageDirective(directiveName, argument string, options map[string]string, content []string, presetAlt string, lineno int, blockText string) []doctree.Node {
 	if argument == "" {
 		return []doctree.Node{directiveError(directiveName, "1 argument(s) required, 0 supplied", lineno, blockText)}
 	}
 	if len(content) > 0 && !allBlank(content) {
 		return []doctree.Node{directiveError(directiveName, "no content permitted", lineno, blockText)}
 	}
-	img, errEl := buildImageNode(directiveName, argument, options, presetAlt, lineno, blockText)
+	img, errEl := p.buildImageNode(directiveName, argument, options, presetAlt, lineno, blockText)
 	if errEl != nil {
 		return []doctree.Node{errEl}
 	}
@@ -86,7 +86,7 @@ func finishImageDirective(directiveName, argument string, options map[string]str
 // buildImageNode builds an <image> element from an argument+options pair
 // already split by parseDirectiveBlock — the core Image.run logic shared
 // by a bare image directive and Figure.run's own delegation to it.
-func buildImageNode(directiveName, argument string, options map[string]string, presetAlt string, lineno int, blockText string) (*doctree.Element, *doctree.Element) {
+func (p *parser) buildImageNode(directiveName, argument string, options map[string]string, presetAlt string, lineno int, blockText string) (*doctree.Element, *doctree.Element) {
 	el := doctree.NewElement(doctree.TagImage)
 	el.SetAttr("uri", imageURI(argument))
 	if v, ok := options["alt"]; ok {
@@ -129,7 +129,7 @@ func buildImageNode(directiveName, argument string, options map[string]string, p
 	if v, ok := options["name"]; ok && v != "" {
 		name := normalizeName(v)
 		el.SetAttr("name", name)
-		el.SetAttr("id", makeID(name))
+		el.SetAttr("id", p.explicitTargetID(el.Tag, name))
 	}
 	return el, nil
 }
@@ -290,7 +290,7 @@ func (p *parser) runFigureDirective(lines []string, i, next, lineBase int, args 
 	delete(options, "figname")
 	delete(options, "align")
 
-	imgEl, errEl := buildImageNode("figure", argument, options, "", lineno, blockText)
+	imgEl, errEl := p.buildImageNode("figure", argument, options, "", lineno, blockText)
 	if errEl != nil {
 		return []doctree.Node{errEl}
 	}
@@ -314,7 +314,7 @@ func (p *parser) runFigureDirective(lines []string, i, next, lineBase int, args 
 	if figname != "" {
 		name := normalizeName(figname)
 		figureEl.SetAttr("name", name)
-		figureEl.SetAttr("id", makeID(name))
+		figureEl.SetAttr("id", p.explicitTargetID(figureEl.Tag, name))
 	}
 	if align != "" {
 		chosen, valid := choiceValue(align, imageAlignHValues)

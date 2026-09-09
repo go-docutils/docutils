@@ -225,7 +225,7 @@ func (p *parser) runLineBlockDirective(lines []string, i, lineBase, next int, ar
 	if v, ok := options["name"]; ok && v != "" {
 		name := normalizeName(v)
 		el.SetAttr("name", name)
-		el.SetAttr("id", makeID(name))
+		el.SetAttr("id", p.explicitTargetID(el.Tag, name))
 	}
 
 	var items []lbLine

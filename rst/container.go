@@ -49,7 +49,7 @@ func (p *parser) runContainerDirective(lines []string, i, next, lineBase int, ar
 	if v, ok := options["name"]; ok && v != "" {
 		name := normalizeName(v)
 		el.SetAttr("name", name)
-		el.SetAttr("id", makeID(name))
+		el.SetAttr("id", p.explicitTargetID(el.Tag, name))
 	}
 	// combined[k] is lines[i+k]; see runAdmonitionOrGeneric.
 	p.parseBlockLines(content, el, nestedLineBase(i+contentStart, lineBase))

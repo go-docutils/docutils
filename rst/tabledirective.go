@@ -172,7 +172,7 @@ func appendClass(el *doctree.Element, cls string) {
 // grid table markup already computed); ListTable computes its own
 // widths from scratch in runListTableDirective, so this never touches
 // its colspecs.
-func applyTableCommonOptions(table *doctree.Element, o tableCommonOptions, isRST bool) {
+func (p *parser) applyTableCommonOptions(table *doctree.Element, o tableCommonOptions, isRST bool) {
 	for _, c := range o.classes {
 		appendClass(table, c)
 	}
@@ -185,7 +185,7 @@ func applyTableCommonOptions(table *doctree.Element, o tableCommonOptions, isRST
 	if o.name != "" {
 		name := normalizeName(o.name)
 		table.SetAttr("name", name)
-		table.SetAttr("id", makeID(name))
+		table.SetAttr("id", p.explicitTargetID(table.Tag, name))
 	}
 	if isRST && len(o.widthsList) > 0 {
 		applyExplicitColWidths(table, o.widthsList)
@@ -254,7 +254,7 @@ func (p *parser) runTableDirective(lines []string, i, next, lineBase int, args s
 			`Error parsing content block for the "table" directive: exactly one table expected.`, lineno, blockText)}
 	}
 
-	applyTableCommonOptions(table, opts, true)
+	p.applyTableCommonOptions(table, opts, true)
 	if title != nil {
 		table.Children = append([]doctree.Node{title}, table.Children...)
 	}
@@ -390,7 +390,7 @@ func (p *parser) runListTableDirective(lines []string, i, next, lineBase int, ar
 	tgroup.Append(tbody)
 	table.Append(tgroup)
 
-	applyTableCommonOptions(table, opts, false)
+	p.applyTableCommonOptions(table, opts, false)
 	if title != nil {
 		table.Children = append([]doctree.Node{title}, table.Children...)
 	}
