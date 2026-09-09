@@ -984,7 +984,14 @@ stays ordinary text. Both spellings now also carry the id
 `note_anonymous_target` gives them (`target-1`, `target-2`, …), which
 neither had before.
 
-**Ids come from ONE namespace, claimed in document order** (v0.94.0+).
+**Ids come from ONE namespace, claimed in document order** (v0.94.0+ for
+sections, v0.104.0+ for EVERY id-bearing node). A directive's `:name:`
+option and an embedded-URI target used to compute `make_id()` directly,
+so they neither disambiguated against ids already taken nor had a
+fallback when `make_id` came back EMPTY — a name with no
+ASCII-alphanumeric start, such as a footnote-style link named `1`,
+produced `id=""` and then `id="-1"`. docutils falls back to
+`make_id(tagname)` plus a counter: `target-1`, `note-1`, `table-1`.
 `document.set_id` has a single set per document, and `new_subsection`
 claims a section's id while the section is being parsed — so a section
 ABOVE a colliding target keeps the bare id and the target takes the

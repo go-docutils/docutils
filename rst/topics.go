@@ -107,7 +107,7 @@ func (p *parser) runTopicOrSidebar(tag string, lines []string, i, lineBase, next
 	if v, ok := options["name"]; ok && v != "" {
 		name := normalizeName(v)
 		el.SetAttr("name", name)
-		el.SetAttr("id", makeID(name))
+		el.SetAttr("id", p.explicitTargetID(el.Tag, name))
 	}
 	var titleMsgs []*doctree.Element
 	if argument != "" {
