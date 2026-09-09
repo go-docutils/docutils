@@ -218,6 +218,13 @@ func consumeIndentedBlock(lines []string, i, indent int) ([]string, int) {
 
 func splitLines(source string) []string {
 	source = strings.ReplaceAll(source, "\r\n", "\n")
+	// string2lines is called with convert_whitespace=True, whose pattern
+	// is exactly [\v\f]: a VERTICAL TAB or FORM FEED becomes a SPACE
+	// BEFORE splitlines ever sees it, so neither is a line boundary.
+	// Verified against the reference: "a\vb" and "a\fb" are each ONE
+	// paragraph reading "a b", while "a\u2028b" really is two lines.
+	// This split treated all three alike.
+	source = strings.NewReplacer("\v", " ", "\f", " ").Replace(source)
 	lines := splitOnPythonLineBoundaries(source)
 	// Drop only ONE trailing empty element: the artifact of a final newline.
 	// This is exactly Python's str.splitlines(), which docutils' string2lines
@@ -230,7 +237,40 @@ func splitLines(source string) []string {
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
+	// string2lines' own tail: "[s.expandtabs(tab_width).rstrip() for s in
+	// astring.splitlines()]", with tab_width 8 by default. A TAB is not
+	// whitespace-equivalent to a space here -- it advances to the next
+	// multiple of 8 -- so a tab-indented block is indented content, and
+	// without expansion its leading tab counted as zero indent and the
+	// block escaped whatever construct it belonged to.
+	for i, l := range lines {
+		lines[i] = trimTrailingSpace(expandTabs(l, 8))
+	}
 	return lines
+}
+
+// expandTabs advances each tab to the next multiple of width, counting
+// COLUMNS rather than bytes -- Python's str.expandtabs, which counts
+// characters, so a multi-byte rune occupies one column here too.
+func expandTabs(s string, width int) string {
+	if !strings.ContainsRune(s, '\t') {
+		return s
+	}
+	var b strings.Builder
+	col := 0
+	for _, r := range s {
+		if r != '\t' {
+			b.WriteRune(r)
+			col++
+			continue
+		}
+		n := width - col%width
+		for k := 0; k < n; k++ {
+			b.WriteByte(' ')
+		}
+		col += n
+	}
+	return b.String()
 }
 
 // splitOnPythonLineBoundaries splits on every boundary Python's
@@ -244,7 +284,9 @@ func splitLines(source string) []string {
 func splitOnPythonLineBoundaries(s string) []string {
 	isBoundary := func(r rune) bool {
 		switch r {
-		case '\n', '\r', '\v', '\f', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
+		// No '\v'/'\f': splitLines converts those to spaces first, the
+		// way string2lines' convert_whitespace does.
+		case '\n', '\r', 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029:
 			return true
 		}
 		return false

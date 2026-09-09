@@ -937,6 +937,15 @@ whole text through with its internal whitespace intact — so a two-line
 URI goes the other way, `directives.uri` removing all whitespace so a
 split URI closes up.
 
+Input lines go through docutils' own `string2lines` (v0.105.0+): a
+VERTICAL TAB or FORM FEED becomes a SPACE (`convert_whitespace=True`,
+whose pattern is exactly `[\v\f]`, so neither is a line boundary —
+U+2028 and the C1 separators still are), then each line has its TABS
+EXPANDED to the next multiple of 8 and its trailing whitespace
+stripped. Without the expansion a leading tab counted as ZERO indent,
+so a tab-indented block escaped whatever construct it belonged to —
+sphinx's C-domain documentation indents with tabs.
+
 An inline literal whose whole content is a LONE BACKSLASH — ``` ``\`` ```,
 which is how PEP 12 documents line continuations — is a literal, not a
 `<problematic>` (v0.103.0+). Inside a literal a backslash is not an
