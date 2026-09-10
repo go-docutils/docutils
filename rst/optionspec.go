@@ -51,7 +51,10 @@ var directiveOptionSpec = map[string][]string{
 //
 // written is the name AS SPELLED, since the message quotes it:
 // ".. code-block::" says "code-block", not "code".
-func unknownDirectiveOption(canonical, written string, optionLines []string, lineno int, blockText string) doctree.Node {
+func (p *parser) unknownDirectiveOption(canonical, written string, optionLines []string, lineno int, blockText string) doctree.Node {
+	if !p.opts.ReportUnknownDirectiveOptions {
+		return nil
+	}
 	allowed, ok := directiveOptionSpec[strings.ToLower(canonical)]
 	if !ok {
 		return nil
