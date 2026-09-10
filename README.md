@@ -977,6 +977,16 @@ an attribution line inside one becomes an `<attribution>` exactly as in
 a bare quote. They declare NO options, so a `:class:` line under one is
 CONTENT and parses as a field list inside the quote.
 
+Directive option validation is driven by ONE transcribed table
+(v0.106.0+, `rst/optionspec.go`): each directive's own `option_spec`
+from docutils' registry. `code` and `math` consult it, so a Sphinx-only
+option — `:caption:` on a code block, `:label:` on an equation — is an
+`unknown option` ERROR naming the directive AS WRITTEN. The table lists
+every implemented directive, but an entry alone enforces nothing: a
+directive is validated only once it calls the validator, which keeps the
+table safe to complete ahead of its callers. The scan always stops where
+the CONTENT begins.
+
 The `code` directive VALIDATES its options (v0.96.0+): `CodeBlock`'s
 `option_spec` has exactly `class`, `name` and `number-lines`, and
 anything else — sphinx's `:caption:`, `:emphasize-lines:` — is an
