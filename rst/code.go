@@ -45,30 +45,10 @@ func (p *parser) runCodeDirective(name string, lines []string, i, next int, args
 	combined = append(combined, body...)
 	argument, options, content, contentStart := parseDirectiveBlockAt(combined, true)
 
-	// CodeBlock.option_spec has exactly three entries; anything else is
-	// an "unknown option" ERROR and no <literal_block> is produced at
-	// all. Sphinx's own :caption:/:emphasize-lines: are the ones real
-	// documents carry, and this parser was silently ignoring them.
-	//
-	// Scanned from the block rather than from the options map, because
-	// docutils reports the FIRST unknown option in source order and a Go
-	// map has none -- but ONLY as far as the content begins. A code
-	// block's own CONTENT may perfectly well start with something
-	// field-marker-shaped (sphinx's docs show ":no-search:" inside a
-	// ".. code-block:: rst"), and scanning past that point rejected two
-	// real-world files that had been matching.
-	for _, l := range combined[:min(contentStart, len(combined))] {
-		key, _, ok := matchFieldMarker(l)
-		if !ok {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(key)) {
-		case "class", "name", "number-lines":
-		default:
-			return []doctree.Node{sectionMessage("3", "ERROR",
-				`Error in "`+name+`" directive:`+"\n"+`unknown option: "`+strings.TrimSpace(key)+`".`,
-				lineno, blockText)}
-		}
+	// The shared spec table, not a bespoke loop: this directive was the
+	// first to need option validation and had its own copy.
+	if msg := unknownDirectiveOption("code", name, combined[:min(contentStart, len(combined))], lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
 	}
 
 	if len(content) == 0 || allBlank(content) {

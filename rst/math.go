@@ -37,7 +37,14 @@ func (p *parser) runMathDirective(lines []string, i, next int, args string, body
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	_, options, content := parseDirectiveBlock(combined, false)
+	_, options, content, contentStart := parseDirectiveBlockAt(combined, false)
+
+	// MathBlock declares :class: and :name: only; sphinx's :label: is
+	// not one of them. Bounded by contentStart, since TeX content can
+	// itself start with something field-marker-shaped.
+	if msg := unknownDirectiveOption("math", "math", combined[:min(contentStart, len(combined))], lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 
 	if len(content) == 0 || allBlank(content) {
 		return []doctree.Node{sectionMessage("3", "ERROR",
