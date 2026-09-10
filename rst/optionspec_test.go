@@ -73,3 +73,54 @@ func TestUnwiredDirectiveIsNotValidated(t *testing.T) {
 		t.Errorf("note is not wired to the validator yet, but rejected an option:\n%s", got)
 	}
 }
+
+// TestReportUnknownDirectiveOptions pins BOTH directions of the opt-out.
+// A test that only asserted the lenient side would pass on a parser that
+// had simply lost the check, so each case is run twice -- once with the
+// flag on, once off -- and the two results must DIFFER exactly where the
+// option is unknown and agree everywhere else.
+//
+// The flag exists because faithfulness has a price a renderer pays: 32
+// of the 1564 real-world corpus files carry a sphinx-only option on a
+// code block or an equation, and every one of them loses the block to an
+// error paragraph. go-richdoc/rst sets it false for that reason.
+func TestReportUnknownDirectiveOptions(t *testing.T) {
+	cases := []struct {
+		name, source string
+		unknown      bool   // is the option outside the directive's spec?
+		lenientNode  string // what the lenient parse must produce instead
+	}{
+		{"sphinx :caption: on a code block", ".. code:: go\n   :caption: hi\n\n   x := 1\n", true, "<literal_block"},
+		{"sphinx :label: on an equation", ".. math::\n   :label: eq\n\n   a^2\n", true, "<math_block"},
+		{"an option the directive DOES declare", ".. math::\n   :class: c\n\n   a^2\n", false, `<math_block class="c">`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			strict := DefaultOptions()
+			if !strict.ReportUnknownDirectiveOptions {
+				t.Fatal("ReportUnknownDirectiveOptions must default TRUE: docutils raises this in Body.parse_directive_options, in the PARSER")
+			}
+			lenient := strict
+			lenient.ReportUnknownDirectiveOptions = false
+
+			gotStrict := doctree.Dump(ParseWithOptions(tc.source, strict))
+			gotLenient := doctree.Dump(ParseWithOptions(tc.source, lenient))
+
+			if strings.Contains(gotStrict, `unknown option`) != tc.unknown {
+				t.Errorf("strict parse: unknown-option error present = %v, want %v\n%s",
+					!tc.unknown, tc.unknown, gotStrict)
+			}
+			if strings.Contains(gotLenient, `unknown option`) {
+				t.Errorf("lenient parse must never report an unknown option, got:\n%s", gotLenient)
+			}
+			if !strings.Contains(gotLenient, tc.lenientNode) {
+				t.Errorf("lenient parse: want %s in\n%s", tc.lenientNode, gotLenient)
+			}
+			// The control: turning the flag off must change NOTHING for a
+			// directive whose options are all declared.
+			if !tc.unknown && gotStrict != gotLenient {
+				t.Errorf("flag changed a parse it has no business touching:\nstrict:\n%s\nlenient:\n%s", gotStrict, gotLenient)
+			}
+		})
+	}
+}

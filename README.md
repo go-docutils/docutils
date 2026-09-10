@@ -840,12 +840,21 @@ the PARSER, or in a TRANSFORM?*
 |---|---|---|
 | `ReportUnknownDirectives` | **true** | `Body.unknown_directive` is in the parser |
 | `ReportUnknownRoles` | **true** | `Inliner.interpreted` is in the parser |
+| `ReportUnknownDirectiveOptions` | **true** | `Body.parse_directive_options` is in the parser |
 | `ReportDanglingReferences` | **false** | `DanglingReferences`/`Messages` are transforms |
 | `PromoteDocInfo` | **false** | `DocInfo` is a transform |
 | `NumberAutoFootnotes` | **false** | `references.Footnotes` is a transform |
 | `ResolveReferences` | **false** | `references.Hyperlinks` is a transform |
 
-A consumer picks per field. `go-richdoc/rst` turns the two report
+The third one was added in v0.107.0 after MEASURING what faithfulness
+costs a renderer rather than assuming it was free: 32 of the 1564
+real-world corpus files carry a sphinx-only option on a code block or an
+equation (`:caption:`, `:emphasize-lines:`, `:label:`, `:linenos:`), and
+each one loses the whole block to an error paragraph. That is right for
+a parser and wrong for a converter, which is exactly what an option is
+for.
+
+A consumer picks per field. `go-richdoc/rst` turns the three report
 options OFF (a diagnostic aimed at someone WRITING reST becomes
 fabricated content once it reaches a converted document) and
 `PromoteDocInfo`, `NumberAutoFootnotes` and `ResolveReferences` ON (its

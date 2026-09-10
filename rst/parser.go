@@ -142,12 +142,35 @@ type Options struct {
 	// has never heard of (a Sphinx ":doc:" reference, say) sets it false
 	// and gets the lenient <inline role="..."> back.
 	ReportUnknownRoles bool
+
+	// ReportUnknownDirectiveOptions emits the ERROR docutils raises for an
+	// option a directive does not declare -- sphinx's ":caption:" on a
+	// code block, its ":label:" on an equation -- which REPLACES the
+	// directive with the message and a <literal_block> of its source.
+	//
+	// It defaults TRUE, and for the same reason its two neighbours do:
+	// Body.parse_directive_options raises it in the PARSER
+	// (states.py, "unknown option: ..."), so emitting it is what a
+	// faithful parse does.
+	//
+	// The cost is paid by a consumer RENDERING sphinx: 32 of this
+	// project's 1564 real-world corpus files carry such an option, and
+	// each one loses its code block or its equation to an error
+	// paragraph. A consumer that would rather keep the block and ignore
+	// the option it has no use for sets this false -- go-richdoc/rst
+	// does, alongside the two flags above.
+	ReportUnknownDirectiveOptions bool
 }
 
 // DefaultOptions returns the Options Parse itself uses, matching real
 // docutils' own defaults.
 func DefaultOptions() Options {
-	return Options{RawEnabled: true, ReportUnknownDirectives: true, ReportUnknownRoles: true}
+	return Options{
+		RawEnabled:                    true,
+		ReportUnknownDirectives:       true,
+		ReportUnknownRoles:            true,
+		ReportUnknownDirectiveOptions: true,
+	}
 }
 
 type parser struct {

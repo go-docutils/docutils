@@ -42,7 +42,7 @@ func (p *parser) runMathDirective(lines []string, i, next int, args string, body
 	// MathBlock declares :class: and :name: only; sphinx's :label: is
 	// not one of them. Bounded by contentStart, since TeX content can
 	// itself start with something field-marker-shaped.
-	if msg := unknownDirectiveOption("math", "math", combined[:min(contentStart, len(combined))], lineno, blockText); msg != nil {
+	if msg := p.unknownDirectiveOption("math", "math", combined[:min(contentStart, len(combined))], lineno, blockText); msg != nil {
 		return []doctree.Node{msg}
 	}
 

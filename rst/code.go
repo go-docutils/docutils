@@ -47,7 +47,7 @@ func (p *parser) runCodeDirective(name string, lines []string, i, next int, args
 
 	// The shared spec table, not a bespoke loop: this directive was the
 	// first to need option validation and had its own copy.
-	if msg := unknownDirectiveOption("code", name, combined[:min(contentStart, len(combined))], lineno, blockText); msg != nil {
+	if msg := p.unknownDirectiveOption("code", name, combined[:min(contentStart, len(combined))], lineno, blockText); msg != nil {
 		return []doctree.Node{msg}
 	}
 
