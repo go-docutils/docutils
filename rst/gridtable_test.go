@@ -1,6 +1,11 @@
 package rst
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/go-docutils/docutils/doctree"
+)
 
 func TestIsGridTableTopLine(t *testing.T) {
 	cases := map[string]bool{
@@ -112,5 +117,94 @@ func TestDedentCellLines(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestGridTableMeasuresCodePointsNotBytes covers the unit a grid
+// table's geometry is measured in. Every case below was run against
+// real docutils first; none of them is a guess about what it "should"
+// do.
+//
+// A Python parser indexes lines by code point for free, so "…" is one
+// column. Reading the same lines as Go strings made it three, pushing
+// every later "|" out of line with its border and degrading the whole
+// table to a paragraph -- no diagnostic, no partial table, just text.
+//
+// The fourth case is the one that keeps the fix honest. Plain code
+// points would be wrong in the OTHER direction: docutils pads East
+// Asian Wide/Fullwidth characters to two columns before measuring
+// (StringList.pad_double_width), so a table whose rows line up by code
+// point but not by width is one it REJECTS. Accepting it would trade a
+// parse failure for a silent disagreement, which is worse.
+func TestGridTableMeasuresCodePointsNotBytes(t *testing.T) {
+	// One cell of each table is varied; everything else is identical.
+	table := func(firstCell string) string {
+		return "+-------+-------+\n" +
+			"| " + firstCell + " | cd    |\n" +
+			"+=======+=======+\n" +
+			"| one   | two   |\n" +
+			"+-------+-------+\n"
+	}
+	cases := []struct {
+		name      string
+		firstCell string
+		wantTable bool
+		wantText  string
+	}{
+		{"ascii, the control", "ab   ", true, "ab"},
+		{"U+2026 is one column wide", "ab\u2026  ", true, "ab\u2026"},
+		{"a wide character is TWO columns", "\u4e2d\u6587 ", true, "\u4e2d\u6587"},
+		// Five columns of content for four columns of width: docutils
+		// calls this a malformed table, so it must not become one here.
+		{"wide characters counted as one are NOT a table", "\u4e2d\u6587   ", false, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(table(tc.firstCell)))
+			if isTable := strings.Contains(got, "<table>"); isTable != tc.wantTable {
+				t.Fatalf("parsed as a table = %v, want %v:\n%s", isTable, tc.wantTable, got)
+			}
+			if !tc.wantTable {
+				return
+			}
+			if !strings.Contains(got, "\n                            "+tc.wantText+"\n") {
+				t.Errorf("cell text %q not found in:\n%s", tc.wantText, got)
+			}
+			// The filler standing in for a wide character's second
+			// column must never reach the tree.
+			if strings.ContainsRune(got, doubleWidthPad) {
+				t.Errorf("padding character leaked into the tree:\n%q", got)
+			}
+			// Both columns are seven wide in every accepted case; a
+			// cell text that merely LOOKS right can still come from a
+			// mis-measured grid.
+			if n := strings.Count(got, `<colspec colwidth="7">`); n != 2 {
+				t.Errorf("got %d colspecs of width 7, want 2:\n%s", n, got)
+			}
+		})
+	}
+}
+
+// TestIsEastAsianWide spot-checks the generated table against the
+// classification unicodedata gives, at the boundaries of a range rather
+// than in its middle.
+func TestIsEastAsianWide(t *testing.T) {
+	for _, tc := range []struct {
+		r    rune
+		want bool
+	}{
+		{'a', false},
+		{'\u2026', false},    // HORIZONTAL ELLIPSIS: ambiguous, not wide
+		{'\u4e2d', true},     // CJK
+		{'\uff21', true},     // FULLWIDTH LATIN CAPITAL A
+		{'\u1100', true},     // first code point of the first range
+		{'\u115f', true},     // last code point of that range
+		{'\u1160', false},    // one past it
+		{'\U0001f600', true}, // emoji are Wide
+		{'\u00e9', false},    // é: two bytes, one column
+	} {
+		if got := isEastAsianWide(tc.r); got != tc.want {
+			t.Errorf("isEastAsianWide(%q/U+%04X) = %v, want %v", tc.r, tc.r, got, tc.want)
+		}
 	}
 }

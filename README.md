@@ -406,6 +406,31 @@ with a real anchor point (HTML `<a id="slug">text</a>`; LaTeX
 to the internal-link path specifically, since `\href`'s usual URL
 escaping would corrupt hyperref's own `#`-marker convention).
 
+A grid table's geometry is measured in CODE POINTS, with East Asian
+Wide and Fullwidth characters counting TWO (v0.109.0+, `eastasian.go`).
+Both halves of that matter. docutils is Python, so its line indexing is
+per-code-point for free and `…` is one column; reading the same lines as
+Go strings made it three, pushing every later `|` out of line with its
+border and degrading the whole table to a paragraph — no diagnostic, no
+partial table. But plain code points would be wrong the other way:
+docutils pads Wide/Fullwidth characters before measuring
+(`StringList.pad_double_width`) and strips the padding back out of each
+cell, so a table aligned by code point but not by width is one it
+REJECTS, and accepting it would trade a parse failure for a silent
+disagreement. The `rst` package has no dependencies and Go ships no East
+Asian width data, so the ranges are generated from the reference
+interpreter's own `unicodedata` — the same table the corpus judge
+consults:
+
+```
+python3 -c 'import unicodedata as u; \
+  print(*[hex(c) for c in range(0x110000) \
+          if u.east_asian_width(chr(c)) in ("W","F")])'
+```
+
+(`eastasian.go` stores that as sorted ranges; `TestIsEastAsianWide`
+checks the range boundaries rather than their middles.)
+
 The `..` marker's own trailing whitespace is a RUN, not one space
 (v0.108.0+, `explicitMarkerRest`): docutils writes it twice and both
 spellings say one-or-more — the state machine's
