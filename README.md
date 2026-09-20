@@ -406,6 +406,17 @@ with a real anchor point (HTML `<a id="slug">text</a>`; LaTeX
 to the internal-link path specifically, since `\href`'s usual URL
 escaping would corrupt hyperref's own `#`-marker convention).
 
+The `..` marker's own trailing whitespace is a RUN, not one space
+(v0.108.0+, `explicitMarkerRest`): docutils writes it twice and both
+spellings say one-or-more — the state machine's
+`explicit_markup: r'\.\.( +|$)'` and then each of the five construct
+patterns' own `\.\.[ ]+`. Reading it as exactly one space is silent
+rather than noisy: every construct pattern simply fails against a rest
+that starts with a space, and the line lands on the comment fallback, so
+`..  [#name]` or `..  note::` becomes a COMMENT and takes its whole body
+out of the document. The marker's width is the marker's alone; body
+indentation is still dedented by the first body line's own indent.
+
 **Not yet ported** (see the `rst`, `explicit.go`/`fieldlist.go`/
 `lineblock.go`/`inline.go`/`table.go`/`gridtable.go` doc comments for
 the exact list and why): the "ends without a blank line; unexpected

@@ -20,7 +20,7 @@ import (
 func (p *parser) runContainerDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
 	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
-	directiveName := lines[i][3:]
+	directiveName, _ := explicitMarkerRest(lines[i])
 	if idx := strings.Index(directiveName, "::"); idx >= 0 {
 		directiveName = strings.TrimSpace(directiveName[:idx])
 	}

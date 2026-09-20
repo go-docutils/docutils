@@ -46,6 +46,38 @@ import (
 // alongside resolveTargets. Citations are never auto-numbered (see
 // parseFootnoteOrCitation above), so this applies only to footnotes.
 
+// explicitMarkerRest returns what follows an explicit-markup line's ".."
+// marker: the whitespace run after it is part of the MARKER, not of the
+// construct.
+//
+// Real docutils spells this twice and both spellings agree on it. The
+// state machine recognizes the line with `explicit_markup: r'\.\.( +|$)'`
+// (states.py), and then explicit_construct re-matches the WHOLE line
+// against each construct's own pattern, every one of which opens
+// `\.\.[ ]+   # explicit markup start` -- one or MORE spaces, for all
+// five of footnote, citation, hyperlink_target, substitution_def and
+// directive.
+//
+// This package read `line[3:]` instead, in three places, which is that
+// pattern with the "+" dropped. A second space did not produce a
+// diagnostic: every construct pattern simply failed against a rest that
+// began with a space, and the line fell through to explicit_construct's
+// final comment fallback. So "..  [#name]" in PEP 354, "..  note::",
+// "..  _target:" -- all of them silently became COMMENTS, taking their
+// whole body out of the document with them. Three real-world corpus
+// files, and the kind of loss that never reports itself.
+//
+// The marker width is returned because it is the marker's own, and
+// nothing else's: body indentation is dedented by the first body line's
+// actual indent (StringList.get_indented), never by this.
+func explicitMarkerRest(line string) (rest string, markerWidth int) {
+	j := 2
+	for j < len(line) && line[j] == ' ' {
+		j++
+	}
+	return line[j:], j
+}
+
 func isExplicitMarkupLine(s string) bool {
 	if len(s) < 2 || s[0] != '.' || s[1] != '.' {
 		return false
@@ -156,7 +188,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i, lineBase int, parent *do
 		}
 		return p.parseComment(lines, i, lineBase, "")
 	}
-	rest := line[3:]
+	rest, _ := explicitMarkerRest(line)
 
 	if label, labelRest, ok := matchBracketLabel(rest); ok {
 		return p.parseFootnoteOrCitation(lines, i, lineBase, label, labelRest)
