@@ -53,7 +53,7 @@ import (
 // recognized as a table at all, falling back to ordinary block parsing
 // of the ambiguous lines rather than emitting an error node.
 
-func isGridTableEdgeChar(r byte) bool { return r == '+' || r == '|' }
+func isGridTableEdgeChar(r rune) bool { return r == '+' || r == '|' }
 
 // isGridTableTopLine is docutils' grid_table_top_pat: a full border row
 // made only of '+' and '-', at least 4 columns wide, starting and
@@ -96,10 +96,14 @@ func isGridTableHeadSepLine(s string) bool {
 // backward for the last line among those collected that is itself a
 // valid full border — the table's true bottom.
 func isolateGridTable(lines []string, i int) ([]string, int, bool) {
-	width := len(strings.TrimSpace(lines[i]))
+	// docutils pads the block for wide characters BEFORE it measures
+	// the first line (states.py's grid_table_top: pad_double_width,
+	// then width = len(block[0].strip())), so the padding is part of
+	// every width compared here.
+	width := len([]rune(strings.TrimSpace(padDoubleWidth(lines[i]))))
 	j := i
 	for j < len(lines) {
-		line := strings.TrimSpace(lines[j])
+		line := []rune(strings.TrimSpace(padDoubleWidth(lines[j])))
 		if len(line) != width || !isGridTableEdgeChar(line[0]) || !isGridTableEdgeChar(line[len(line)-1]) {
 			break
 		}
@@ -117,7 +121,7 @@ func isolateGridTable(lines []string, i int) ([]string, int, bool) {
 	}
 	block := make([]string, end+1-i)
 	for k := i; k <= end; k++ {
-		block[k-i] = strings.TrimSpace(lines[k])
+		block[k-i] = strings.TrimSpace(padDoubleWidth(lines[k]))
 	}
 	return block, end + 1, true
 }
@@ -147,13 +151,16 @@ func (p *parser) buildGridTable(block []string) (*doctree.Element, bool) {
 	if n < 3 {
 		return nil, false
 	}
-	grid := make([][]byte, n)
-	width := len(block[0])
+	// Code points, not bytes: see eastasian.go for why, and for the
+	// padding the block already carries by the time it gets here.
+	grid := make([][]rune, n)
+	width := len([]rune(block[0]))
 	for i, l := range block {
-		if len(l) != width {
+		r := []rune(l)
+		if len(r) != width {
 			return nil, false
 		}
-		grid[i] = []byte(l)
+		grid[i] = r
 	}
 	bottom := n - 1
 	right := width - 1
@@ -226,7 +233,7 @@ func (p *parser) buildGridTable(block []string) (*doctree.Element, bool) {
 // scanCell traces one cell rectangle starting at its upper-left corner
 // (top,left), which must be '+'. Mirrors scan_right/scan_down/
 // scan_left/scan_up combined into one pass per direction.
-func scanCell(grid [][]byte, top, left, bottom, right int) (bottomR, rightR int, rowseps, colseps map[int]bool, ok bool) {
+func scanCell(grid [][]rune, top, left, bottom, right int) (bottomR, rightR int, rowseps, colseps map[int]bool, ok bool) {
 	colseps = map[int]bool{}
 	line := grid[top]
 	for i := left + 1; i <= right; i++ {
@@ -248,7 +255,7 @@ func scanCell(grid [][]byte, top, left, bottom, right int) (bottomR, rightR int,
 	return 0, 0, nil, nil, false
 }
 
-func scanDown(grid [][]byte, top, left, right, bottom int) (bottomR int, rowseps, colseps map[int]bool, ok bool) {
+func scanDown(grid [][]rune, top, left, right, bottom int) (bottomR int, rowseps, colseps map[int]bool, ok bool) {
 	rowseps = map[int]bool{}
 	for i := top + 1; i <= bottom; i++ {
 		switch grid[i][right] {
@@ -269,7 +276,7 @@ func scanDown(grid [][]byte, top, left, right, bottom int) (bottomR int, rowseps
 	return 0, nil, nil, false
 }
 
-func scanLeft(grid [][]byte, top, left, bottom, right int) (rowseps, colseps map[int]bool, ok bool) {
+func scanLeft(grid [][]rune, top, left, bottom, right int) (rowseps, colseps map[int]bool, ok bool) {
 	colseps = map[int]bool{}
 	line := grid[bottom]
 	for i := right - 1; i > left; i-- {
@@ -292,7 +299,7 @@ func scanLeft(grid [][]byte, top, left, bottom, right int) (rowseps, colseps map
 	return rs, colseps, true
 }
 
-func scanUp(grid [][]byte, top, left, bottom, right int) (rowseps map[int]bool, ok bool) {
+func scanUp(grid [][]rune, top, left, bottom, right int) (rowseps map[int]bool, ok bool) {
 	rowseps = map[int]bool{}
 	for i := bottom - 1; i > top; i-- {
 		switch grid[i][left] {
@@ -317,9 +324,12 @@ func scanUp(grid [][]byte, top, left, bottom, right int) (rowseps map[int]bool, 
 func extractGridCellBlock(block []string, top, left, bottom, right int) []string {
 	var out []string
 	for r := top + 1; r < bottom; r++ {
-		line := block[r]
+		line := []rune(block[r])
 		if left+1 < right && right <= len(line) {
-			out = append(out, line[left+1:right])
+			// The filler standing in for a wide character's second
+			// column leaves with the slice, exactly as docutils'
+			// cellblock.replace(double_width_pad_char, '') does.
+			out = append(out, strings.ReplaceAll(string(line[left+1:right]), string(doubleWidthPad), ""))
 		} else {
 			out = append(out, "")
 		}
