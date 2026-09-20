@@ -1,6 +1,7 @@
 package rst
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -138,5 +139,130 @@ func TestDumpDoesNotEscapeQuotesInAttributes(t *testing.T) {
 	got := doctreeDump("_`\"target2\"` with quotes\n")
 	if !strings.Contains(got, `name=""target2""`) {
 		t.Errorf("attribute quote was escaped rather than passed through:\n%s", got)
+	}
+}
+
+// refuris returns every refuri in the parsed tree, in document order.
+func refuris(t *testing.T, source string) []string {
+	t.Helper()
+	var out []string
+	for _, line := range strings.Split(doctree.Dump(Parse(source)), "\n") {
+		if i := strings.Index(line, `refuri="`); i >= 0 {
+			rest := line[i+len(`refuri="`):]
+			out = append(out, rest[:strings.IndexByte(rest, '"')])
+		}
+	}
+	return out
+}
+
+// TestEmailStartBoundary covers docutils' emailc class, transcribed.
+// v0.87.0 did the END boundary of a standalone email address and left
+// the start; these are the cases that separate the two.
+//
+// Every expectation was produced by running real docutils, not by
+// reading its regular expression: the "café" case in particular is one
+// I would have got wrong by reasoning (no address at all, not a
+// shortened one, because no position inside a word is a valid start).
+func TestEmailStartBoundary(t *testing.T) {
+	cases := []struct {
+		name, source string
+		want         []string
+	}{
+		{
+			// emailc contains "/", so the path-looking prefix is part
+			// of the LOCAL PART. PEP 20 writes exactly this.
+			"a slash is an email character",
+			"posted to comp.lang.python/python-list@python.org under a\n",
+			[]string{"mailto:comp.lang.python/python-list@python.org"},
+		},
+		{"a short slash case", "mail a/b@example.com here\n", []string{"mailto:a/b@example.com"}},
+		{
+			// emailc is a-zA-Z0-9, not unicode.IsLetter. "caf" then
+			// stops at "é", which is not "@", and no later position is
+			// a valid start boundary -- so there is no address here at
+			// all, not a shorter one.
+			"a non-ASCII letter is not an email character",
+			"mail café@example.com here\n", nil,
+		},
+		// "." is a SEPARATOR between runs of emailc, not a member:
+		// emailc+(\.emailc+)* has no room for a leading, trailing or
+		// doubled dot.
+		{"a dot separates runs", "mail x.y@example.com here\n", []string{"mailto:x.y@example.com"}},
+		{"a leading dot is not an address", "mail .lead@example.com here\n", nil},
+		{"a doubled dot is not an address", "mail a..b@example.com here\n", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := refuris(t, tc.source); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("refuris = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUnknownSchemeRefusesTheWholeRun covers what docutils does AFTER
+// its pattern matches and standalone_uri refuses the scheme: it raises
+// MarkupMismatch, and implicit_inline abandons the entire text it was
+// given ("except MarkupMismatch: pass", then "return [nodes.Text(text)]").
+//
+// Two things follow, and this package had neither. No email may be
+// found INSIDE the refused URI -- a per-position scanner happily reads
+// "svn+ssh://pythondev@svn.python.org/" as a mailto: address, which is
+// a link real docutils does not make. And a perfectly good URI AFTER it
+// is not recognised either, until an explicit construct starts a fresh
+// run.
+func TestUnknownSchemeRefusesTheWholeRun(t *testing.T) {
+	cases := []struct {
+		name, source string
+		want         []string
+	}{
+		{"no email is invented inside it", "see svn+ssh://x@y.org/ here\n", nil},
+		{"nor a later email", "see svn+ssh://x@y.org/ and plain a@b.org here\n", nil},
+		{"nor a later URI", "bad svn+ssh://x@y.org/ then http://real.com end\n", nil},
+		{"a newline does not end the run", "bad svn+ssh://x@y.org/ then\nhttp://real.com next\n", nil},
+		// The resets, each verified against real docutils.
+		{"emphasis starts a fresh run", "bad svn+ssh://x@y.org/ then *em* then http://real.com end\n", []string{"http://real.com"}},
+		{"an inline literal does too", "bad svn+ssh://x@y.org/ then ``lit`` then http://real.com end\n", []string{"http://real.com"}},
+		{"and so does a new paragraph", "bad svn+ssh://x@y.org/ end\n\nnew http://real.com end\n", []string{"http://real.com"}},
+		// A URI BEFORE the refused one already matched, so it survives.
+		{"an earlier URI is kept", "see http://real.com and svn+ssh://x@y.org/ here\n", []string{"http://real.com"}},
+		// The controls. The scheme test must happen only once the whole
+		// absolute-URI shape has matched: "punctuation:" is letters and
+		// a colon, and is not a URI, because what follows it cannot end
+		// on a URI-final character. Testing the scheme at the colon
+		// refused this whole paragraph.
+		{
+			"a word before a colon is not a refused scheme",
+			"Trailing punctuation: https://x.org, and https://y.org.\n",
+			[]string{"https://x.org", "https://y.org"},
+		},
+		{"a known scheme is untouched", "see http://real.com and b@c.org here\n", []string{"http://real.com", "mailto:b@c.org"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := refuris(t, tc.source); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("refuris = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestImplicitMatchStopsAtExplicitMarkup pins the bound implicitLimit
+// applies. docutils gets it structurally: Inliner.parse finds explicit
+// start-strings over the whole string first and hands implicit_inline
+// only the text between them, so an implicit match cannot cross one.
+//
+// This case is the one that proved it matters. Transcribing emailc
+// faithfully brought "`" in with it, and "non-“@overload“-decorated"
+// -- PEP 484, which the corpus caught within the same round -- became a
+// single mailto: address swallowing the inline literal whole.
+func TestImplicitMatchStopsAtExplicitMarkup(t *testing.T) {
+	const source = "text non-``@overload``-decorated more\n"
+	if got := refuris(t, source); got != nil {
+		t.Errorf("refuris = %v, want none: an implicit match crossed an inline literal", got)
+	}
+	got := doctree.Dump(Parse(source))
+	if !strings.Contains(got, "<literal>") {
+		t.Errorf("the inline literal did not survive:\n%s", got)
 	}
 }
