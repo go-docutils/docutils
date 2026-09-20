@@ -431,6 +431,13 @@ python3 -c 'import unicodedata as u; \
 (`eastasian.go` stores that as sorted ranges; `TestIsEastAsianWide`
 checks the range boundaries rather than their middles.)
 
+`rst.TableColumnWidth` exports that metric (v0.110.0+), because a WRITER
+needs the identical rule: `go-richdoc/rst` padded its cells by rune
+count, so a CJK cell overflowed its column and a table this package had
+just parsed did not survive being written back out. Two implementations
+of one rule is what put the byte-vs-code-point version of this bug here
+in the first place.
+
 The `..` marker's own trailing whitespace is a RUN, not one space
 (v0.108.0+, `explicitMarkerRest`): docutils writes it twice and both
 spellings say one-or-more — the state machine's

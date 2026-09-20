@@ -208,3 +208,36 @@ func TestIsEastAsianWide(t *testing.T) {
 		}
 	}
 }
+
+// TestTableColumnWidth covers the exported metric. It is the same rule
+// isEastAsianWide already encodes, stated as a width so a writer can
+// pad with it; the cases are the ones that distinguish it from both
+// len() and utf8.RuneCountInString.
+func TestTableColumnWidth(t *testing.T) {
+	for _, tc := range []struct {
+		s    string
+		want int
+	}{
+		{"", 0},
+		{"abc", 3},
+		{"ab…", 3}, // 5 bytes, 3 code points, 3 columns
+		{"é", 1},   // 2 bytes, 1 code point, 1 column
+		{"中文", 4},  // 6 bytes, 2 code points, 4 columns
+		{"a中b", 4}, // mixed
+		{"Ａ", 2},   // FULLWIDTH LATIN CAPITAL A
+	} {
+		if got := TableColumnWidth(tc.s); got != tc.want {
+			t.Errorf("TableColumnWidth(%q) = %d, want %d", tc.s, got, tc.want)
+		}
+	}
+	// The parser measures with the same rule it exports: a cell padded
+	// to TableColumnWidth's answer is one the parser accepts.
+	cell := "中文"
+	// Seven columns between the borders: one leading space, the cell,
+	// then filler.
+	pad := strings.Repeat(" ", 7-1-TableColumnWidth(cell))
+	src := "+-------+-------+\n| " + cell + pad + "| cd    |\n+-------+-------+\n"
+	if got := doctree.Dump(Parse(src)); !strings.Contains(got, "<table>") {
+		t.Errorf("a cell padded to TableColumnWidth is not accepted by the parser:\n%s", got)
+	}
+}

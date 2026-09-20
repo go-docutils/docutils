@@ -197,3 +197,27 @@ func padDoubleWidth(s string) string {
 	}
 	return string(out)
 }
+
+// TableColumnWidth returns how many columns of a reST table s occupies:
+// one per code point, two for each East Asian Wide or Fullwidth
+// character. It is the metric this package's own grid-table geometry
+// uses, and the only metric under which a table's borders and its rows
+// agree.
+//
+// It is exported because a WRITER needs the identical rule and had
+// gotten it wrong in the mirror image: go-richdoc/rst padded its cells
+// by rune count, so a CJK cell overflowed its column and a table this
+// package had just parsed did not survive being written back out. Two
+// implementations of one rule is what put the byte/code-point version
+// of this bug here in the first place, so there is one, here, and the
+// consumer calls it.
+func TableColumnWidth(s string) int {
+	n := 0
+	for _, r := range s {
+		n++
+		if isEastAsianWide(r) {
+			n++
+		}
+	}
+	return n
+}
