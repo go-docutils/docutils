@@ -235,3 +235,64 @@ func TestUnimplementedRoleIsNotUnknown(t *testing.T) {
 		t.Errorf("a REGISTERED role was reported as unknown:\n%s", got)
 	}
 }
+
+// TestExplicitMarkerAcceptsMoreThanOneSpace covers the marker's own
+// whitespace run. docutils spells it twice and both spellings say "one
+// or MORE": the state machine's `explicit_markup: r'\.\.( +|$)'`, and
+// then every one of explicit_construct's five construct patterns,
+// each opening `\.\.[ ]+  # explicit markup start`.
+//
+// This package read line[3:], which is that pattern with the "+"
+// dropped, so a second space made every construct fail and the line
+// fall through to the comment fallback -- silently taking a footnote's
+// or a directive's whole body out of the document. PEP 354 writes
+// "..  [#CMP-NOTIMPLEMENTED]" and lost its footnote that way.
+//
+// Each family is paired with its ONE-space spelling as the control: the
+// two must produce the same tree, since a test that only checked the
+// two-space case would also pass on a parser that had stopped
+// recognising the construct at all.
+func TestExplicitMarkerAcceptsMoreThanOneSpace(t *testing.T) {
+	cases := []struct {
+		name, one, many string
+	}{
+		{"footnote", ".. [#a] body\n", "..  [#a] body\n"},
+		{"citation", ".. [cit] body\n", "..   [cit] body\n"},
+		{"numbered footnote", ".. [1] body\n", "..  [1] body\n"},
+		{"hyperlink target", ".. _t: http://example.com\n", "..  _t: http://example.com\n"},
+		{"anonymous target", ".. __: http://example.com\n", "..  __: http://example.com\n"},
+		{"directive", ".. note:: hi\n", "..  note:: hi\n"},
+		{"substitution definition", ".. |s| replace:: x\n", "..  |s| replace:: x\n"},
+		{"comment", ".. just a comment\n", "..  just a comment\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			one := doctree.Dump(Parse(tc.one))
+			many := doctree.Dump(Parse(tc.many))
+			if one != many {
+				t.Errorf("one space vs several disagree:\n--- one ---\n%s\n--- several ---\n%s", one, many)
+			}
+			// The control on the control: the one-space spelling must
+			// actually BE the construct, not a comment both times.
+			if tc.name != "comment" && strings.Contains(one, "<comment>") {
+				t.Errorf("%s: the one-space spelling is itself a comment, so this case proves nothing:\n%s", tc.name, one)
+			}
+		})
+	}
+}
+
+// TestExplicitMarkerWidthIsNotContentIndent pins the boundary the
+// marker width must NOT cross. A wider marker moves where the rest
+// begins; it does not move where the BODY is dedented from, which is
+// the first body line's own indent (docutils' StringList.get_indented).
+func TestExplicitMarkerWidthIsNotContentIndent(t *testing.T) {
+	got := doctree.Dump(Parse("..   deep comment\n    continued\n"))
+	want := "<document>\n    <comment>\n        deep comment\n        continued\n"
+	if got != want {
+		t.Errorf("continuation dedent changed with a wider marker:\ngot:\n%s\nwant:\n%s", got, want)
+	}
+	// A bare ".." is still the empty comment it always was.
+	if bare := doctree.Dump(Parse("..\n")); bare != "<document>\n    <comment>\n" {
+		t.Errorf("bare marker changed: %q", bare)
+	}
+}
