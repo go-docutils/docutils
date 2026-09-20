@@ -108,42 +108,68 @@ func (p *parser) parseInline(text string, lineno int) ([]doctree.Node, []*doctre
 
 	i := 0
 	n := len(runes)
+	// Set once an implicit construct has been MATCHED and then refused
+	// (an absolute URI naming an unknown scheme); cleared by any
+	// explicit construct, which starts a fresh text run. See
+	// tryStandaloneURI.
+	implicitRefused := false
 	for i < n {
 		if node, consumed, ok := p.tryFootnoteRef(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
+			implicitRefused = false
 			continue
 		}
 		if node, consumed, ok := tryBareReference(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
+			implicitRefused = false
 			continue
 		}
 		if node, consumed, ok := p.tryInlineTarget(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
+			implicitRefused = false
 			continue
 		}
 		if nodes, consumed, ok := p.tryInterpretedOrPhraseRef(runes, i); ok {
 			flush()
 			out = append(out, nodes...)
 			i += consumed
+			// An explicit construct ends the text run the implicit
+			// scan was working on, so the suppression below starts
+			// over -- verified against real docutils, which recognizes
+			// a link after "*em*" that it would not have recognized
+			// without it.
+			implicitRefused = false
 			continue
 		}
 		if node, consumed, ok := p.tryMarker(runes, i); ok {
 			flush()
 			out = append(out, node)
 			i += consumed
+			implicitRefused = false
 			continue
 		}
-		if node, consumed, ok := tryStandaloneURI(runes, i); ok {
-			flush()
-			out = append(out, node)
-			i += consumed
-			continue
+		if !implicitRefused {
+			node, consumed, ok, refused := tryStandaloneURI(runes, i)
+			switch {
+			case ok:
+				flush()
+				out = append(out, node)
+				i += consumed
+				continue
+			case refused:
+				// docutils gives up on implicit constructs for the
+				// rest of this text run, not just on this one: its
+				// implicit_inline returns plain Text for the whole
+				// string it was handed. So a real "http://..." AFTER
+				// an unrecognized scheme is not a link either.
+				implicitRefused = true
+			}
 		}
 		if !isDroppedEscape(runes[i]) {
 			buf.WriteRune(unescapeRune(runes[i]))
@@ -1249,14 +1275,91 @@ func isNameSepRune(r rune) bool {
 // "//" at all (mailto:, news:, urn: and friends), a real, separate,
 // not-yet-ported gap (test_inline_markup.py's own standalone_hyperlink
 // group, not chased this round).
-func tryStandaloneURI(runes []rune, i int) (doctree.Node, int, bool) {
+// explicitStartStrings is docutils' own start-string alternation, read
+// out of the compiled patterns.initial:
+//
+//	(?P<start>\*\*|\*(?!\*)|``|_`|\|(?!\|))(?!\s)
+//
+// Order matters: the longer spellings come first, so "**" is never read
+// as "*".
+var explicitStartStrings = []string{"**", "``", "_`", "*", "|"}
+
+// isExplicitStartAt reports whether an explicit inline start-string
+// begins at i. It tests the START-STRING only -- not whether the
+// construct ever closes -- because that is all patterns.initial does,
+// and closing is somebody else's problem by then.
+func isExplicitStartAt(runes []rune, i int) bool {
+	for _, m := range explicitStartStrings {
+		ol := len([]rune(m))
+		if !hasPrefixAt(runes, i, m) {
+			continue
+		}
+		if m == "*" && hasPrefixAt(runes, i, "**") {
+			continue
+		}
+		if m == "|" && hasPrefixAt(runes, i, "||") {
+			continue
+		}
+		if i+ol < len(runes) && unicode.IsSpace(runes[i+ol]) {
+			continue // the "(?!\s)" after the group
+		}
+		if validStartBoundary(runes, i, ol) {
+			return true
+		}
+	}
+	return false
+}
+
+// implicitLimit returns where the text an implicit construct may span
+// ENDS: at the next explicit start-string after i, or at the end of the
+// text.
+//
+// docutils never has to think about this. Its Inliner.parse finds
+// explicit start-strings first, over the whole string, and hands
+// implicit_inline only the text BETWEEN them -- so an implicit match
+// physically cannot cross one. A per-position scanner like this one has
+// no such guarantee, and the moment emailc was transcribed faithfully
+// (it contains "`") an email swallowed an inline literal whole:
+// "non-“@overload“-decorated" became one mailto: address where real
+// docutils has text, a <literal>, and more text.
+func implicitLimit(runes []rune, i int) int {
+	for k := i + 1; k < len(runes); k++ {
+		if isExplicitStartAt(runes, k) {
+			return k
+		}
+	}
+	return len(runes)
+}
+
+// tryStandaloneURI returns rejected=true when the text at i has the
+// shape of an absolute URI but names a scheme docutils does not know.
+// That is a THIRD outcome, distinct from both "here is a reference" and
+// "nothing here", and the caller has to treat it as such.
+//
+// docutils runs its implicit constructs as one regular expression whose
+// alternatives are ordered absolute-URI first, email second, and scans
+// it with .search(). So at a position where the absolute-URI
+// alternative matches, the email alternative is never tried -- and when
+// standalone_uri then rejects the scheme by raising MarkupMismatch,
+// implicit_inline abandons the WHOLE text it was given (states.py: the
+// "except MarkupMismatch: pass" falls through to "return
+// [nodes.Text(text)]").
+//
+// Reading "svn+ssh://pythondev@svn.python.org/" as an email is what a
+// per-position scanner does if nobody tells it otherwise, and this one
+// did: it found "//pythondev" as a local part and invented a mailto:
+// link inside a URI real docutils leaves as plain text.
+func tryStandaloneURI(runes []rune, i int) (node doctree.Node, consumed int, ok, rejected bool) {
 	if !validStartBoundary(runes, i, 0) {
-		return nil, 0, false
+		return nil, 0, false, false
 	}
-	if node, n, ok := tryURIScheme(runes, i); ok {
-		return node, n, true
+	// Bounded at the next explicit start-string: see implicitLimit.
+	bounded := runes[:implicitLimit(runes, i)]
+	if node, n, ok, refused := tryURIScheme(bounded, i); ok || refused {
+		return node, n, ok, refused
 	}
-	return tryEmail(runes, i)
+	node, n, ok := tryEmail(bounded, i)
+	return node, n, ok, false
 }
 
 // tryURIScheme's own matched span is unescaped before use — a real,
@@ -1266,9 +1369,9 @@ func tryStandaloneURI(runes []rune, i int) (doctree.Node, int, bool) {
 // leaked its raw escapeRune-shifted codepoint straight into the visible
 // text/refuri, since escapeBackslashes' encoding is never meant to
 // survive into rendered output unresolved.
-func tryURIScheme(runes []rune, i int) (doctree.Node, int, bool) {
+func tryURIScheme(runes []rune, i int) (node doctree.Node, consumed int, ok, rejected bool) {
 	if !unicode.IsLetter(runes[i]) {
-		return nil, 0, false
+		return nil, 0, false, false
 	}
 	j := i + 1
 	for j < len(runes) && (unicode.IsLetter(runes[j]) || unicode.IsDigit(runes[j]) ||
@@ -1281,17 +1384,7 @@ func tryURIScheme(runes []rune, i int) (doctree.Node, int, bool) {
 	// form. A scheme with no slashes at all ("mailto:", "news:") is
 	// covered by the same rule.
 	if j >= len(runes) || runes[j] != ':' {
-		return nil, 0, false
-	}
-	// The scheme must be one docutils RECOGNIZES. Its own fixture spells
-	// out why: "None of these are standalone hyperlinks (their 'schemes'
-	// are not recognized): signal:noise, a:b." Without the list, relaxing
-	// the slash requirement turned every "word:word" into a link --
-	// ":field:name:with:embedded:colons:" became one. The list also
-	// tightens the "://" form this used to accept for ANY scheme:
-	// "unknownscheme://x.y" is not a reference in docutils either.
-	if _, known := uriSchemes[strings.ToLower(string(runes[i:j]))]; !known {
-		return nil, 0, false
+		return nil, 0, false, false
 	}
 	start := j + 1
 	for k := 0; k < 2 && start < len(runes) && runes[start] == '/'; k++ {
@@ -1308,7 +1401,7 @@ func tryURIScheme(runes []rune, i int) (doctree.Node, int, bool) {
 	}
 	end := trimToURIFinalChar(runes, start, k)
 	if end <= start {
-		return nil, 0, false
+		return nil, 0, false, false
 	}
 	// isValidEndBoundaryChar, not a blanket unicode.IsPunct: ">" is a
 	// MATH SYMBOL in Unicode, not punctuation, so the ad-hoc check
@@ -1316,27 +1409,38 @@ func tryURIScheme(runes []rune, i int) (doctree.Node, int, bool) {
 	// ">" of "<http://example.org/x.>" instead of swallowing it. This is
 	// the same end_string_suffix class every other construct's close uses.
 	if end < len(runes) && !isValidEndBoundaryChar(runes[end]) {
-		return nil, 0, false
+		return nil, 0, false, false
+	}
+	// The scheme test comes LAST, after the whole absolute-URI shape has
+	// matched, because that is when docutils applies it: its pattern
+	// matches first and standalone_uri then raises MarkupMismatch for an
+	// unrecognized scheme. Testing the scheme as soon as a colon
+	// appeared -- which is where this check used to sit, and where a
+	// first attempt at the MarkupMismatch case put it again -- refuses
+	// text that never matched the pattern at all: "Trailing punctuation:
+	// https://x.org" has letters before a colon and is not a URI,
+	// because what follows cannot end on a URI-final character.
+	//
+	// Its own fixture says why the list is needed at all: "None of these
+	// are standalone hyperlinks (their 'schemes' are not recognized):
+	// signal:noise, a:b."
+	if _, known := uriSchemes[strings.ToLower(string(runes[i:j]))]; !known {
+		return nil, 0, false, true
 	}
 	text := unescapeRunes(runes[i:end])
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
 	el.SetAttr("refuri", text)
-	return el, end - i, true
+	return el, end - i, true, false
 }
 
 func tryEmail(runes []rune, i int) (doctree.Node, int, bool) {
-	j := i
-	for j < len(runes) && isEmailLocalChar(runes[j]) {
-		j++
-	}
+	j := scanEmailPart(runes, i, false)
 	if j == i || j >= len(runes) || runes[j] != '@' {
 		return nil, 0, false
 	}
 	j++
 	domainStart := j
-	for j < len(runes) && isEmailDomainChar(runes[j]) {
-		j++
-	}
+	j = scanEmailPart(runes, j, true)
 	// docutils' host part is "[chars]+" followed by a separate FINAL URI
 	// char group, so the host needs at least TWO characters and must END
 	// on one of [_~*/=+a-zA-Z0-9]: "user@host" and "a@b-c" are addresses,
@@ -1362,12 +1466,52 @@ func tryEmail(runes []rune, i int) (doctree.Node, int, bool) {
 	return el, end - i, true
 }
 
-func isEmailLocalChar(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune(".+_%-", r)
+// isEmailChar is docutils' own emailc class, transcribed:
+//
+//	emailc = r"""[-_!~*'{|}/#?^`&=+$%a-zA-Z0-9\x00]"""
+//
+// Two things about it are easy to get wrong, and this package had both.
+// It contains "/" -- so "comp.lang.python/python-list@python.org" is
+// ONE address, local part and all, not an address preceded by a path.
+// And it is ASCII: a-zA-Z0-9, not unicode.IsLetter, so an accented
+// letter ends the address rather than continuing it.
+//
+// "." is deliberately absent. The pattern spells it as a SEPARATOR
+// between runs of emailc -- emailc+(\.emailc+)* for the local part --
+// which is why scanEmailPart below is a loop over runs rather than one
+// character-class scan: treating "." as a member accepts "..", a
+// leading "." and a trailing one, none of which the pattern does.
+func isEmailChar(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return true
+	}
+	return strings.ContainsRune("-_!~*'{|}/#?^`&=+$%", r)
 }
 
-func isEmailDomainChar(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '-'
+// scanEmailPart scans emailc+(\.emailc+)* from i, or, when the trailing
+// runs may be empty (allowEmptyTail, the HOST half's
+// emailc+(\.emailc*)*), emailc+(\.emailc*)*. It returns i unchanged
+// when even the first run is empty.
+func scanEmailPart(runes []rune, i int, allowEmptyTail bool) int {
+	j := i
+	for j < len(runes) && isEmailChar(runes[j]) {
+		j++
+	}
+	if j == i {
+		return i
+	}
+	for j < len(runes) && runes[j] == '.' {
+		k := j + 1
+		for k < len(runes) && isEmailChar(runes[k]) {
+			k++
+		}
+		if k == j+1 && !allowEmptyTail {
+			break // a dot must be followed by at least one emailc here
+		}
+		j = k
+	}
+	return j
 }
 
 // trimTrailingURIPunct drops trailing punctuation unlikely to be part

@@ -934,15 +934,36 @@ classifies as a math SYMBOL rather than punctuation, so an ad-hoc
 `(user@host)`. That is how essentially every PEP writes an author, and
 it accounted for 386 of the 1564 real-world corpus files on its own.
 
-One documented divergence remains beside it: docutils' `implicit_inline`
-tries each implicit pattern in turn and, when `standalone_uri` matches
-but the scheme is not in `urischemes.schemes`, raises `MarkupMismatch` —
-after which the WHOLE remaining text becomes one plain `Text` node, so
-any address later in the same paragraph is lost too. `PEP:9002` (no
-space after the colon) does exactly that to the author line beneath it.
-This parser rescans instead, so it finds the address docutils drops. One
-real-world file rides on it, and it had been matching only because two
-errors cancelled.
+That address's START boundary followed in v0.111.0, along with the
+divergence this paragraph used to record as permanent. `emailc` is
+`[-_!~*'{|}/#?^`&=+$%a-zA-Z0-9]`, so `/` is an email character and
+`comp.lang.python/python-list@python.org` is ONE address (PEP 20 writes
+it); it is ASCII, so an accented letter ends the address rather than
+continuing it; and `.` is a SEPARATOR between runs, `emailc+(\.emailc+)*`,
+which is why a leading, trailing or doubled dot is not an address at all.
+
+And when `standalone_uri` matches but the scheme is not in
+`urischemes.schemes`, docutils raises `MarkupMismatch`, after which
+`implicit_inline` returns the WHOLE text it was given as one plain
+`Text` node. Two things follow. No email is found inside the refused
+URI — a per-position scanner reads `svn+ssh://pythondev@svn.python.org/`
+as a mailto: address, and this one did. And a good URI AFTER it is not
+recognised either, until an explicit construct starts a fresh run:
+emphasis or an inline literal resets it, a newline inside the same
+paragraph does not. Each of those boundaries was checked by running
+docutils, not by reading it.
+
+Two things keep that faithful rather than merely strict. The scheme test
+happens only once the whole absolute-URI shape has matched, because that
+is when docutils applies it — testing it at the colon refuses
+`Trailing punctuation: https://x.org`, which is not a URI at all. And an
+implicit match may not cross an explicit start-string (`implicitLimit`),
+which docutils gets structurally: `Inliner.parse` finds those first and
+hands `implicit_inline` only the text between them. Without that bound,
+transcribing `emailc` faithfully brings `` ` `` along with it and
+`` non-``@overload``-decorated `` becomes one address swallowing the
+literal — PEP 484, caught by set-diffing the corpus within the same
+round rather than by the totals, which were rising.
 
 A hyperlink target's name may be **backquoted** (v0.92.0+), and then the
 quotes are delimiters rather than part of the name: `.. _\`with: colon\`:`
