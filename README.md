@@ -1000,7 +1000,24 @@ real-world corpus files and one of the cheapest fixes in this list:
 `content[k]` is `lines[i+k]`, so the base is `i+lineBase`. The test's
 telling case is a SECOND paragraph in the body, which reports its own
 first line rather than the footnote's — so the rule cannot be satisfied
-by remembering where the footnote started. Two derivations are
+by remembering where the footnote started.
+
+**Table cells** followed in v0.114.0, which leaves one caller passing the
+sentinel in the whole package. Every cell in a row needs a DIFFERENT
+base, which is why this could never have been one value per table: for a
+grid table a cell's content is block rows `top+1..bottom-1` and
+`block[r]` is `lines[i+r]`, so the base is `i+top+1+lineBase`; for a
+simple table `cell.lineOffset` is already the row's first line within the
+block, so it is `i+lineOffset+lineBase`, with no border row to skip.
+
+The one still passing `-1` is a **csv-table** cell, and deliberately: a
+cell's text comes out of a CSV reader that does not record which body
+line each row began on, and a quoted field may span several. Tracking
+that is a real change to the CSV parsing, and measured against the
+corpus it is worth exactly ONE file — so it is named here rather than
+guessed at.
+
+Two derivations are
 needed, because `class` and the table directives split their options off
 themselves rather than through `parseDirectiveBlock`, so their content is
 a SUFFIX of the body (`bodyStartIndex`) rather than an offset into the

@@ -110,7 +110,7 @@ func parseColumnsChar(line string, ch byte, canonical []tableColumn, borderEnd i
 // lines[i]. Returns ok=false (no lines consumed) if lines[i] isn't a
 // valid top border, or the table turns out malformed once isolated —
 // in both cases the caller falls back to ordinary block parsing.
-func (p *parser) tryParseSimpleTable(lines []string, i int) (*doctree.Element, int, bool) {
+func (p *parser) tryParseSimpleTable(lines []string, i, lineBase int) (*doctree.Element, int, bool) {
 	if !isSimpleTableTopLine(lines[i]) {
 		return nil, 0, false
 	}
@@ -141,7 +141,7 @@ func (p *parser) tryParseSimpleTable(lines []string, i int) (*doctree.Element, i
 	block := append([]string(nil), lines[i:end+1]...)
 	next := end + 1
 
-	table, ok := p.buildSimpleTable(block)
+	table, ok := p.buildSimpleTable(block, i, lineBase)
 	if !ok {
 		return nil, next, false
 	}
@@ -157,7 +157,7 @@ type simpleTableCell struct {
 // buildSimpleTable runs the SimpleTableParser algorithm over an
 // already-isolated block (top border ... bottom border, inclusive) and
 // builds the doctree <table>.
-func (p *parser) buildSimpleTable(block []string) (*doctree.Element, bool) {
+func (p *parser) buildSimpleTable(block []string, i, lineBase int) (*doctree.Element, bool) {
 	if len(block) < 3 {
 		return nil, false
 	}
@@ -259,7 +259,13 @@ func (p *parser) buildSimpleTable(block []string) (*doctree.Element, bool) {
 			if cell.morecols > 0 {
 				entry.SetAttr("morecols", strconv.Itoa(cell.morecols))
 			}
-			p.parseBlockLines(trimTrailingBlankLines(cell.lines), entry, -1)
+			// cell.lineOffset is the row's first line within block, and
+			// block[r] is lines[i+r], so the cell's base is
+			// i+cell.lineOffset+lineBase. Unlike the grid table there is
+			// no border row to skip: a simple table's row slice starts
+			// on the text itself.
+			p.parseBlockLines(trimTrailingBlankLines(cell.lines), entry,
+				nestedLineBase(i+cell.lineOffset, lineBase))
 			rowEl.Append(entry)
 		}
 		if headBodySep >= 0 && row[0].lineOffset < headBodySep {

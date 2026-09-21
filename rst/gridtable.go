@@ -126,7 +126,7 @@ func isolateGridTable(lines []string, i int) ([]string, int, bool) {
 	return block, end + 1, true
 }
 
-func (p *parser) tryParseGridTable(lines []string, i int) (*doctree.Element, int, bool) {
+func (p *parser) tryParseGridTable(lines []string, i, lineBase int) (*doctree.Element, int, bool) {
 	if !isGridTableTopLine(lines[i]) {
 		return nil, 0, false
 	}
@@ -134,7 +134,7 @@ func (p *parser) tryParseGridTable(lines []string, i int) (*doctree.Element, int
 	if !ok {
 		return nil, 0, false
 	}
-	table, ok := p.buildGridTable(block)
+	table, ok := p.buildGridTable(block, i, lineBase)
 	if !ok {
 		return nil, 0, false
 	}
@@ -146,7 +146,7 @@ type gridCell struct {
 	lines                    []string
 }
 
-func (p *parser) buildGridTable(block []string) (*doctree.Element, bool) {
+func (p *parser) buildGridTable(block []string, i, lineBase int) (*doctree.Element, bool) {
 	n := len(block)
 	if n < 3 {
 		return nil, false
@@ -227,7 +227,7 @@ func (p *parser) buildGridTable(block []string) (*doctree.Element, bool) {
 		}
 	}
 
-	return p.gridTableFromCells(cells, rowseps, colseps, headBodySepRow), true
+	return p.gridTableFromCells(cells, rowseps, colseps, headBodySepRow, i, lineBase), true
 }
 
 // scanCell traces one cell rectangle starting at its upper-left corner
@@ -375,7 +375,7 @@ func dedentCellLines(lines []string) []string {
 // cell's raw character-grid coordinates to actual table row/column
 // numbers (via the sorted set of all row/column boundaries seen), then
 // build <table>[<thead>]<tbody> with each cell's morerows/morecols span.
-func (p *parser) gridTableFromCells(cells []gridCell, rowseps, colseps map[int]bool, headBodySepRow int) *doctree.Element {
+func (p *parser) gridTableFromCells(cells []gridCell, rowseps, colseps map[int]bool, headBodySepRow, i, lineBase int) *doctree.Element {
 	rowBounds := sortedIntKeys(rowseps)
 	colBounds := sortedIntKeys(colseps)
 	rowIndex := make(map[int]int, len(rowBounds))
@@ -391,6 +391,7 @@ func (p *parser) gridTableFromCells(cells []gridCell, rowseps, colseps map[int]b
 
 	type placed struct {
 		morerows, morecols int
+		top                int // the cell's own top border row, within block
 		lines              []string
 	}
 	placedGrid := make([][]*placed, numRows)
@@ -402,6 +403,7 @@ func (p *parser) gridTableFromCells(cells []gridCell, rowseps, colseps map[int]b
 		placedGrid[rn][cn] = &placed{
 			morerows: rowIndex[c.bottom] - rn - 1,
 			morecols: colIndex[c.right] - cn - 1,
+			top:      c.top,
 			lines:    c.lines,
 		}
 	}
@@ -436,7 +438,15 @@ func (p *parser) gridTableFromCells(cells []gridCell, rowseps, colseps map[int]b
 			if pc.morerows > 0 {
 				entry.SetAttr("morerows", strconv.Itoa(pc.morerows))
 			}
-			p.parseBlockLines(trimTrailingBlankLines(pc.lines), entry, -1)
+			// A cell's content is block rows pc.top+1..pc.bottom-1,
+			// and block[r] is lines[i+r] (isolateGridTable returns the
+			// block starting at i, one entry per source line), so the
+			// cell's own base is i+pc.top+1+lineBase. Every cell in a
+			// row gets a DIFFERENT one, which is why this could not be
+			// a single per-table value and stayed at the "unknown"
+			// sentinel for so long.
+			p.parseBlockLines(trimTrailingBlankLines(pc.lines), entry,
+				nestedLineBase(i+pc.top+1, lineBase))
 			rowEl.Append(entry)
 		}
 		if headBodySepRow >= 0 && rn < headRows {
