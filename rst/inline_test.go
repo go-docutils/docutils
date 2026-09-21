@@ -266,3 +266,60 @@ func TestImplicitMatchStopsAtExplicitMarkup(t *testing.T) {
 		t.Errorf("the inline literal did not survive:\n%s", got)
 	}
 }
+
+// TestReferenceEndBoundary covers the character that may follow a bare
+// reference's trailing "_". docutils tests it against end_string_suffix,
+// a NAMED class (whitespace, NUL, backslash, the closers and the
+// delimiters); this package tested unicode.IsPunct, a Unicode CATEGORY.
+//
+// They are not the same set, and not even nested: of 39 characters run
+// through real docutils, twelve disagreed, in both directions. The same
+// mistake was made and corrected twice before in this file, for the URI
+// scan (v0.63.0) and the email scan (v0.87.0); this was the third
+// sibling and the last one still ad hoc.
+//
+// Every expectation below is what real docutils produced for
+// "see name_<c> rest", not what the class membership suggests.
+func TestReferenceEndBoundary(t *testing.T) {
+	check := func(t *testing.T, c string, want bool) {
+		t.Helper()
+		got := strings.Contains(doctree.Dump(Parse("see name_"+c+" rest\n")), `refname="name"`)
+		if got != want {
+			t.Errorf("after %q: reference recognised = %v, want %v", c, got, want)
+		}
+	}
+	t.Run("accepted", func(t *testing.T) {
+		// Whitespace and the delimiters/closers of end_string_suffix.
+		for _, c := range []string{" ", ".", ",", ";", "!", "?", "-", "/", ":", ")", "]", "}", "\"", "'", "’", "”", "»"} {
+			check(t, c, true)
+		}
+		// ">" is a math SYMBOL and "\\" is not punctuation at all, so an
+		// IsPunct test rejected both. docutils accepts them.
+		check(t, ">", true)
+		check(t, "\\", true)
+	})
+	t.Run("rejected", func(t *testing.T) {
+		// All Unicode punctuation, none of them in end_string_suffix.
+		// "*" is the one the corpus found: "bdist_* to stdlib" is a
+		// plain sentence, not a reference to "bdist".
+		for _, c := range []string{"*", "(", "[", "{", "&", "%", "#", "@", "§", "¶", "_"} {
+			check(t, c, false)
+		}
+	})
+	t.Run("the corpus cases", func(t *testing.T) {
+		for _, src := range []string{
+			"Joe Smith, bdist_* to stdlib?\n",
+			"interned: interned-state (SSTATE_*) as in 3.2\n",
+		} {
+			got := doctree.Dump(Parse(src))
+			if strings.Contains(got, "<reference") {
+				t.Errorf("%q produced a reference:\n%s", src, got)
+			}
+			// The underscore and what follows must still be in the TEXT,
+			// not consumed by a reference that was never there.
+			if !strings.Contains(got, "_*") {
+				t.Errorf("%q lost its \"_*\" from the text:\n%s", src, got)
+			}
+		}
+	})
+}
