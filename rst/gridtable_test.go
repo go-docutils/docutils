@@ -89,7 +89,7 @@ func TestTryParseGridTableRejectsMultipleHeadSeps(t *testing.T) {
 		"| e   | f   |",
 		"+-----+-----+",
 	}
-	if _, _, ok := p.tryParseGridTable(lines, 0); ok {
+	if _, _, ok := p.tryParseGridTable(lines, 0, 0); ok {
 		t.Fatal("tryParseGridTable matched a table with two head/body separators")
 	}
 }

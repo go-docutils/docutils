@@ -498,12 +498,12 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
-		if table, next, ok := p.tryParseGridTable(lines, i); ok {
+		if table, next, ok := p.tryParseGridTable(lines, i, 0); ok {
 			current.Append(table)
 			i = next
 			continue
 		}
-		if table, next, ok := p.tryParseSimpleTable(lines, i); ok {
+		if table, next, ok := p.tryParseSimpleTable(lines, i, 0); ok {
 			current.Append(table)
 			i = next
 			continue
@@ -743,12 +743,12 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 			i = next
 			continue
 		}
-		if table, next, ok := p.tryParseGridTable(lines, i); ok {
+		if table, next, ok := p.tryParseGridTable(lines, i, lineBase); ok {
 			parent.Append(table)
 			i = next
 			continue
 		}
-		if table, next, ok := p.tryParseSimpleTable(lines, i); ok {
+		if table, next, ok := p.tryParseSimpleTable(lines, i, lineBase); ok {
 			parent.Append(table)
 			i = next
 			continue
