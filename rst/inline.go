@@ -1159,11 +1159,22 @@ func tryBareReference(runes []rune, i int) (doctree.Node, int, bool) {
 		anonymous = true
 		end++
 	}
-	if end < len(runes) {
-		next := runes[end]
-		if !unicode.IsSpace(next) && !unicode.IsPunct(next) {
-			return nil, 0, false
-		}
+	// isValidEndBoundaryChar, not a blanket unicode.IsPunct -- the THIRD
+	// place in this file to need saying so, and the last one still
+	// getting it wrong. The URI scan was corrected in v0.63.0 and the
+	// email scan in v0.87.0, each leaving a comment explaining that
+	// docutils' end_string_suffix is a NAMED class, not a Unicode
+	// category, and that the two disagree in both directions.
+	//
+	// They disagree on 12 of the 39 characters checked against real
+	// docutils here. "*" is Unicode punctuation but not in the class, so
+	// "bdist_* to stdlib" became a reference to "bdist" -- taking the
+	// underscore and the asterisk out of the text with it -- where
+	// docutils has a plain sentence. So did "(", "[", "{", "&", "%",
+	// "#", "@". In the other direction ">" is a math SYMBOL and "\" is
+	// not punctuation at all, yet both END a reference.
+	if end < len(runes) && !isValidEndBoundaryChar(runes[end]) {
+		return nil, 0, false
 	}
 	name := unescapeRunes(runes[i:j])
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: name})

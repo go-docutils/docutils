@@ -927,6 +927,17 @@ missing until v0.88.0. `rst-class` deliberately stays out of the shared
 helper: `runClassDirective` distinguishes `class` from its alias by the
 name as WRITTEN, so canonicalizing it would erase a real difference.
 
+A bare hyperlink reference ends on that same class too (v0.112.0+) —
+the THIRD place in `inline.go` to need it, and the last one that was
+still testing `unicode.IsPunct` instead. The two are not the same set
+and not even nested: of 39 characters run through real docutils, twelve
+disagreed, in both directions. `*` is Unicode punctuation and not in the
+class, so `bdist_* to stdlib` became a reference to `bdist` — taking the
+underscore and the asterisk out of the visible text with it — where
+docutils has a plain sentence; `(`, `[`, `{`, `&`, `%`, `#`, `@` did the
+same. The other way, `>` is a math SYMBOL and `\` is not punctuation at
+all, yet both legitimately end a reference.
+
 A standalone **email address may end on the same `end_string_suffix`
 class a standalone URI may** (v0.87.0+) — notably `>`, which Unicode
 classifies as a math SYMBOL rather than punctuation, so an ad-hoc
