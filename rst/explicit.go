@@ -361,7 +361,15 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label,
 		el.Append(doctree.NewElement(doctree.TagLabel, &doctree.Text{Data: label}))
 	}
 	if len(content) > 0 {
-		p.parseBlockLines(content, el, -1)
+		// content[k] is lines[i+k]: content[0] is what remained of the
+		// marker's own line, and gatherFootnoteBody returns one entry
+		// per source line after it. msgLine is pos+lineBase+1, so the
+		// base that makes those agree is i+lineBase -- the same
+		// derivation topics/sidebars got in v0.44.0, for a construct
+		// that was still passing the -1 "unknown" sentinel and so
+		// emitting every inline diagnostic in a footnote body with NO
+		// line attribute at all.
+		p.parseBlockLines(content, el, i+lineBase)
 	} else {
 		// next-1, NOT next: this warning carries the line the construct
 		// itself ENDED on (the last line it actually consumed), where

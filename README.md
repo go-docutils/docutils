@@ -993,7 +993,14 @@ mapping is exact rather than approximate: a directive's combined block is
 `lines[i:]` one for one, so `parseDirectiveBlockAt` reports where the
 content begins and the caller adds `i`. Every directive that nests content now
 threads one (v0.97.0): admonitions, `container`, `class`, `figure`,
-`header`/`footer` and the two table directives. Two derivations are
+`header`/`footer` and the two table directives. A **footnote or citation
+body** followed in v0.113.0 — it was still passing `-1`, so every
+diagnostic raised inside one carried no `line` at all, which is nine
+real-world corpus files and one of the cheapest fixes in this list:
+`content[k]` is `lines[i+k]`, so the base is `i+lineBase`. The test's
+telling case is a SECOND paragraph in the body, which reports its own
+first line rather than the footnote's — so the rule cannot be satisfied
+by remembering where the footnote started. Two derivations are
 needed, because `class` and the table directives split their options off
 themselves rather than through `parseDirectiveBlock`, so their content is
 a SUFFIX of the body (`bodyStartIndex`) rather than an offset into the
