@@ -406,8 +406,9 @@ with a real anchor point (HTML `<a id="slug">text</a>`; LaTeX
 to the internal-link path specifically, since `\href`'s usual URL
 escaping would corrupt hyperref's own `#`-marker convention).
 
-A grid table's geometry is measured in CODE POINTS, with East Asian
-Wide and Fullwidth characters counting TWO (v0.109.0+, `eastasian.go`).
+A table's geometry is measured in CODE POINTS, with East Asian
+Wide and Fullwidth characters counting TWO (v0.109.0+ for grid tables,
+v0.115.0+ for simple ones; `eastasian.go`).
 Both halves of that matter. docutils is Python, so its line indexing is
 per-code-point for free and `…` is one column; reading the same lines as
 Go strings made it three, pushing every later `|` out of line with its
@@ -430,6 +431,16 @@ python3 -c 'import unicodedata as u; \
 
 (`eastasian.go` stores that as sorted ranges; `TestIsEastAsianWide`
 checks the range boundaries rather than their middles.)
+
+The SIMPLE table needed the same thing and did not get it until
+v0.115.0. Its borders are ASCII, so only the data rows were wrong — but
+`extendLastColumnForOverflow` compared a row's BYTE length against a
+column boundary counted in characters, so one accented letter anywhere
+made the last column a column too wide, and a table full of them (PEP
+3117 declares its types with mathematical symbols) made it several.
+docutils pads simple tables exactly as it pads grid ones:
+`simple_table_top` calls `pad_double_width` right where `grid_table_top`
+does.
 
 `rst.TableColumnWidth` exports that metric (v0.110.0+), because a WRITER
 needs the identical rule: `go-richdoc/rst` padded its cells by rune

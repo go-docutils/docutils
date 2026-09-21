@@ -2,6 +2,7 @@ package rst
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/go-docutils/docutils/doctree"
@@ -143,6 +144,68 @@ func TestTableCellCarriesRealLines(t *testing.T) {
 			got := systemMessageLines(tc.source)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("system_message lines = %q, want %q\n%s", got, tc.want, doctree.Dump(Parse(tc.source)))
+			}
+		})
+	}
+}
+
+// TestSimpleTableMeasuresCodePointsNotBytes is v0.109.0's fix for the
+// GRID table, applied to the sibling it did not touch. A simple table's
+// borders are ASCII, so only the DATA rows were wrong -- but that is
+// enough: extendLastColumnForOverflow compared a row's BYTE length
+// against a column boundary counted in characters, so one accented
+// letter anywhere in the table made its last column one wider than
+// docutils says, and a whole table of them (PEP 3117 declares its types
+// with mathematical symbols) made it several.
+//
+// docutils pads simple tables exactly as it pads grid ones --
+// simple_table_top calls pad_double_width right where grid_table_top
+// does -- so a wide character spans two columns here too, and the
+// filler must not survive into the cell's text.
+func TestSimpleTableMeasuresCodePointsNotBytes(t *testing.T) {
+	// The second column's border is seven wide in every case; only the
+	// data cell varies.
+	table := func(cell string) string {
+		return "=====  =======\n" +
+			"a      b\n" +
+			"=====  =======\n" +
+			"one    " + cell + "\n" +
+			"=====  =======\n"
+	}
+	cases := []struct {
+		name, cell string
+		wantWidths []string
+		wantText   string
+	}{
+		{"ascii, the control", "two", []string{"5", "7"}, "two"},
+		// 4 bytes, 3 code points: it FITS, and used to widen the column.
+		{"an accented letter is one column", "café", []string{"5", "7"}, "café"},
+		// 2 wide chars + 3 = 7 columns exactly.
+		{"a wide character is two columns", "中文xxx", []string{"5", "7"}, "中文xxx"},
+		// 2 wide chars + 5 = 9 columns: docutils widens the last column
+		// to 9, measuring in columns rather than characters or bytes.
+		{"and overflows by its WIDTH", "中文xxxxx", []string{"5", "9"}, "中文xxxxx"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(table(tc.cell)))
+			var widths []string
+			for _, l := range strings.Split(got, "\n") {
+				if k := strings.Index(l, `colwidth="`); k >= 0 {
+					r := l[k+len(`colwidth="`):]
+					widths = append(widths, r[:strings.IndexByte(r, '"')])
+				}
+			}
+			if !reflect.DeepEqual(widths, tc.wantWidths) {
+				t.Errorf("colwidths = %q, want %q\n%s", widths, tc.wantWidths, got)
+			}
+			if !strings.Contains(got, "\n                            "+tc.wantText+"\n") {
+				t.Errorf("cell text %q not found in:\n%s", tc.wantText, got)
+			}
+			// The filler standing in for a wide character's second
+			// column must never reach the tree.
+			if strings.ContainsRune(got, doubleWidthPad) {
+				t.Errorf("padding character leaked into the tree:\n%q", got)
 			}
 		})
 	}
