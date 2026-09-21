@@ -442,6 +442,41 @@ docutils pads simple tables exactly as it pads grid ones:
 `simple_table_top` calls `pad_double_width` right where `grid_table_top`
 does.
 
+`rst.ColumnWidth` (v0.116.0+) is the OTHER column count, and the two are
+deliberately different because docutils' are: a table's geometry comes
+from `pad_double_width`, which doubles wide characters and says nothing
+about combining ones, while `utils.column_width` doubles wide characters
+AND subtracts combining ones. The second is what a title underline's
+length is compared against (`states.py:2888`, `:3147`).
+
+This package had that as "count the runes that are not `unicode.Mn`",
+wrong twice over. It never doubled wide characters, so a CJK title got no
+`underline too short` warning it had earned; and `unicode.Mn` is not the
+set `unicodedata.combining` tests — they disagree on **1127** code
+points, 1089 of which are in `Mn` with a combining class of zero. So the
+combining ranges are generated from the reference interpreter too:
+
+```
+python3 -c 'import unicodedata as u; \
+  print(*[hex(c) for c in range(0x110000) if u.combining(chr(c))])'
+```
+
+The arithmetic is two independent steps, not a three-way choice: U+3099
+is Wide *and* combining, so it is 2−1 = 1 column, and a `switch` that
+treats combining as "no column" makes it 0. That was one character in a
+1245-character sample against the reference, and the only one the first
+attempt got wrong.
+
+**A measured gap this did not close.** `nodes.make_id` lowercases,
+transliterates through two tables, then NFKD-normalises and drops
+whatever is still non-ASCII — so `Ti中tle` is `title` (the character
+leaves no separator behind) while `Ti…tle` is `ti-tle` (`…` decomposes to
+ASCII dots, which become one). This package turns every non-foldable
+character into a separator, so it gives `ti-tle` for both. Telling those
+apart needs NFKD, which Go has no standard-library support for and which
+this dependency-free package will not embed. Worth **two** real-world
+corpus files, measured by neutralising every id attribute and recounting.
+
 `rst.TableColumnWidth` exports that metric (v0.110.0+), because a WRITER
 needs the identical rule: `go-richdoc/rst` padded its cells by rune
 count, so a CJK cell overflowed its column and a table this package had

@@ -34,7 +34,6 @@ package rst
 import (
 	"strconv"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/go-docutils/docutils/doctree"
@@ -1054,15 +1053,6 @@ func (p *parser) parseEnumeratedList(lines []string, i, lineBase int) (*doctree.
 // Go's stdlib unicode.Mn — nonspacing marks — is the closest built-in
 // equivalent and matches every combining-mark case actually checked
 // against the foreign judge so far; no x/text dependency needed).
-func columnWidth(s string) int {
-	n := 0
-	for _, r := range s {
-		if !unicode.Is(unicode.Mn, r) {
-			n++
-		}
-	}
-	return n
-}
 
 func matchTitle(lines []string, i int, demoted bool) (title string, style titleStyle, consumed int, warning *doctree.Element, ok bool) {
 	if char, isLine := isUniformLine(lines[i]); isLine {
@@ -1093,7 +1083,7 @@ func matchTitle(lines []string, i int, demoted bool) (title string, style titleS
 					// an inset title is effectively "underline_length minus
 					// the inset" narrower, and can trigger the warning on
 					// its own even when the stripped text alone would fit.
-					if columnWidth(titleRaw) > len([]rune(overline)) {
+					if ColumnWidth(titleRaw) > len([]rune(overline)) {
 						// Too narrow for its title. Real docutils warns
 						// -- unless the overline is ALSO shorter than 4
 						// characters, in which case Line.text calls
@@ -1133,7 +1123,7 @@ func matchTitle(lines []string, i int, demoted bool) (title string, style titleS
 					t := trimTrailingSpace(lines[i])
 					u := trimTrailingSpace(lines[i+1])
 					if len([]rune(u)) >= 4 || len([]rune(u)) >= len([]rune(t)) {
-						if columnWidth(t) > len([]rune(u)) {
+						if ColumnWidth(t) > len([]rune(u)) {
 							source := t + "\n" + u
 							warning = sectionMessage("2", "WARNING", "Title underline too short.", i+2, source)
 						}
@@ -1314,7 +1304,7 @@ func titleDiagnostic(lines []string, i int) (msg *doctree.Element, consumed int,
 	// unless the title is too WIDE for it -- which for a short overline
 	// is short_overline's last branch, and for a long one is the
 	// "Title overline too short." warning matchTitle emits itself.
-	if short && columnWidth(titleTrimmed) > len([]rune(overline)) {
+	if short && ColumnWidth(titleTrimmed) > len([]rune(overline)) {
 		return shortInfo(2)
 	}
 	return nil, 0, false

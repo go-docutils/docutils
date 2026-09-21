@@ -241,3 +241,58 @@ func TestTableColumnWidth(t *testing.T) {
 		t.Errorf("a cell padded to TableColumnWidth is not accepted by the parser:\n%s", got)
 	}
 }
+
+// TestColumnWidth covers docutils' utils.column_width, which is what a
+// title underline's length is compared against (states.py:2888 and
+// :3147). This package had it as "count the runes that are not
+// unicode.Mn", which is wrong twice over.
+//
+// It never doubled East Asian Wide characters, so a CJK title got no
+// "underline too short" warning it had earned. And unicode.Mn is not
+// the set unicodedata.combining tests: they disagree on 1127 code
+// points -- 1089 are in Mn with a combining class of ZERO, 38 combine
+// without being in Mn. Measured, not guessed, which is the only reason
+// the ranges in eastasian.go are generated rather than approximated.
+//
+// The last case is the one a three-way switch gets wrong: U+3099 is
+// Wide AND combining, and docutils sums the widths then subtracts one
+// per combining character, so it is 2-1 = 1, not 0.
+func TestColumnWidth(t *testing.T) {
+	for _, tc := range []struct {
+		s    string
+		want int
+	}{
+		{"", 0},
+		{"abc", 3},
+		{"café", 4},   // precomposed: 4 code points, 4 columns
+		{"café", 4},  // decomposed: 5 code points, 4 columns
+		{"中文", 4},     // two Wide characters
+		{"Ti中tle", 7}, // the probe's own case
+		{"Ａ", 2},      // FULLWIDTH LATIN CAPITAL A
+		{"…", 1},      // an ellipsis is narrow
+		{"゙", 1},      // Wide AND combining: 2-1
+		{"中゙", 3},     // 2 + (2-1)
+	} {
+		if got := ColumnWidth(tc.s); got != tc.want {
+			t.Errorf("ColumnWidth(%q) = %d, want %d", tc.s, got, tc.want)
+		}
+	}
+}
+
+// TestTitleUnderlineUsesColumnWidth pins the parser-level consequence:
+// a title of five code points but seven COLUMNS needs seven underline
+// characters, not five.
+func TestTitleUnderlineUsesColumnWidth(t *testing.T) {
+	const short = "Ti中tle\n======\n\nbody\n" // 6 dashes under 7 columns
+	const ok = "Ti中tle\n=======\n\nbody\n"   // 7
+	if got := doctree.Dump(Parse(short)); !strings.Contains(got, "Title underline too short") {
+		t.Errorf("a 6-wide underline under a 7-column title raised no warning:\n%s", got)
+	}
+	if got := doctree.Dump(Parse(ok)); strings.Contains(got, "Title underline too short") {
+		t.Errorf("a 7-wide underline under a 7-column title raised a warning:\n%s", got)
+	}
+	// The control: ASCII is unaffected either way.
+	if got := doctree.Dump(Parse("Title\n=====\n\nbody\n")); strings.Contains(got, "too short") {
+		t.Errorf("an exact ASCII underline raised a warning:\n%s", got)
+	}
+}
