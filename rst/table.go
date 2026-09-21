@@ -138,7 +138,21 @@ func (p *parser) tryParseSimpleTable(lines []string, i, lineBase int) (*doctree.
 	if end < 0 {
 		return nil, 0, false
 	}
-	block := append([]string(nil), lines[i:end+1]...)
+	// Same two steps the grid table takes (eastasian.go): pad, so an
+	// East Asian Wide character spans the two columns it occupies, then
+	// measure and slice by CODE POINT. docutils does this for a simple
+	// table too -- simple_table_top calls pad_double_width right where
+	// grid_table_top does (states.py) -- and the column arithmetic
+	// below is per-character on both sides of the port.
+	//
+	// The borders are ASCII, so only the DATA rows change: their byte
+	// length is what extendLastColumnForOverflow was comparing against a
+	// column boundary counted in characters, so one accented letter
+	// anywhere made the table one column wider than docutils says it is.
+	block := make([]string, 0, end+1-i)
+	for k := i; k <= end; k++ {
+		block = append(block, padDoubleWidth(lines[k]))
+	}
 	next := end + 1
 
 	table, ok := p.buildSimpleTable(block, i, lineBase)
@@ -340,8 +354,8 @@ func extendLastColumnForOverflow(rowLines []string, rowCols []tableColumn, canon
 	last := len(rowCols) - 1
 	maxEnd := rowCols[last].end
 	for _, l := range rowLines {
-		if len(l) > maxEnd {
-			text := strings.TrimRight(l, " ")
+		if n := len([]rune(l)); n > maxEnd {
+			text := []rune(strings.TrimRight(l, " "))
 			if len(text) > maxEnd {
 				maxEnd = len(text)
 			}
@@ -357,14 +371,19 @@ func extendLastColumnForOverflow(rowLines []string, rowCols []tableColumn, canon
 	}
 }
 
+// sliceColumn takes the [start, end) COLUMN range of line, counted in
+// code points with the double-width filler included, and returns it with
+// that filler removed again -- the same round trip tableparser makes
+// (cellblock.replace(double_width_pad_char, ”)).
 func sliceColumn(line string, start, end int) string {
-	if start >= len(line) {
+	r := []rune(line)
+	if start >= len(r) {
 		return ""
 	}
-	if end > len(line) {
-		end = len(line)
+	if end > len(r) {
+		end = len(r)
 	}
-	return line[start:end]
+	return strings.ReplaceAll(string(r[start:end]), string(doubleWidthPad), "")
 }
 
 func trimTrailingBlankLines(lines []string) []string {
