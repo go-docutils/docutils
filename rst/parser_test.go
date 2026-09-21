@@ -256,3 +256,49 @@ func parseCapturingDirectives(src string) *doctree.Element {
 	opts.ReportUnknownDirectives = false
 	return ParseWithOptions(src, opts)
 }
+
+// TestAdornmentContinuesAParagraph pins where docutils' underline
+// transition applies: to the SECOND line of a block and nowhere else.
+// A block occupies the Text state for its first line only; after that
+// text() calls get_text_block, which reads to the next BLANK line and
+// absorbs whatever shape it finds.
+//
+// This parser broke a paragraph at any uniform line of four or more
+// characters, at any depth, so "Ti\ntle\n=====" came out as a paragraph
+// and a <transition>. Note the discriminator: "---" is three characters
+// and was already absorbed, so only runs of four or more showed it.
+func TestAdornmentContinuesAParagraph(t *testing.T) {
+	for _, tc := range []struct{ name, source, want string }{
+		{
+			"an adornment on the third line is text",
+			"Ti\ntle\n=========\n\nbody\n",
+			"<document>\n    <paragraph>\n        Ti\n        tle\n        =========\n    <paragraph>\n        body\n",
+		},
+		{
+			// The control that always worked: three characters is too
+			// short to be an adornment at all.
+			"a short run was already text",
+			"one\ntwo\n---\n\nbody\n",
+			"<document>\n    <paragraph>\n        one\n        two\n        ---\n    <paragraph>\n        body\n",
+		},
+		{
+			// The control that must NOT change: on the second line it
+			// really is an underline.
+			"an adornment on the second line is a title",
+			"one\n=====\n\nbody\n",
+			"<document>\n    <section id=\"one\" name=\"one\">\n        <title>\n            one\n        <paragraph>\n            body\n",
+		},
+		{
+			// And a transition still needs to BEGIN a block.
+			"an adornment after a blank line is a transition",
+			"Ti\ntle\n\n=========\n\nbody\n",
+			"<document>\n    <paragraph>\n        Ti\n        tle\n    <transition>\n    <paragraph>\n        body\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := doctree.Dump(Parse(tc.source)); got != tc.want {
+				t.Errorf("got:\n%s\nwant:\n%s", got, tc.want)
+			}
+		})
+	}
+}

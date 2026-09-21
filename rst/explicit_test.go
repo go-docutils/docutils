@@ -296,3 +296,66 @@ func TestExplicitMarkerWidthIsNotContentIndent(t *testing.T) {
 		t.Errorf("bare marker changed: %q", bare)
 	}
 }
+
+// TestUnindentWarningForEveryConstruct covers the "<what> ends without
+// a blank line; unexpected unindent." WARNING, for every construct that
+// raises one. Four were missing it -- a directive on its own line, a
+// directive with an indented body, an option list and a hyperlink
+// target -- and the seven that already had it are here as controls: a
+// test that only listed the four would pass on a parser that had lost
+// the rest.
+//
+// The directive case is the one worth the wrapper it needed:
+// parseDirective had a dozen exits and exactly ONE of them (the
+// unknown-directive branch) emitted the warning, so every directive the
+// package actually implements returned silently.
+//
+// Found by a differential probe, not the corpus -- which moved by a
+// single file.
+func TestUnindentWarningForEveryConstruct(t *testing.T) {
+	cases := []struct {
+		name, source, want string
+	}{
+		{"directive on one line", ".. note:: a\nb\n", "Explicit markup"},
+		{"directive with a body", ".. note::\n\n   a\nb\n", "Explicit markup"},
+		{"option list", "-f FILE  the\nfile\n", "Option list"},
+		{"hyperlink target", ".. _t: http://e.com\nb\n", "Explicit markup"},
+		// The controls.
+		{"footnote", ".. [1] a\nb\n", "Explicit markup"},
+		{"citation", ".. [cit] a\nb\n", "Explicit markup"},
+		{"comment", ".. a comment\nb\n", "Explicit markup"},
+		{"substitution", ".. |s| replace:: a\nb\n", "Explicit markup"},
+		{"field list", ":f: a\nb\n", "Field list"},
+		{"bullet list", "- a\n  c\nb\n", "Bullet list"},
+		{"definition list", "term\n    def\nb\n", "Definition list"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			want := tc.want + " ends without a blank line; unexpected unindent."
+			if !strings.Contains(got, want) {
+				t.Errorf("no %q warning:\n%s", want, got)
+			}
+		})
+	}
+}
+
+// TestUnindentWarningNotForAFollowINGSibling pins the guard. Another
+// line of the SAME family immediately after is not an interruption, and
+// a construct that DOES end on a blank line is not one either. Without
+// both, the warning above fires on ordinary documents.
+func TestUnindentWarningNotForAFollowingSibling(t *testing.T) {
+	for _, tc := range []struct{ name, source string }{
+		{"target then target", ".. _t: http://e.com\n.. _u: http://f.com\n"},
+		{"directive then directive", ".. note:: a\n.. note:: b\n"},
+		{"option then option", "-f FILE  one\n-g FILE  two\n"},
+		{"option then blank then text", "-f FILE  the\n\nfile\n"},
+		{"directive then blank then text", ".. note:: a\n\nb\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := doctree.Dump(Parse(tc.source)); strings.Contains(got, "unexpected unindent") {
+				t.Errorf("warned about a construct that was not interrupted:\n%s", got)
+			}
+		})
+	}
+}

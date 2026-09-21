@@ -38,9 +38,17 @@ func TestNestedTitlesAreErrors(t *testing.T) {
 		{
 			// The guard's own case: an adornment-looking line in the MIDDLE
 			// of a paragraph is not a title attempt at all.
-			"an adornment mid-paragraph draws no diagnostic",
+			// An adornment draws no diagnostic mid-paragraph AND does
+			// not end the paragraph: it is part of it. docutils'
+			// underline transition belongs to the Text state, which a
+			// block occupies for its FIRST line only; after that
+			// get_text_block reads to the next blank line whatever the
+			// shape. Re-verified against the reference in v0.117.0 --
+			// this case previously expected two paragraphs, which is
+			// what this parser did rather than what docutils does.
+			"an adornment mid-paragraph is part of the paragraph",
 			"x\n\n    Line one\n    Line two\n    ========\n",
-			"<document>\n    <paragraph>\n        x\n    <block_quote>\n        <paragraph>\n            Line one\n            Line two\n        <paragraph>\n            ========\n",
+			"<document>\n    <paragraph>\n        x\n    <block_quote>\n        <paragraph>\n            Line one\n            Line two\n            ========\n",
 		},
 		{
 			// Too short to be an overline: docutils says so, then treats it

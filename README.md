@@ -499,6 +499,26 @@ indentation is still dedented by the first body line's own indent.
 `lineblock.go`/`inline.go`/`table.go`/`gridtable.go` doc comments for
 the exact list and why): the "ends without a blank line; unexpected
 unindent" WARNING real docutils' own `unindent_warning` produces for
+Every construct that can raise "ends without a blank line; unexpected
+unindent." now does (v0.117.0+, `unindentWarning`). Four were missing it:
+a directive on its own line, a directive with an indented body, an
+option list and a hyperlink target. The directive case is the one that
+explains the shape of the fix — `parseDirective` had a dozen exits and
+exactly ONE of them, the unknown-directive branch, emitted the warning,
+so every directive the package actually implements returned silently. It
+is now a wrapper with a single exit rather than a dozen places to
+remember. The guard is shared too: another line of the same family
+immediately after is not an interruption, so two consecutive targets
+warn about nothing.
+
+A uniform line of four or more characters only ends a paragraph as its
+SECOND line (v0.117.0+). docutils' underline transition belongs to the
+Text state, which a block occupies for one line; after that
+`get_text_block` reads to the next blank line whatever the shape, so
+`Ti\ntle\n=====` is one three-line paragraph where this parser produced
+a paragraph and a `<transition>`. A permanent test had been pinning the
+wrong answer, and was corrected against the reference.
+
 EVERY explicit-markup construct (a directive, footnote, citation, ...)
 that a following, insufficiently-indented line interrupts — this parser
 has it for enumerated lists (parser.go, v0.25.0), bullet lists

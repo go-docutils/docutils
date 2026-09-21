@@ -477,8 +477,11 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
-		if optlist, next, ok := p.parseOptionList(lines, i, 0); ok {
+		if optlist, olMsgs, next, ok := p.parseOptionList(lines, i, 0); ok {
 			current.Append(optlist)
+			for _, m := range olMsgs {
+				current.Append(m)
+			}
 			i = next
 			continue
 		}
@@ -722,8 +725,11 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 			i = next
 			continue
 		}
-		if optlist, next, ok := p.parseOptionList(lines, i, lineBase); ok {
+		if optlist, olMsgs, next, ok := p.parseOptionList(lines, i, lineBase); ok {
 			parent.Append(optlist)
+			for _, m := range olMsgs {
+				parent.Append(m)
+			}
 			i = next
 			continue
 		}
@@ -1403,8 +1409,24 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 			// just ordinary text and must not split the paragraph; the
 			// caller's matchTitle applies the same >=4 threshold to the
 			// title-candidate case.
-			if _, isLine := isUniformLine(lines[j]); isLine && len([]rune(trimTrailingSpace(lines[j]))) >= 4 {
-				break
+			// ...and only as the SECOND line of the block. docutils'
+			// underline transition belongs to the Text state, which a
+			// block occupies for exactly one line: after that it calls
+			// text(), whose get_text_block reads to the next BLANK line
+			// and absorbs whatever shape it finds. So "Ti\ntle\n====="
+			// is one three-line paragraph there, where breaking at any
+			// depth made the "=====" a <transition> here.
+			//
+			// Found by a differential probe, not the corpus, and not in
+			// the dimension the probe was aimed at: the case arrived
+			// with a U+2028 in place of the newline, and the reference
+			// produces the SAME tree for both -- so the line-boundary
+			// character was innocent and the ordinary newline had the
+			// defect all along.
+			if j == i+1 {
+				if _, isLine := isUniformLine(lines[j]); isLine && len([]rune(trimTrailingSpace(lines[j]))) >= 4 {
+					break
+				}
 			}
 		}
 		text = append(text, lines[j])

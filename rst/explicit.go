@@ -198,8 +198,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i, lineBase int, parent *do
 		return []doctree.Node{node}, next
 	}
 	if len(rest) > 1 && rest[0] == '_' && rest[1] != ' ' {
-		node, next := p.parseHyperlinkTarget(lines, i, lineBase, rest[1:])
-		return []doctree.Node{node}, next
+		return p.parseHyperlinkTarget(lines, i, lineBase, rest[1:])
 	}
 	if subName, subRest, bodyStartIdx, ok := matchPipeLabelMultiline(lines, i, rest); ok {
 		if nodes, next, ok := p.parseSubstitutionDef(lines, i, bodyStartIdx, subName, subRest, parent); ok {
@@ -893,7 +892,36 @@ func matchDirectiveName(rest string) (name, args string, ok bool) {
 // real docutils treats as a directive-level error this parser doesn't
 // generally validate for anyway), it falls back to the same structural
 // capture any other unimplemented directive gets.
+// parseDirective runs the directive and then appends the unindent
+// warning, in ONE place, because the alternative is what was here: a
+// function with a dozen exits, exactly one of which (the unknown-
+// directive branch) remembered to emit it. Every implemented directive
+// -- note, image, table, all of them -- silently returned without it.
+//
+// Found by a differential probe rather than the corpus: ".. note:: a"
+// followed by an unindented "b" warns in real docutils and did not
+// here.
 func (p *parser) parseDirective(lines []string, i, lineBase int, name, args string, parent *doctree.Element) ([]doctree.Node, int) {
+	_, blankFinish, _ := gatherExplicitBody(lines, i)
+	out, next := p.parseDirectiveBody(lines, i, lineBase, name, args, parent)
+	if blankFinish {
+		return out, next
+	}
+	// The unknown-directive branch already appends its own, so only add
+	// one when the body did not.
+	for _, n := range out {
+		if el, ok := n.(*doctree.Element); ok && el.Tag == doctree.TagSystemMessage &&
+			strings.Contains(doctree.AsText(el), "ends without a blank line") {
+			return out, next
+		}
+	}
+	if msg := unindentWarning("Explicit markup", lines, next, lineBase, isExplicitMarkupLine); msg != nil {
+		out = append(out, msg)
+	}
+	return out, next
+}
+
+func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args string, parent *doctree.Element) ([]doctree.Node, int) {
 	body, blankFinish, next := gatherExplicitBody(lines, i)
 	if strings.EqualFold(name, "replace") || strings.EqualFold(name, "date") {
 		// Real docutils' Replace.run (misc.py, read directly) is only
@@ -1187,8 +1215,26 @@ func (p *parser) parseComment(lines []string, i, lineBase int, rest string) ([]d
 // embedded URI, both of which already set id correctly — so this
 // specific construct's own gap stayed invisible until a fixture combined
 // it with a substitution reference).
-func (p *parser) parseHyperlinkTarget(lines []string, i, lineBase int, rest string) (doctree.Node, int) {
-	body, _, next := gatherExplicitBody(lines, i)
+// unindentWarning is the "<what> ends without a blank line; unexpected
+// unindent." WARNING docutils raises when a construct is interrupted by
+// a line that is neither blank nor indented under it.
+//
+// The guard is the same everywhere and is why this is a helper rather
+// than a fourth copy: another line of the SAME family immediately after
+// is not an interruption. ".. _a: x" followed by ".. _b: y" is two
+// targets and no warning; followed by "text" it is a warning. Verified
+// against the reference for targets, directives and option lists
+// together, since all three were missing it.
+func unindentWarning(what string, lines []string, next, lineBase int, sameFamily func(string) bool) doctree.Node {
+	if next < len(lines) && sameFamily(lines[next]) {
+		return nil
+	}
+	return sectionMessage("2", "WARNING",
+		what+" ends without a blank line; unexpected unindent.", msgLine(next, lineBase), "")
+}
+
+func (p *parser) parseHyperlinkTarget(lines []string, i, lineBase int, rest string) ([]doctree.Node, int) {
+	body, blankFinish, next := gatherExplicitBody(lines, i)
 	// The name ends at the first colon FOLLOWED BY whitespace or the end
 	// of the line -- not at the first colon of any kind. A reference name
 	// may itself contain colons (".. _figure:caption:" is the single name
@@ -1235,7 +1281,13 @@ func (p *parser) parseHyperlinkTarget(lines []string, i, lineBase int, rest stri
 		// refuri produced refuri="" where docutils omits it entirely.
 		el.SetAttr("refuri", uri)
 	}
-	return el, next
+	out := []doctree.Node{el}
+	if !blankFinish {
+		if msg := unindentWarning("Explicit markup", lines, next, lineBase, isExplicitMarkupLine); msg != nil {
+			out = append(out, msg)
+		}
+	}
+	return out, next
 }
 
 // parseAnonymousTarget recognizes ".. __: uri" — a target with no name at
