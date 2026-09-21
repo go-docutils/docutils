@@ -1,6 +1,7 @@
 package rst
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -176,5 +177,81 @@ func TestReferenceIDs(t *testing.T) {
 	}
 	if !strings.Contains(got, "but not [CIT 1]_.") {
 		t.Errorf("[CIT 1]_ did not survive as plain text:\n%s", got)
+	}
+}
+
+// systemMessageLines returns the "line" attribute of every
+// <system_message> in the parsed tree, in document order, with "" for
+// one that carries none.
+func systemMessageLines(source string) []string {
+	var out []string
+	for _, l := range strings.Split(doctree.Dump(Parse(source)), "\n") {
+		if !strings.Contains(l, "<system_message") {
+			continue
+		}
+		v := ""
+		if k := strings.Index(l, `line="`); k >= 0 {
+			r := l[k+len(`line="`):]
+			v = r[:strings.IndexByte(r, '"')]
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+// TestFootnoteBodyCarriesRealLines covers the line a diagnostic raised
+// INSIDE a footnote or citation body reports. The body was parsed with
+// the -1 "unknown" sentinel, so every such message came out with no
+// line attribute at all -- nine real-world corpus files, all of them
+// PEPs whose reference sections put a bad :pep:/:rfc: role inside a
+// footnote.
+//
+// content[k] is lines[i+k] (content[0] is what remained of the marker's
+// own line, and gatherFootnoteBody returns one entry per source line
+// after it), and msgLine is pos+lineBase+1, so i+lineBase is the base
+// that makes the two agree.
+//
+// Every expectation was read off real docutils. The third case is the
+// one that makes the rule specific: a SECOND paragraph in the body
+// reports its OWN first line, not the footnote's, so this cannot be
+// satisfied by simply remembering where the footnote started.
+func TestFootnoteBodyCarriesRealLines(t *testing.T) {
+	cases := []struct {
+		name, source string
+		want         []string
+	}{
+		{
+			"a top-level paragraph, the control",
+			"para one\n\n:pep:`x550y`\n", []string{"3"},
+		},
+		{
+			"the body on the marker's own line",
+			"para one\n\n.. [1] :pep:`x550y`\n", []string{"3"},
+		},
+		{
+			// The role is on line 4; the PARAGRAPH starts on 3.
+			"a continuation line reports the paragraph's first line",
+			"para one\n\n.. [#f] body here\n   :pep:`x550y` more\n", []string{"3"},
+		},
+		{
+			"a second paragraph reports its own first line",
+			"para one\n\n.. [#f] body here\n\n   :pep:`x550y` second para\n", []string{"5"},
+		},
+		{
+			"a citation body too",
+			"para one\n\n.. [cit] body :pep:`x550y`\n", []string{"3"},
+		},
+		{
+			"further down the document",
+			"a\n\nb\n\n.. [1] x\n\n   y\n\n   :pep:`x550y`\n", []string{"9"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := systemMessageLines(tc.source)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("system_message lines = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
