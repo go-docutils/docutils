@@ -201,9 +201,10 @@ func isOptionArgument(arg string) bool {
 // its own line nor indented beneath it) is not really an option list item —
 // docutils falls back to ordinary paragraph text (TransitionCorrection), so
 // ok is false and the caller should try other block types instead.
-func (p *parser) parseOptionList(lines []string, i, lineBase int) (el *doctree.Element, next int, ok bool) {
+func (p *parser) parseOptionList(lines []string, i, lineBase int) (el *doctree.Element, msgs []doctree.Node, next int, ok bool) {
 	ol := doctree.NewElement(doctree.TagOptionList)
 	start := i
+	blankFinish := true
 	for i < len(lines) {
 		opts, col, matched := matchOptionMarker(lines[i])
 		if !matched {
@@ -226,14 +227,34 @@ func (p *parser) parseOptionList(lines []string, i, lineBase int) (el *doctree.E
 		item := doctree.NewElement(doctree.TagOptionListItem, group, desc)
 		ol.Append(item)
 		i = n
+		// Whether the item ended on a blank line is answered by whether
+		// any blank was SKIPPED here -- not by looking at lines[i]
+		// before the skip, which gatherListItemLines may already have
+		// consumed past. Reaching the end of the input counts as a
+		// clean finish.
+		// gatherListItemLines may already have consumed the separating
+		// blank INTO the item, so the question is whether the line just
+		// before the item's end is blank -- not whether one is skipped
+		// here, and not whether lines[i] is blank. Reaching the end of
+		// the input counts as a clean finish either way.
+		blankFinish = n >= len(lines) || (n > 0 && isBlankStr(lines[n-1]))
 		for i < len(lines) && isBlankStr(lines[i]) {
 			i++
+			blankFinish = true
 		}
 	}
 	if i == start {
-		return nil, start, false
+		return nil, nil, start, false
 	}
-	return ol, i, true
+	if !blankFinish {
+		if msg := unindentWarning("Option list", lines, i, lineBase, func(l string) bool {
+			_, _, matched := matchOptionMarker(l)
+			return matched
+		}); msg != nil {
+			msgs = append(msgs, msg)
+		}
+	}
+	return ol, msgs, i, true
 }
 
 func optionNode(opt optionToken) *doctree.Element {
