@@ -1259,7 +1259,12 @@ func (p *parser) parseHyperlinkTarget(lines []string, i, lineBase int, rest stri
 	for _, l := range body {
 		uri += strings.TrimSpace(l)
 	}
-	normalized := normalizeName(name)
+	// The name carries escapes too, and the INLINE side already
+	// processes them: "`a\\ b`_" is a reference to "ab" there. A
+	// target's own name did not, so it recorded "a\\ b" and the two
+	// never matched -- the reference stayed unresolved against a
+	// target sitting right beside it.
+	normalized := normalizeName(unescapeRunes(escapeBackslashes(name)))
 	el := doctree.NewElement(doctree.TagTarget)
 	el.SetAttr("name", normalized)
 	// The duplicate-name pass reports a target against its OWN first
@@ -1279,7 +1284,21 @@ func (p *parser) parseHyperlinkTarget(lines []string, i, lineBase int, rest stri
 		// A target with NO uri at all ("..  _figure:caption:") carries
 		// neither attribute -- it is an internal anchor. Setting an empty
 		// refuri produced refuri="" where docutils omits it entirely.
-		el.SetAttr("refuri", uri)
+		// parse_target builds the refuri as
+		//
+		//	' '.join(''.join(unescape(part).split())
+		//	         for part in split_escaped_whitespace(' '.join(block)))
+		//
+		// which REMOVES every unescaped whitespace run and turns each
+		// ESCAPED one into a single space, so a URI wrapped across lines
+		// closes up seamlessly and "a\\ b" keeps exactly one space.
+		// joinEmbeddedURI is that rule and has been here since v0.31.0,
+		// applied to a PHRASE reference's embedded URI; a target's own
+		// URI never went through it and kept whatever whitespace and
+		// backslashes it was written with. Both target kinds need it:
+		// docutils runs the named and the anonymous one through the same
+		// parse_target.
+		el.SetAttr("refuri", joinEmbeddedURI(escapeBackslashes(uri)))
 	}
 	out := []doctree.Node{el}
 	if !blankFinish {
@@ -1338,7 +1357,21 @@ func (p *parser) parseAnonymousTarget(lines []string, i int, rest string) (doctr
 		// A target with NO uri at all ("..  _figure:caption:") carries
 		// neither attribute -- it is an internal anchor. Setting an empty
 		// refuri produced refuri="" where docutils omits it entirely.
-		el.SetAttr("refuri", uri)
+		// parse_target builds the refuri as
+		//
+		//	' '.join(''.join(unescape(part).split())
+		//	         for part in split_escaped_whitespace(' '.join(block)))
+		//
+		// which REMOVES every unescaped whitespace run and turns each
+		// ESCAPED one into a single space, so a URI wrapped across lines
+		// closes up seamlessly and "a\\ b" keeps exactly one space.
+		// joinEmbeddedURI is that rule and has been here since v0.31.0,
+		// applied to a PHRASE reference's embedded URI; a target's own
+		// URI never went through it and kept whatever whitespace and
+		// backslashes it was written with. Both target kinds need it:
+		// docutils runs the named and the anonymous one through the same
+		// parse_target.
+		el.SetAttr("refuri", joinEmbeddedURI(escapeBackslashes(uri)))
 	}
 	return el, next
 }

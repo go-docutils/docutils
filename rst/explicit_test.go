@@ -359,3 +359,70 @@ func TestUnindentWarningNotForAFollowingSibling(t *testing.T) {
 		})
 	}
 }
+
+// TestTargetURIAndNameProcessEscapes covers what parse_target does to a
+// hyperlink target's URI and name, neither of which this parser did.
+//
+// The URI rule is stated once in states.py and is not "trim":
+//
+//	' '.join(''.join(unescape(part).split())
+//	         for part in split_escaped_whitespace(' '.join(block)))
+//
+// Every unescaped whitespace run is REMOVED -- which is what lets a URI
+// wrap across lines and close up seamlessly -- and each ESCAPED one
+// becomes exactly one space. joinEmbeddedURI has been that rule since
+// v0.31.0, used for the URI embedded in a phrase reference; a target's
+// own URI never went through it.
+//
+// The name is the other half, and the halves disagreeing is what made
+// it visible: "`a\ b`_" is a reference to "ab" on the inline side, while
+// the target beside it recorded "a\ b", so the two never matched and
+// the reference stayed unresolved.
+//
+// Every expectation here was read off real docutils.
+func TestTargetURIAndNameProcessEscapes(t *testing.T) {
+	attr := func(source, name string) string {
+		for _, l := range strings.Split(doctree.Dump(Parse(source)), "\n") {
+			if k := strings.Index(l, name+`="`); k >= 0 {
+				r := l[k+len(name)+2:]
+				return r[:strings.IndexByte(r, '"')]
+			}
+		}
+		return "(absent)"
+	}
+	t.Run("uri", func(t *testing.T) {
+		for _, tc := range []struct{ name, source, want string }{
+			{"plain, the control", ".. _n: http://e.com/ab\n", "http://e.com/ab"},
+			{"a tab is removed", ".. _n: http://e.com/a\tb\n", "http://e.com/ab"},
+			{"a no-break space is removed", ".. _n: http://e.com/a b\n", "http://e.com/ab"},
+			{"a backslash is an escape", ".. _n: http://e.com/a\\b\n", "http://e.com/ab"},
+			{"an ESCAPED space becomes one space", ".. _n: http://e.com/a\\ b\n", "http://e.com/a b"},
+			{"an anonymous target too", ".. __: http://e.com/a\tb\n", "http://e.com/ab"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				if got := attr(tc.source, "refuri"); got != tc.want {
+					t.Errorf("refuri = %q, want %q", got, tc.want)
+				}
+			})
+		}
+	})
+	t.Run("name", func(t *testing.T) {
+		for _, tc := range []struct{ name, source, want string }{
+			{"plain, the control", ".. _`ab`: http://e.com\n", "ab"},
+			{"a backslash is an escape", ".. _`a\\b`: http://e.com\n", "ab"},
+			{"an escaped space is dropped", ".. _`a\\ b`: http://e.com\n", "ab"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				if got := attr(tc.source, "name"); got != tc.want {
+					t.Errorf("name = %q, want %q", got, tc.want)
+				}
+			})
+		}
+	})
+	t.Run("the two halves agree, so the reference resolves", func(t *testing.T) {
+		got := doctree.Dump(Parse("x `a\\ b`_ y\n\n.. _`a\\ b`: http://e.com\n"))
+		if !strings.Contains(got, `refuri="http://e.com"`) || !strings.Contains(got, `<reference`) {
+			t.Errorf("the reference did not resolve against its own target:\n%s", got)
+		}
+	})
+}
