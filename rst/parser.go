@@ -37,6 +37,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-docutils/docutils/doctree"
+	"unicode"
 )
 
 type titleStyle struct {
@@ -1325,12 +1326,27 @@ func isTransitionLine(s string) bool {
 	return len([]rune(trimTrailingSpace(s))) >= 4
 }
 
+// trimTrailingSpace is string2lines' own per-line rstrip, and Python's
+// str.rstrip() strips every character str.isspace() accepts -- a tab, a
+// no-break space, an em space, an ideographic space -- not just the
+// ASCII space this used to stop at. "term\u00a0" is the term "term"
+// there and was "term " here, trailing whitespace and all.
+//
+// unicode.IsSpace is ALMOST that set and was measured rather than
+// assumed: it agrees on everything except U+001C..U+001F, the four
+// file/group/record/unit separators, which Python calls whitespace and
+// Go does not. Three of those four are already line boundaries before
+// this runs; U+001F is not, so the range is spelled out.
+//
+// U+200B (ZERO WIDTH SPACE) is in NEITHER set: it is not whitespace in
+// Unicode, and a line ending in one keeps it.
 func trimTrailingSpace(s string) string {
-	n := len(s)
-	for n > 0 && s[n-1] == ' ' {
+	r := []rune(s)
+	n := len(r)
+	for n > 0 && (unicode.IsSpace(r[n-1]) || (r[n-1] >= 0x1c && r[n-1] <= 0x1f)) {
 		n--
 	}
-	return s[:n]
+	return string(r[:n])
 }
 
 // consumeParagraph collects consecutive plain-text lines into a

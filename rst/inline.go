@@ -268,7 +268,17 @@ func escapeBackslashes(s string) []rune {
 	src := []rune(s)
 	out := make([]rune, 0, len(src))
 	for i := 0; i < len(src); i++ {
-		if src[i] == '\\' && i+1 < len(src) {
+		if src[i] == '\\' {
+			if i+1 >= len(src) {
+				// A backslash with nothing after it escapes nothing and
+				// DISAPPEARS. escape2null appends "\x00" plus
+				// text[i+1:i+2], which is empty here, so unescape has a
+				// lone null to remove and the backslash is gone. This
+				// kept it, so "para\" ended in a visible backslash --
+				// while "para\\nsecond" already dropped it, because
+				// there the escape had a newline to eat.
+				continue
+			}
 			out = append(out, escapeRune(src[i+1]))
 			i++
 			continue

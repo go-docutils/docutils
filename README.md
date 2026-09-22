@@ -406,6 +406,22 @@ with a real anchor point (HTML `<a id="slug">text</a>`; LaTeX
 to the internal-link path specifically, since `\href`'s usual URL
 escaping would corrupt hyperref's own `#`-marker convention).
 
+`string2lines`' per-line rstrip strips whatever Python's `str.isspace()`
+accepts (v0.119.0+) — a no-break space, an em space, an ideographic
+space — not just the ASCII space it stopped at, so `term\u00a0` is the
+term `term` and not `term `. `unicode.IsSpace` was MEASURED against
+`str.isspace()` rather than assumed, after two rounds of exactly that
+mistake: the two agree on all 29 code points except U+001C–U+001F, which
+Python calls whitespace and Go does not. U+200B is in neither set and
+survives, which is the case that keeps the rule from becoming "strip
+anything invisible".
+
+A backslash with nothing after it DISAPPEARS (v0.119.0+). `escape2null`
+appends `'\x00' + text[i+1:i+2]`, empty at the end of the text, so
+`unescape` has a lone null to remove — `para\` is the paragraph `para`.
+Before another line it was already right, because there the escape had a
+newline to eat.
+
 A table's geometry is measured in CODE POINTS, with East Asian
 Wide and Fullwidth characters counting TWO (v0.109.0+ for grid tables,
 v0.115.0+ for simple ones; `eastasian.go`).
