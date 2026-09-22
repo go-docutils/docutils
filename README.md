@@ -1058,6 +1058,17 @@ transcribing `emailc` faithfully brings `` ` `` along with it and
 literal — PEP 484, caught by set-diffing the corpus within the same
 round rather than by the totals, which were rising.
 
+An OPENING backquote in a target's name must CLOSE (v0.120.0+).
+`Body.patterns.target` makes the closing one mandatory once the opening
+one is used, and `hyperlink_target` keeps appending body lines until the
+pattern matches or the block runs out — then raises
+`MarkupError("malformed hyperlink target.")`, which becomes a WARNING
+beside the line captured as an ordinary comment. This parser fell
+through to the unquoted branch, which finds the colon and takes
+everything before it, so `.. _\`a: http://e.com` became a target named
+`` `a `` — backquote and all — pointing at the URI: a target invented out
+of broken syntax, under a name no reference could ever spell.
+
 A hyperlink target's URI has its whitespace REMOVED and its escapes
 processed (v0.118.0+), and so does its NAME. `parse_target` states the
 URI rule once —
