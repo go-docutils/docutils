@@ -1042,6 +1042,26 @@ transcribing `emailc` faithfully brings `` ` `` along with it and
 literal — PEP 484, caught by set-diffing the corpus within the same
 round rather than by the totals, which were rising.
 
+A hyperlink target's URI has its whitespace REMOVED and its escapes
+processed (v0.118.0+), and so does its NAME. `parse_target` states the
+URI rule once —
+
+```
+' '.join(''.join(unescape(part).split())
+         for part in split_escaped_whitespace(' '.join(block)))
+```
+
+— and it is not a trim: every unescaped whitespace run disappears, which
+is what lets a URI wrap across lines and close up seamlessly, while each
+ESCAPED one becomes exactly one space. `joinEmbeddedURI` has been that
+rule since v0.31.0, used for the URI embedded in a phrase reference; a
+target's own URI never went through it.
+
+The name is the other half, and the halves disagreeing is what made it
+visible: ``​`a\ b`_`` is a reference to `ab` on the inline side, while the
+target beside it recorded `a\ b`, so the two never matched and the
+reference stayed unresolved against a target sitting right next to it.
+
 A hyperlink target's name may be **backquoted** (v0.92.0+), and then the
 quotes are delimiters rather than part of the name: `.. _\`with: colon\`:`
 is the single name `with: colon`, the colon inside them not terminating
