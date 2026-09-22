@@ -426,3 +426,60 @@ func TestTargetURIAndNameProcessEscapes(t *testing.T) {
 		}
 	})
 }
+
+// TestMalformedHyperlinkTarget covers an OPENING backquote that never
+// closes. Body.patterns.target makes the closing one mandatory once the
+// opening one is used, and hyperlink_target keeps appending body lines
+// until the pattern matches or the block runs out -- then raises
+// MarkupError("malformed hyperlink target."), which explicit_construct
+// turns into a WARNING beside the line captured as an ordinary COMMENT.
+//
+// This parser fell through to the UNQUOTED branch instead, which finds
+// the colon and takes everything before it as the name. So
+// ".. _`a: http://e.com" became a target named "`a" -- backquote and
+// all -- pointing at the URI: a target invented out of broken syntax,
+// and a name no reference could ever spell.
+//
+// The message ORDER is part of the shape: explicit_construct returns
+// "nodelist + errors" for the construct, and the "ends without a blank
+// line" warning is raised later by the state machine, so malformed
+// comes first even though it carries the EARLIER line number.
+func TestMalformedHyperlinkTarget(t *testing.T) {
+	for _, tc := range []struct{ name, source, want string }{
+		{
+			"an unterminated backquote is a comment and a warning",
+			".. _`a: http://e.com\n",
+			"<document>\n    <comment>\n        _`a: http://e.com\n    <system_message level=\"2\" line=\"1\" type=\"WARNING\">\n        <paragraph>\n            malformed hyperlink target.\n",
+		},
+		{
+			// The control: a CLOSED backquote is an ordinary phrase
+			// target, and the quotes are delimiters rather than name.
+			"a closed backquote is a target",
+			".. _`ab`: http://e.com\n",
+			"<document>\n    <target id=\"ab\" name=\"ab\" refuri=\"http://e.com\">\n",
+		},
+		{
+			// The control that must not regress: no backquote at all.
+			"an unquoted name is untouched",
+			".. _ab: http://e.com\n",
+			"<document>\n    <target id=\"ab\" name=\"ab\" refuri=\"http://e.com\">\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := doctree.Dump(Parse(tc.source)); got != tc.want {
+				t.Errorf("got:\n%s\nwant:\n%s", got, tc.want)
+			}
+		})
+	}
+	t.Run("a name split across lines, with both warnings in order", func(t *testing.T) {
+		got := doctree.Dump(Parse(".. _`a\nb`: http://e.com\n"))
+		malformed := strings.Index(got, "malformed hyperlink target.")
+		unindent := strings.Index(got, "unexpected unindent")
+		if malformed < 0 || unindent < 0 {
+			t.Fatalf("expected both warnings:\n%s", got)
+		}
+		if malformed > unindent {
+			t.Errorf("malformed must come first, even though it carries the earlier line:\n%s", got)
+		}
+	})
+}

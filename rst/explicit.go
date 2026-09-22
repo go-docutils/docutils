@@ -1242,6 +1242,35 @@ func (p *parser) parseHyperlinkTarget(lines []string, i, lineBase int, rest stri
 	// "first colon" nor "last colon" is right. Checked against the
 	// reference for "figure:caption:", "a:b:c: http://x", "name: uri" and
 	// a bare "plain:".
+	// An OPENING backquote must close. Body.patterns.target makes the
+	// closing one mandatory once the optional opening one is used, and
+	// hyperlink_target keeps appending body lines until the pattern
+	// matches or the block runs out -- at which point it raises
+	// MarkupError("malformed hyperlink target."), which
+	// explicit_construct turns into a WARNING beside the line captured
+	// as an ordinary COMMENT.
+	//
+	// Falling through to the unquoted branch instead, as this did,
+	// invents a target out of broken syntax: ".. _`a: http://e.com"
+	// became a target named "`a" -- backquote and all -- pointing at the
+	// URI. The same shape reaches here whenever a phrase name is split
+	// across lines, which is how the probe found it.
+	if strings.HasPrefix(rest, "`") {
+		if _, _, ok := splitPhraseTargetName(rest); !ok {
+			nodes, next := p.parseComment(lines, i, lineBase, "_"+rest)
+			// Right AFTER the comment and before whatever else the
+			// comment path appends: explicit_construct returns
+			// "nodelist + errors" for the construct itself, and the
+			// "ends without a blank line" warning is raised later, by
+			// the state machine. Appending at the end put the two in
+			// the wrong order.
+			msg := sectionMessage("2", "WARNING",
+				"malformed hyperlink target.", msgLine(i, lineBase), "")
+			out := make([]doctree.Node, 0, len(nodes)+1)
+			out = append(out, nodes[0], msg)
+			return append(out, nodes[1:]...), next
+		}
+	}
 	name, uri := rest, ""
 	if phrase, after, ok := splitPhraseTargetName(rest); ok {
 		// A PHRASE target: Body.patterns.target opens with an optional
