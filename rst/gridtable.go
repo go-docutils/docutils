@@ -95,42 +95,110 @@ func isGridTableHeadSepLine(s string) bool {
 // scanning stops at the first line that doesn't, then searches
 // backward for the last line among those collected that is itself a
 // valid full border — the table's true bottom.
-func isolateGridTable(lines []string, i int) ([]string, int, bool) {
-	// docutils pads the block for wide characters BEFORE it measures
-	// the first line (states.py's grid_table_top: pad_double_width,
-	// then width = len(block[0].strip())), so the padding is part of
-	// every width compared here.
-	width := len([]rune(strings.TrimSpace(padDoubleWidth(lines[i]))))
+// isolateGridTable is docutils' isolate_grid_table. It returns a
+// detail string when the lines START as a table (the caller has already
+// matched a top border) but do not FORM one: docutils reports that as
+// "Malformed table." plus the detail, with the whole block quoted, and
+// this used to report nothing at all and let the lines fall back to
+// ordinary block parsing.
+//
+// offset is the line WITHIN the block the message points at, which
+// differs per failure and is the fiddly part -- see the two sites
+// below.
+func isolateGridTable(lines []string, i int) (block []string, next int, detail string, offset int, ok bool) {
+	// The text block: everything up to a blank line or the end. docutils
+	// takes it with get_text_block BEFORE looking at any edge, which is
+	// why a line that breaks the shape shortens the block rather than
+	// ending the scan.
 	j := i
-	for j < len(lines) {
-		line := []rune(strings.TrimSpace(padDoubleWidth(lines[j])))
-		if len(line) != width || !isGridTableEdgeChar(line[0]) || !isGridTableEdgeChar(line[len(line)-1]) {
-			break
-		}
+	for j < len(lines) && !isBlankStr(lines[j]) {
 		j++
 	}
-	end := -1
-	for k := j - 1; k > i; k-- {
-		if isGridTableTopLine(lines[k]) {
-			end = k
+	raw := make([]string, 0, j-i)
+	for k := i; k < j; k++ {
+		raw = append(raw, strings.TrimSpace(padDoubleWidth(lines[k])))
+	}
+	if len(raw) == 0 {
+		return nil, 0, "", 0, false
+	}
+	width := len([]rune(raw[0]))
+
+	// Left edge: the first line that does not begin with "+" or "|"
+	// truncates the block. Its index is remembered because it becomes
+	// the message's offset if the bottom border then turns out to be
+	// missing -- docutils gets that by letting the loop variable
+	// survive into the next loop, which is a Python detail this spells
+	// out instead.
+	leftBreak := len(raw) - 1
+	for k, l := range raw {
+		r := []rune(l)
+		if len(r) == 0 || !isGridTableEdgeChar(r[0]) {
+			leftBreak = k
+			raw = raw[:k]
 			break
 		}
 	}
-	if end < 0 {
-		return nil, 0, false
+	if len(raw) < 2 {
+		if len(raw) == 0 {
+			return nil, 0, "", 0, false
+		}
+		return raw, 0, "Bottom border missing or corrupt.", leftBreak, false
 	}
-	block := make([]string, end+1-i)
-	for k := i; k <= end; k++ {
-		block[k-i] = strings.TrimSpace(padDoubleWidth(lines[k]))
+
+	// Bottom border: the last line must be one, or the last one that is
+	// ends the table.
+	if !isGridTableTopLine(raw[len(raw)-1]) {
+		found := -1
+		for k := len(raw) - 2; k > 1; k-- {
+			if isGridTableTopLine(raw[k]) {
+				found = k
+				break
+			}
+		}
+		if found < 0 {
+			return raw, 0, "Bottom border missing or corrupt.", leftBreak, false
+		}
+		raw = raw[:found+1]
 	}
-	return block, end + 1, true
+
+	// Right edge: every line the same width -- combining characters
+	// excluded, as in column_width -- and ending on "+" or "|".
+	for k, l := range raw {
+		r := []rune(l)
+		if len(stripCombining(r)) != width || !isGridTableEdgeChar(r[len(r)-1]) {
+			return raw, 0, "Right border not aligned or missing.", k, false
+		}
+	}
+	return raw, i + len(raw), "", 0, true
 }
 
-func (p *parser) tryParseGridTable(lines []string, i, lineBase int) (*doctree.Element, int, bool) {
+// stripCombining drops the combining characters from r, which
+// docutils' own right-edge check does before comparing widths
+// (strip_combining_chars).
+func stripCombining(r []rune) []rune {
+	out := r[:0:0]
+	for _, c := range r {
+		if !isCombining(c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func (p *parser) tryParseGridTable(lines []string, i, lineBase int) ([]doctree.Node, int, bool) {
 	if !isGridTableTopLine(lines[i]) {
 		return nil, 0, false
 	}
-	block, next, ok := isolateGridTable(lines, i)
+	block, next, detail, offset, ok := isolateGridTable(lines, i)
+	if detail != "" {
+		// Only the lines the block actually COVERS are consumed: the
+		// rest of the text block is whatever interrupted the table and
+		// goes on to be parsed as itself. docutils gets this from
+		// previous_line/del block[i:]; here it is len(block).
+		next = i + len(block)
+		return blankLineAfterTable([]doctree.Node{malformedTable(block, detail, offset, i, lineBase)},
+			lines, next, lineBase), next, true
+	}
 	if !ok {
 		return nil, 0, false
 	}
@@ -138,7 +206,20 @@ func (p *parser) tryParseGridTable(lines []string, i, lineBase int) (*doctree.El
 	if !ok {
 		return nil, 0, false
 	}
-	return table, next, true
+	return blankLineAfterTable([]doctree.Node{table}, lines, next, lineBase), next, true
+}
+
+// blankLineAfterTable appends docutils' table_top warning: a table --
+// well-formed or not -- that is not followed by a blank line draws
+// "Blank line required after table." That is raised by the CALLER of
+// the table parser there, which is why it applies to both outcomes and
+// why neither path had it here.
+func blankLineAfterTable(out []doctree.Node, lines []string, next, lineBase int) []doctree.Node {
+	if next >= len(lines) || isBlankStr(lines[next]) {
+		return out
+	}
+	return append(out, sectionMessage("2", "WARNING",
+		"Blank line required after table.", msgLine(next, lineBase), ""))
 }
 
 type gridCell struct {
@@ -473,4 +554,17 @@ func sortedIntKeys(m map[int]bool) []int {
 	}
 	sort.Ints(keys)
 	return keys
+}
+
+// malformedTable is docutils' malformed_table: an ERROR carrying
+// "Malformed table." plus the detail, and the offending block quoted as
+// a literal_block with the double-width padding taken back out.
+//
+// The line is the block's FIRST line plus the offset, which is what
+// "startline = abs_line_number() - len(block) + 1" then
+// "line=startline+offset" comes to.
+func malformedTable(block []string, detail string, offset, i, lineBase int) *doctree.Element {
+	text := strings.ReplaceAll(strings.Join(block, "\n"), string(doubleWidthPad), "")
+	return sectionMessage("3", "ERROR", "Malformed table.\n"+detail,
+		msgLine(i+offset, lineBase), text)
 }
