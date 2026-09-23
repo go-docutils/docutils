@@ -210,3 +210,53 @@ func TestSimpleTableMeasuresCodePointsNotBytes(t *testing.T) {
 		})
 	}
 }
+
+// TestMalformedSimpleTable covers text in the MARGIN between two
+// columns, which docutils refuses the whole table for:
+// TableMarkupError("Text in column margin in table line N.").
+//
+// This parser sliced each column and dropped whatever fell between
+// them, so a tab expanded across the gap took a whole cell with it:
+// "a<TAB>b       c" became a two-cell row and the "b" was simply GONE.
+// That is why this half was worth its own round -- the grid half was a
+// missing diagnostic, this one was missing CONTENT.
+//
+// The LAST column is exempt on purpose: text past its right edge
+// extends it, which is a documented docutils feature and is what
+// extendLastColumnForOverflow already did.
+func TestMalformedSimpleTable(t *testing.T) {
+	t.Run("text between two columns is malformed", func(t *testing.T) {
+		got := doctree.Dump(Parse("========  ========\na       b       c\n========  ========\nd         e\n========  ========\n"))
+		if !strings.Contains(got, "Text in column margin in table line 2.") {
+			t.Fatalf("no margin error:\n%s", got)
+		}
+		if strings.Contains(got, "<table>") {
+			t.Errorf("a malformed table was still built:\n%s", got)
+		}
+		// The block is quoted AS WRITTEN: the borders are "=" here, and
+		// the parser rewrites them to "-" internally, on a copy.
+		if !strings.Contains(got, "========  ========") {
+			t.Errorf("the block was not quoted as the author wrote it:\n%s", got)
+		}
+		// And the content that used to vanish is in the quoted block.
+		if !strings.Contains(got, "a       b       c") {
+			t.Errorf("the row's own text did not survive:\n%s", got)
+		}
+	})
+	t.Run("text past the LAST column extends it", func(t *testing.T) {
+		// The control: this is legal, and must stay a table.
+		got := doctree.Dump(Parse("========  ========\na         b that runs on\n========  ========\n"))
+		if strings.Contains(got, "Malformed") {
+			t.Errorf("an overflowing LAST column is legal:\n%s", got)
+		}
+		if !strings.Contains(got, "<table>") {
+			t.Errorf("expected a table:\n%s", got)
+		}
+	})
+	t.Run("a well-formed table is untouched", func(t *testing.T) {
+		got := doctree.Dump(Parse("========  ========\na         b\n========  ========\n\nnext\n"))
+		if strings.Contains(got, "Malformed") || strings.Contains(got, "Blank line required") {
+			t.Errorf("a good table drew a diagnostic:\n%s", got)
+		}
+	})
+}

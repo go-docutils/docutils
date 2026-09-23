@@ -436,11 +436,22 @@ as itself afterwards.
 well-formed table too: docutils raises it from `table_top`, the CALLER
 of the table parser, which is why neither path had it here.
 
-**Still missing:** the SIMPLE table's own malformed reporting, whose
-detail strings come from the table parser rather than from isolation
-(`Text in column margin in table line N.`). That one also loses content
-today — a row whose text falls outside the column bounds drops the text
-rather than refusing the table.
+The SIMPLE table followed in v0.122.0, and that half was about CONTENT
+rather than diagnostics: text in the MARGIN between two columns was
+sliced away and dropped, so `a<TAB>b       c` — a tab expanded across
+the gap — became a two-cell row with the `b` simply gone. docutils
+refuses the whole table for it
+(`Text in column margin in table line N.`). Text past the LAST column
+still extends it, which is a documented docutils feature, so that stays
+a table.
+
+The block is quoted AS WRITTEN: `setup()` rewrites the `=` borders to
+`-` on a COPY there, and doing it in place quoted `--------` where the
+author typed `========`.
+
+**Still missing:** the other `TableMarkupError` kinds — `Malformed
+table; parse incomplete.`, the head/body separator rules, and the two
+column-span ones — which still fall back silently.
 
 A table's geometry is measured in CODE POINTS, with East Asian
 Wide and Fullwidth characters counting TWO (v0.109.0+ for grid tables,

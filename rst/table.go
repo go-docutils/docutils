@@ -1,6 +1,7 @@
 package rst
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -110,7 +111,7 @@ func parseColumnsChar(line string, ch byte, canonical []tableColumn, borderEnd i
 // lines[i]. Returns ok=false (no lines consumed) if lines[i] isn't a
 // valid top border, or the table turns out malformed once isolated —
 // in both cases the caller falls back to ordinary block parsing.
-func (p *parser) tryParseSimpleTable(lines []string, i, lineBase int) (*doctree.Element, int, bool) {
+func (p *parser) tryParseSimpleTable(lines []string, i, lineBase int) ([]doctree.Node, int, bool) {
 	if !isSimpleTableTopLine(lines[i]) {
 		return nil, 0, false
 	}
@@ -155,11 +156,18 @@ func (p *parser) tryParseSimpleTable(lines []string, i, lineBase int) (*doctree.
 	}
 	next := end + 1
 
-	table, ok := p.buildSimpleTable(block, i, lineBase)
+	table, detail, offset, ok := p.buildSimpleTable(block, i, lineBase)
+	if detail != "" {
+		// Same shape as the grid table's malformed path: the block is
+		// quoted, the message carries the block-relative line, and the
+		// lines are consumed rather than re-parsed as something else.
+		return blankLineAfterTable([]doctree.Node{malformedTable(block, detail, offset-i, i, lineBase)},
+			lines, next, lineBase), next, true
+	}
 	if !ok {
 		return nil, next, false
 	}
-	return table, next, true
+	return blankLineAfterTable([]doctree.Node{table}, lines, next, lineBase), next, true
 }
 
 type simpleTableCell struct {
@@ -170,12 +178,21 @@ type simpleTableCell struct {
 
 // buildSimpleTable runs the SimpleTableParser algorithm over an
 // already-isolated block (top border ... bottom border, inclusive) and
-// builds the doctree <table>.
-func (p *parser) buildSimpleTable(block []string, i, lineBase int) (*doctree.Element, bool) {
+// builds the doctree <table>. It returns a detail string when the block starts as a
+// table but does not form one -- the SimpleTableParser's own
+// TableMarkupError, which docutils reports as "Malformed table." plus
+// that detail. Only the column-margin case is detected here; the other
+// TableMarkupError kinds still fall back silently (see the README).
+func (p *parser) buildSimpleTable(block []string, i, lineBase int) (el *doctree.Element, detail string, offset int, ok bool) {
 	if len(block) < 3 {
-		return nil, false
+		return nil, "", 0, false
 	}
-	// setup(): top and bottom borders use '-' from here on, like span lines.
+	// setup(): top and bottom borders use '-' from here on, like span
+	// lines. On a COPY, as docutils does ("self.block = block[:]"):
+	// the caller still needs the block as WRITTEN to quote in a
+	// "Malformed table." message, and rewriting the borders in place
+	// quoted "--------" where the author typed "========".
+	block = append([]string(nil), block...)
 	block[0] = strings.ReplaceAll(block[0], "=", "-")
 	block[len(block)-1] = strings.ReplaceAll(block[len(block)-1], "=", "-")
 
@@ -184,7 +201,7 @@ func (p *parser) buildSimpleTable(block []string, i, lineBase int) (*doctree.Ele
 	for k := 1; k < len(block)-1; k++ {
 		if isSimpleTableBorderLine(block[k]) {
 			if headBodySep >= 0 {
-				return nil, false // multiple head/body separators
+				return nil, "", 0, false // multiple head/body separators
 			}
 			headBodySep = k
 			block[k] = strings.ReplaceAll(block[k], "=", "-")
@@ -193,12 +210,13 @@ func (p *parser) buildSimpleTable(block []string, i, lineBase int) (*doctree.Ele
 
 	columns := parseColumnsChar(block[0], '-', nil, 0)
 	if len(columns) == 0 {
-		return nil, false
+		return nil, "", 0, false
 	}
 	borderEnd := columns[len(columns)-1].end
 	firstStart, firstEnd := columns[0].start, columns[0].end
 
 	var rows []([]simpleTableCell)
+	marginDetail, marginOffset := "", 0
 	appendRow := func(rowLines []string, start int, spanLine string, hasSpan bool) bool {
 		if len(rowLines) == 0 && !hasSpan {
 			return true
@@ -215,6 +233,25 @@ func (p *parser) buildSimpleTable(block []string, i, lineBase int) (*doctree.Ele
 			return false
 		}
 		extendLastColumnForOverflow(rowLines, rowCols, &columns, &borderEnd)
+		// Text in the MARGIN between two columns is a malformed table,
+		// not something to ignore. docutils raises
+		// TableMarkupError("Text in column margin in table line N.")
+		// here; this sliced each column and dropped whatever fell
+		// between them, so "a<TAB>b       c" -- a tab expanded across
+		// the gap -- quietly lost the "b" and produced a table with two
+		// cells where the author wrote three things.
+		//
+		// The LAST column is exempt: text past its end EXTENDS it,
+		// which extendLastColumnForOverflow above has just done.
+		for ci := 0; ci < len(rowCols)-1; ci++ {
+			for li, l := range rowLines {
+				if strings.TrimSpace(sliceColumn(l, rowCols[ci].end, rowCols[ci+1].start)) != "" {
+					marginOffset = start + li
+					marginDetail = fmt.Sprintf("Text in column margin in table line %d.", marginOffset+1)
+					return false
+				}
+			}
+		}
 		for ci, col := range rowCols {
 			var cellLines []string
 			for _, l := range rowLines {
@@ -236,30 +273,32 @@ func (p *parser) buildSimpleTable(block []string, i, lineBase int) (*doctree.Ele
 		return true
 	}
 
-	offset := 1
+	// pos, not offset: offset is now a named RESULT carrying the
+	// malformed message's own line.
+	pos := 1
 	start := 1
 	textFound := false
-	for offset < len(block) {
-		line := block[offset]
+	for pos < len(block) {
+		line := block[pos]
 		switch {
 		case isSpanLine(line):
-			if !appendRow(block[start:offset], start, line, true) {
-				return nil, false
+			if !appendRow(block[start:pos], start, line, true) {
+				return nil, marginDetail, marginOffset, false
 			}
-			start = offset + 1
+			start = pos + 1
 			textFound = false
 		case strings.TrimSpace(sliceColumn(line, firstStart, firstEnd)) != "":
-			if textFound && offset != start {
-				if !appendRow(block[start:offset], start, "", false) {
-					return nil, false
+			if textFound && pos != start {
+				if !appendRow(block[start:pos], start, "", false) {
+					return nil, marginDetail, marginOffset, false
 				}
 			}
-			start = offset
+			start = pos
 			textFound = true
 		case !textFound:
-			start = offset + 1
+			start = pos + 1
 		}
-		offset++
+		pos++
 	}
 
 	table := doctree.NewElement(doctree.TagTable)
@@ -296,7 +335,7 @@ func (p *parser) buildSimpleTable(block []string, i, lineBase int) (*doctree.Ele
 	}
 	tgroup.Append(tbody)
 	table.Append(tgroup)
-	return table, true
+	return table, "", 0, true
 }
 
 // newTgroup builds the <tgroup cols="N"> wrapper docutils always puts
