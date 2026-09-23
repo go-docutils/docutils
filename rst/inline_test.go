@@ -385,3 +385,42 @@ func TestSchemeWithEmptyPathIsAURI(t *testing.T) {
 		}
 	}
 }
+
+// TestEmbeddedURIGetsMailtoOnlyWhenItIsAnAddress covers adjust_uri,
+// which prefixes "mailto:" only when the WHOLE target matches docutils'
+// email pattern, anchored with "$".
+//
+// The heuristic this replaced -- "contains @, does not contain ://" --
+// was wrong in both directions. It prefixed "mailto:core@pytest.org"
+// AGAIN, so pytest's own contact page pointed at
+// "mailto:mailto:core@pytest.org"; and it prefixed "a@b", which
+// docutils leaves alone because the host half needs two characters.
+//
+// The grammar answers both without a special case: emailc excludes
+// ":", so "mailto:core" cannot be a local part. Every expectation here
+// came from running Inliner.adjust_uri.
+func TestEmbeddedURIGetsMailtoOnlyWhenItIsAnAddress(t *testing.T) {
+	for _, tc := range []struct{ uri, want string }{
+		{"core@pytest.org", "mailto:core@pytest.org"},
+		{"a@b.org", "mailto:a@b.org"},
+		{"user@host", "mailto:user@host"},
+		{"a/b@c.org", "mailto:a/b@c.org"},
+		{"x@y.org?subject=hi", "mailto:x@y.org?subject=hi"},
+		// Already a mailto: the one that was doubled.
+		{"mailto:core@pytest.org", "mailto:core@pytest.org"},
+		// A host of one character is not an address.
+		{"a@b", "a@b"},
+		// Schemes, with and without an "@" in them.
+		{"http://e.com", "http://e.com"},
+		{"news:comp.lang", "news:comp.lang"},
+		{"http://x.com/a@b", "http://x.com/a@b"},
+		{"ftp://u@h/p", "ftp://u@h/p"},
+	} {
+		t.Run(tc.uri, func(t *testing.T) {
+			got := doctree.Dump(Parse("see `x <" + tc.uri + ">`_ here\n"))
+			if !strings.Contains(got, `refuri="`+tc.want+`"`) {
+				t.Errorf("want refuri %q in:\n%s", tc.want, got)
+			}
+		})
+	}
+}
