@@ -173,6 +173,32 @@ func appendClass(el *doctree.Element, cls string) {
 // widths from scratch in runListTableDirective, so this never touches
 // its colspecs.
 func (p *parser) applyTableCommonOptions(table *doctree.Element, o tableCommonOptions, isRST bool) {
+	// The colwidths class and the ":class:" values arrive in the OPPOSITE
+	// ORDER for the two families, and the reason is where each one is
+	// added rather than any rule about tables. RSTTable.run gets a table
+	// the nested parse already built, so it appends ":class:" first and
+	// the colwidths annotation after. ListTable and CSVTable BUILD their
+	// table themselves, and build_table_from_list sets the colwidths
+	// class while constructing it — before run() ever appends ":class:".
+	//
+	// So ".. table::" gives "longtable colwidths-given" and
+	// ".. list-table::" gives "colwidths-given longtable", for the same
+	// two options. Asked of docutils 0.23 directly, because reading
+	// run() alone suggests one order for both.
+	widthsClass := ""
+	switch o.widthsRaw {
+	case "auto":
+		widthsClass = "colwidths-auto"
+	case "grid":
+		widthsClass = "colwidths-given"
+	default:
+		if len(o.widthsList) > 0 {
+			widthsClass = "colwidths-given"
+		}
+	}
+	if !isRST && widthsClass != "" {
+		appendClass(table, widthsClass)
+	}
 	for _, c := range o.classes {
 		appendClass(table, c)
 	}
@@ -190,15 +216,8 @@ func (p *parser) applyTableCommonOptions(table *doctree.Element, o tableCommonOp
 	if isRST && len(o.widthsList) > 0 {
 		applyExplicitColWidths(table, o.widthsList)
 	}
-	switch o.widthsRaw {
-	case "auto":
-		appendClass(table, "colwidths-auto")
-	case "grid":
-		appendClass(table, "colwidths-given")
-	default:
-		if len(o.widthsList) > 0 {
-			appendClass(table, "colwidths-given")
-		}
+	if isRST && widthsClass != "" {
+		appendClass(table, widthsClass)
 	}
 }
 

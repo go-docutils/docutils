@@ -85,7 +85,13 @@ one table to result — `:class:`/`:name:`/`:align:`/`:width:`/`:widths:`
 options, the title itself inline-parsed so it can carry markup or a
 dangling-markup warning of its own), `list-table` (building a
 `<table>` from scratch out of a uniform two-level bullet list — rows,
-each a nested list of cells — plus `:header-rows:`/`:stub-columns:`),
+each a nested list of cells — plus `:header-rows:`/`:stub-columns:`; the
+`colwidths-given`/`colwidths-auto` annotation `:widths:` adds lands
+BEFORE the `:class:` values for `list-table`/`csv-table` and AFTER them
+for `table`, because the first two set it while building their own table
+and the third appends it to one the nested parse already built — opposite
+orders for the same two options, asked of docutils rather than reasoned
+about),
 and the nine generic ADMONITIONS — `attention`/`caution`/`danger`/
 `error`/`hint`/`important`/`note`/`tip`/`warning`, directive name
 matched case-INSENSITIVELY (`.. Note::`, `.. WARNING::` work the same as
@@ -525,15 +531,28 @@ treats combining as "no column" makes it 0. That was one character in a
 1245-character sample against the reference, and the only one the first
 attempt got wrong.
 
-**A measured gap this did not close.** `nodes.make_id` lowercases,
-transliterates through two tables, then NFKD-normalises and drops
-whatever is still non-ASCII — so `Ti中tle` is `title` (the character
-leaves no separator behind) while `Ti…tle` is `ti-tle` (`…` decomposes to
-ASCII dots, which become one). This package turns every non-foldable
-character into a separator, so it gives `ti-tle` for both. Telling those
-apart needs NFKD, which Go has no standard-library support for and which
-this dependency-free package will not embed. Worth **two** real-world
-corpus files, measured by neutralising every id attribute and recounting.
+**A gap that was measured, left open, then closed by asking what it
+actually needed** (v0.128.0). `nodes.make_id` lowercases, transliterates
+through two tables, then NFKD-normalises and drops whatever is still
+non-ASCII — so `Ti中tle` is `title` (the character leaves no separator
+behind) while `Ti…tle` is `ti-tle` (`…` decomposes to ASCII dots, which
+become one). This package turned every non-foldable character into a
+separator, giving `ti-tle` for both, and the note here said telling them
+apart "needs NFKD, which Go has no standard-library support for and which
+this dependency-free package will not embed".
+
+Both halves of that were true and the conclusion still did not follow.
+`make_id` does not need NFKD; it needs **the ASCII residue of** NFKD,
+which is a pure function of one rune, and the 2166 runes that have one
+fit in 833 bytes of data (`makeidfold.go`, generated from the same
+`unicodedata` 16.0.0 that generated `eastasian.go`'s tables). The port is
+now exact: a differential probe of 3992 inputs — one for every rune with
+an ASCII residue, 1500 with none, and every printable ASCII character in
+three positions — agrees with docutils on all 3992. The same table
+removed three WRONG mappings the hand-written fold carried (`ß` to `s`
+rather than `sz`, `æ` to `a` rather than `ae`, `œ` to `o` rather than
+`oe`) and let `class_option`'s two hand-rolled copies of `make_id`
+become calls to it.
 
 `rst.TableColumnWidth` exports that metric (v0.110.0+), because a WRITER
 needs the identical rule: `go-richdoc/rst` padded its cells by rune
