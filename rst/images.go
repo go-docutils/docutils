@@ -16,10 +16,7 @@ import (
 // align) — buildImageNode below is the shared core both entry points
 // funnel through, mirroring that structure.
 //
-// SCOPE: the ":target:" option (wraps the image in a <reference>) is not
-// implemented — no corpus case exercises it, and it pulls in
-// parse_target's own hyperlink-target machinery for comparatively little
-// value; likewise Image's separate vertical-values :align: branch used
+// SCOPE: Image's separate vertical-values :align: branch used
 // only when the directive is invoked INSIDE a substitution definition
 // (align_v_values instead of align_h_values) is not implemented, since no
 // corpus case combines :align: with an embedded substitution image
@@ -76,9 +73,13 @@ func (p *parser) finishImageDirective(directiveName, argument string, options ma
 	if len(content) > 0 && !allBlank(content) {
 		return []doctree.Node{directiveError(directiveName, "no content permitted", lineno, blockText)}
 	}
-	img, errEl := p.buildImageNode(directiveName, argument, options, presetAlt, lineno, blockText)
+	img, ref, errEl := p.buildImageNode(directiveName, argument, options, presetAlt, lineno, blockText)
 	if errEl != nil {
 		return []doctree.Node{errEl}
+	}
+	if ref != nil {
+		ref.Append(img)
+		return []doctree.Node{ref}
 	}
 	return []doctree.Node{img}
 }
@@ -86,7 +87,15 @@ func (p *parser) finishImageDirective(directiveName, argument string, options ma
 // buildImageNode builds an <image> element from an argument+options pair
 // already split by parseDirectiveBlock — the core Image.run logic shared
 // by a bare image directive and Figure.run's own delegation to it.
-func (p *parser) buildImageNode(directiveName, argument string, options map[string]string, presetAlt string, lineno int, blockText string) (*doctree.Element, *doctree.Element) {
+func (p *parser) buildImageNode(directiveName, argument string, options map[string]string, presetAlt string, lineno int, blockText string) (*doctree.Element, *doctree.Element, *doctree.Element) {
+	// ":target:" is converted by directives.unchanged_required, which
+	// runs at option-ASSEMBLY time — before run() and therefore before
+	// the ":align:" check below, which is why an empty one wins over a
+	// bad align value rather than the other way round.
+	ref, errEl := imageTargetReference(directiveName, options, lineno, blockText)
+	if errEl != nil {
+		return nil, nil, errEl
+	}
 	el := doctree.NewElement(doctree.TagImage)
 	el.SetAttr("uri", imageURI(argument))
 	if v, ok := options["alt"]; ok {
@@ -112,14 +121,14 @@ func (p *parser) buildImageNode(directiveName, argument string, options map[stri
 	if v, ok := options["align"]; ok {
 		chosen, valid := choiceValue(v, imageAlignHValues)
 		if !valid {
-			return nil, directiveError(directiveName, formatChoiceError("align", v, imageAlignHValues), lineno, blockText)
+			return nil, nil, directiveError(directiveName, formatChoiceError("align", v, imageAlignHValues), lineno, blockText)
 		}
 		el.SetAttr("align", chosen)
 	}
 	if v, ok := options["loading"]; ok {
 		chosen, valid := choiceValue(v, imageLoadingValues)
 		if !valid {
-			return nil, directiveError(directiveName, formatChoiceError("loading", v, imageLoadingValues), lineno, blockText)
+			return nil, nil, directiveError(directiveName, formatChoiceError("loading", v, imageLoadingValues), lineno, blockText)
 		}
 		el.SetAttr("loading", chosen)
 	}
@@ -131,7 +140,46 @@ func (p *parser) buildImageNode(directiveName, argument string, options map[stri
 		el.SetAttr("name", name)
 		el.SetAttr("id", p.explicitTargetID(el.Tag, name))
 	}
-	return el, nil
+	return el, ref, nil
+}
+
+// imageTargetReference implements Image.run's ":target:" branch: the
+// option's value goes through the SAME parse_target the body of a
+// ".. _name: value" hyperlink target uses, and the <image> is wrapped in
+// the <reference> it describes — a refuri for a plain URI, a
+// name+refname pair for "other_" or "`other name`_".
+//
+// Two details that only reading run() gives: the option is DELETED from
+// the dict before the image node is built (so no target="" ever reaches
+// the <image>), and add_name still applies to the IMAGE, not to the
+// reference — ":name: x" beside ":target:" puts the id on the inner
+// node. Neither "mailto:" adjustment nor any other adjust_uri step is
+// applied here, unlike an inline embedded URI: run() passes
+// parse_target's own data straight to nodes.reference.
+func imageTargetReference(directiveName string, options map[string]string, lineno int, blockText string) (*doctree.Element, *doctree.Element) {
+	raw, ok := options["target"]
+	if !ok {
+		return nil, nil
+	}
+	delete(options, "target")
+	if strings.TrimSpace(raw) == "" {
+		// directives.unchanged_required raises ValueError("argument
+		// required but none supplied") and assemble_option_dict wraps it
+		// the same way a bad choice() value is wrapped — with Python's
+		// repr of the value it was handed, which for an option written
+		// with no value at all is the bare word None, unquoted.
+		return nil, directiveError(directiveName,
+			`invalid option value: (option: "target"; value: None)`+"\n"+
+				"argument required but none supplied", lineno, blockText)
+	}
+	ref := doctree.NewElement(doctree.TagReference)
+	if name, isRef := bareIndirectTargetName(raw); isRef {
+		ref.SetAttr("name", normalizeWhitespace(name))
+		ref.SetAttr("refname", normalizeName(name))
+		return ref, nil
+	}
+	ref.SetAttr("refuri", joinEmbeddedURI(escapeBackslashes(raw)))
+	return ref, nil
 }
 
 // imageURI mirrors directives.uri's "unescaped whitespace removed"
@@ -290,13 +338,22 @@ func (p *parser) runFigureDirective(lines []string, i, next, lineBase int, args 
 	delete(options, "figname")
 	delete(options, "align")
 
-	imgEl, errEl := p.buildImageNode("figure", argument, options, "", lineno, blockText)
+	imgEl, refEl, errEl := p.buildImageNode("figure", argument, options, "", lineno, blockText)
 	if errEl != nil {
 		return []doctree.Node{errEl}
 	}
 
 	figureEl := doctree.NewElement(doctree.TagFigure)
-	figureEl.Append(imgEl)
+	if refEl != nil {
+		// Figure.run unpacks "(image_node,) = Image.run(self)" and wraps
+		// whatever came back — which, with a ":target:", is the
+		// REFERENCE, not the image. So the figure holds the link and the
+		// link holds the image.
+		refEl.Append(imgEl)
+		figureEl.Append(refEl)
+	} else {
+		figureEl.Append(imgEl)
+	}
 
 	if figwidth != "" {
 		if !strings.EqualFold(figwidth, "image") {

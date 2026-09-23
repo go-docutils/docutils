@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/go-docutils/docutils/doctree"
 )
@@ -627,7 +628,7 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx, lineBase 
 			return []doctree.Node{sectionMessage("2", "WARNING",
 				`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
 		}
-		if img, ok := nodes[0].(*doctree.Element); ok && img.Tag == doctree.TagImage {
+		if img, ok := nodes[0].(*doctree.Element); ok && isSubstitutableImage(img) {
 			el.Append(img)
 		} else {
 			// A failed image directive produces its own ERROR, and the
@@ -663,6 +664,26 @@ func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx, lineBase 
 			`Substitution definition "`+subname+`" empty or invalid.`, lineno, blockText)}, next, true
 	}
 	return []doctree.Node{el}, next, true
+}
+
+// isSubstitutableImage reports whether an image directive's result is
+// the one thing a substitution definition can hold: the <image> itself,
+// or — when the directive carried a ":target:" — the <reference> Image.run
+// wraps it in. The wrapper is NOT a special case to be excused: docutils
+// runs the same disallowed_inside_substitution_definitions check over
+// whatever came back, and a reference carrying a refuri (or a refname
+// plus its display name) has neither "names" nor "ids", so it passes.
+// Only an ANONYMOUS one is refused there, and ":target:" cannot produce
+// one — parse_target's own pattern stops at a single trailing underscore.
+func isSubstitutableImage(el *doctree.Element) bool {
+	if el.Tag == doctree.TagImage {
+		return true
+	}
+	if el.Tag != doctree.TagReference || len(el.Children) != 1 {
+		return false
+	}
+	child, ok := el.Children[0].(*doctree.Element)
+	return ok && child.Tag == doctree.TagImage
 }
 
 // fillReplaceSubstitution implements the "replace" directive (misc.py's
@@ -1284,10 +1305,19 @@ func (p *parser) parseHyperlinkTarget(lines []string, i, lineBase int, rest stri
 		uri = rest[idx+1:]
 	}
 	name = strings.TrimSpace(name)
-	uri = strings.TrimSpace(uri)
+	// parse_target is handed the target's BLOCK, and joins it with a
+	// space: "' '.join(line.strip() for line in block)" for the
+	// is_reference test, "' '.join(block)" for the URI. Concatenating
+	// with nothing, as this did, is invisible for a URI — the
+	// joinEmbeddedURI below removes every unescaped whitespace run
+	// anyway — but not for a phrase reference split across lines:
+	// ".. _a: `some\n   name`_" became the single word "somename".
+	parts := make([]string, 0, 1+len(body))
+	parts = append(parts, strings.TrimSpace(uri))
 	for _, l := range body {
-		uri += strings.TrimSpace(l)
+		parts = append(parts, strings.TrimSpace(l))
 	}
+	uri = strings.TrimSpace(strings.Join(parts, " "))
 	// The name carries escapes too, and the INLINE side already
 	// processes them: "`a\\ b`_" is a reference to "ab" there. A
 	// target's own name did not, so it recorded "a\\ b" and the two
@@ -1405,25 +1435,74 @@ func (p *parser) parseAnonymousTarget(lines []string, i int, rest string) (doctr
 	return el, next
 }
 
-// bareIndirectTargetName reports whether uri, taken as a WHOLE, is a bare
-// "othername_" reference (docutils' parse_target: the target's value ends
-// in "_" AND the entire value matches the simplename grammar —
-// scanSimpleName in inline.go). A real URI ending in "_", like
-// ".../foo_", does NOT match, since "/" isn't a valid simplename
-// separator. The backtick-quoted phrase form ("`other name`_") is not
-// implemented here: rare for a target's own value, unlike a reference's.
-func bareIndirectTargetName(uri string) (string, bool) {
-	if len(uri) < 2 || uri[len(uri)-1] != '_' {
+// bareIndirectTargetName reports whether value, taken as a WHOLE, is a
+// reference to another target rather than a URI — docutils' parse_target
+// plus is_reference, read directly: the value must end in "_" and, once
+// whitespace-normalized, match Body.patterns.reference, which is anchored
+// at BOTH ends ("$" in the pattern, ".match" at the start). Two forms
+// qualify, and the returned name is the matched group with its escapes
+// resolved (is_reference returns unescape(simple or phrase)):
+//
+//	other_          the simplename form (scanSimpleName)
+//	`other name`_   the backquoted phrase form
+//
+// A real URI ending in "_", like ".../foo_", matches neither, since "/"
+// is not a simplename character — so it stays a refuri.
+//
+// The phrase form used to be skipped here ("rare for a target's own
+// value"), which was true of ".. _a: `b`_" and NOT true of the image
+// directive's own ":target:" option, which reaches this same function:
+// docutils runs both through one parse_target. The two guards the
+// pattern puts around the phrase are kept: no space directly after the
+// opening backquote ("(?![ ])"), and the character before the closing
+// one is neither whitespace nor an escape marker
+// ("(?<![\s\x00])") — an ESCAPED backquote cannot close the phrase,
+// which here is automatic, since escapeBackslashes turns it into a
+// marked rune that is no longer the '`' this compares against.
+func bareIndirectTargetName(value string) (string, bool) {
+	runes := normalizeWhitespaceRunes(escapeBackslashes(value))
+	if len(runes) < 2 || runes[len(runes)-1] != '_' {
 		return "", false
 	}
-	runes := []rune(uri[:len(uri)-1])
-	if len(runes) == 0 {
+	body := runes[:len(runes)-1]
+	if body[0] == '`' {
+		if len(body) < 3 || body[len(body)-1] != '`' {
+			return "", false
+		}
+		phrase := body[1 : len(body)-1]
+		if unicode.IsSpace(phrase[0]) {
+			return "", false
+		}
+		if last := phrase[len(phrase)-1]; unicode.IsSpace(last) || isDroppedEscape(last) {
+			return "", false
+		}
+		return unescapeRunes(phrase), true
+	}
+	if scanSimpleName(body, 0) != len(body) {
 		return "", false
 	}
-	if scanSimpleName(runes, 0) != len(runes) {
-		return "", false
+	return unescapeRunes(body), true
+}
+
+// normalizeWhitespaceRunes is whitespace_normalize_name over the escaped
+// rune encoding: every run of REAL whitespace collapses to one space and
+// the ends are trimmed. An escaped space is not whitespace here and
+// survives untouched, exactly as "\x00 " does in docutils' own encoding.
+func normalizeWhitespaceRunes(rs []rune) []rune {
+	out := make([]rune, 0, len(rs))
+	pendingSpace := false
+	for _, r := range rs {
+		if unicode.IsSpace(r) {
+			pendingSpace = len(out) > 0
+			continue
+		}
+		if pendingSpace {
+			out = append(out, ' ')
+			pendingSpace = false
+		}
+		out = append(out, r)
 	}
-	return string(runes), true
+	return out
 }
 
 // normalizeName mirrors docutils.nodes.fully_normalize_name: case- and

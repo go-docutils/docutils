@@ -104,7 +104,14 @@ own `state_machine.node` check means; `image` (a REQUIRED URI argument,
 no content permitted, `:alt:`/`:height:`/`:width:`/`:scale:`/`:align:`
 — validated against `left`/`center`/`right`, real docutils' own
 substitution-definition-only vertical-values variant not implemented —
-/`:loading:` — `embed`/`link`/`lazy` — /`:class:`/`:name:` options) and
+/`:loading:` — `embed`/`link`/`lazy` — /`:class:`/`:name:`/`:target:`
+options; a `:target:` wraps the `<image>` in a `<reference>`, its value
+read by the SAME `parse_target` a `.. _name: value` hyperlink target
+uses, so a plain URI becomes a `refuri` and `other_` or `` `other name`_ ``
+becomes a `name`+`refname` pair resolved with every other reference —
+note that no `mailto:` adjustment is applied to it, unlike an inline
+embedded URI, and that a `:name:` beside a `:target:` stays on the
+IMAGE, not on the wrapper) and
 `figure` (same argument, reuses `image`'s own option handling for
 everything but its own `:figwidth:`/`:figclass:`/`:figname:`/`:align:`,
 plus an optional caption/legend body: the content's first `<paragraph>`
@@ -160,11 +167,15 @@ there — so real content is free to precede the options, and a role
 invocation elsewhere in that content is never mistaken for one.
 Directive-level argument/option-syntax errors, e.g. a malformed
 `:widths:` value or an unknown option key entirely, are NOT validated
-for any directive (`:align:`/`:loading:` on `image`/`figure` are the one
-exception, both directly corpus-tested), matching this project's own
+for any directive (`:align:`/`:loading:`/`:target:` on `image`/`figure`
+are the one exception, all three directly corpus-tested — an empty
+`:target:` raises the same "argument required but none supplied" error
+`unchanged_required` raises, at option-assembly time, so no image
+survives it), matching this project's own
 established scope boundary — see "Not yet ported" below, hyperlink
 targets with reference resolution — including INDIRECT targets
-(`.. _a: b_`, whose value is itself another target's name, chased
+(`.. _a: b_` and the backquoted phrase form `` .. _a: `b c`_ ``, whose
+value is itself another target's name, chased
 through however many hops until a real URI is reached; a cycle is left
 unresolved rather than looping forever) and ANONYMOUS targets/references
 (`.. __: uri` / `` x__ `` / `` `x`__ ``, matched by DOCUMENT-ORDER
