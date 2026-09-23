@@ -215,7 +215,12 @@ func (p *parser) parseOptionList(lines []string, i, lineBase int) (el *doctree.E
 			first = lines[i][col:]
 		}
 		bodyLines, n := gatherListItemLines(lines, i, col, first, true)
-		if len(bodyLines) == 0 {
+		// allBlank, not len()==0: an option marker with nothing after it
+		// ("-f" alone) has no DESCRIPTION, and whether that shows up as
+		// an empty slice or as one blank line depends on how many blank
+		// lines the gatherer absorbed -- which is not something this
+		// test should depend on.
+		if allBlank(bodyLines) {
 			break
 		}
 		group := doctree.NewElement(doctree.TagOptionGroup)

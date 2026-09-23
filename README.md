@@ -989,9 +989,24 @@ placeholder, so a diagnostic raised inside one carries a line at last:
 block quotes (v0.59.0+), and definition bodies, field bodies, option
 descriptions and bullet/enumerated list items (v0.61.0+). The
 correspondence is exact wherever the sub-slice comes from
-`consumeIndentedBlock` or `gatherListItemLines`, since both only dedent
-and trim TRAILING blanks, so entry *k* is the parent's line *i+k* — the
-same derivation v0.44.0 made for topic/sidebar content. **Still
+`consumeIndentedBlock` or `gatherListItemLines`, since both only dedent,
+so entry *k* is the parent's line *i+k* — the same derivation v0.44.0
+made for topic/sidebar content.
+
+Those two, and the block-quote gatherer, used to trim trailing blank
+lines as well (v0.131.0 stopped them, for what that cost see below).
+`StringList.get_indented` trims nothing from the end — it stops at the
+first insufficiently indented NON-BLANK line — and the blank lines after
+a nested construct therefore belong to the block that quotes it. An
+unknown directive's `<literal_block>` shows one blank line fewer than
+were written (two written, one shown: the last is the text's own
+trailing newline), and inside a list item, a field body or a block quote
+this package showed none at all. Three real-world corpus files, and the
+whole cost of the change was ONE emptiness test: an option marker with
+nothing after it (`-f` alone) now yields a slice holding one blank line
+instead of an empty one, and `option_list` read that as a description.
+`allBlank`, not `len() == 0`, is the test that does not depend on how
+many blank lines the gatherer happened to absorb. **Still
 placeholder**: a table cell (whose content is genuinely not a contiguous
 parent slice) and any directive whose body goes through
 `parseDirectiveBlock`, whose fold-back branch breaks the
