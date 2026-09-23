@@ -55,33 +55,24 @@ func dump(b *strings.Builder, n Node, depth int) {
 	}
 }
 
-// quoteAttr wraps s in double quotes. Real docutils' pseudoxml quoting
-// is nodes.pseudo_quoteattr, which is literally `'"%s"' % value` — it
-// escapes NOTHING, not the double-quote character and not the backslash,
-// producing technically-invalid XML for a value containing a quote
-// (`names=""target2""`) and not caring, because pseudoxml is a debug
-// format. So neither does this: escaping the quote made an inline
-// target named `"target2"` differ from the reference for no reason
-// (v0.55.1). Newline and tab are the one deliberate exception — this
-// dump is LINE-oriented, and a raw newline inside an attribute value
-// would corrupt the shape of the output rather than merely differ from
-// it. No corpus fixture exercises either, so nothing is being papered
-// over here.
+// quoteAttr wraps s in double quotes and escapes NOTHING, because
+// nodes.pseudo_quoteattr is literally `'"%s"' % value`: not the
+// double-quote character, not the backslash, not a newline or a tab.
+// It produces technically-invalid XML for a value containing a quote
+// (`names=""target2""`) and does not care, because pseudoxml is a debug
+// format.
+//
+// Newline and tab USED to be escaped here, on the reasoning that this
+// dump is line-oriented and a raw newline would corrupt the shape of
+// the output rather than merely differ from it -- with the note that
+// "no corpus fixture exercises either, so nothing is being papered over
+// here". That last part stopped being true: six real-world files carry
+// a multi-line :alt:, and docutils prints the newline raw with no
+// indentation on the continuation line. The shape argument was real but
+// it was an argument about OUR format, and the reference's answer is
+// the one the corpus compares against.
 func quoteAttr(s string) string {
-	var b strings.Builder
-	b.WriteByte('"')
-	for _, r := range s {
-		switch r {
-		case '\n':
-			b.WriteString(`\n`)
-		case '\t':
-			b.WriteString(`\t`)
-		default:
-			b.WriteRune(r)
-		}
-	}
-	b.WriteByte('"')
-	return b.String()
+	return `"` + s + `"`
 }
 
 func sortedKeys(m map[string]string) []string {

@@ -142,3 +142,34 @@ func TestDumpEmptyText(t *testing.T) {
 		t.Errorf("Dump() = %q, want %q (an empty Text node prints no lines, like Python's \"\".splitlines())", got, want)
 	}
 }
+
+// TestDumpQuotesAttributesVerbatim pins pseudo_quoteattr, which is
+// literally `'"%s"' % value`: it escapes NOTHING. Not the double quote,
+// not the backslash, not a newline, not a tab. The result is
+// technically-invalid XML for a value containing a quote, and docutils
+// does not care, because pseudoxml is a debug format.
+//
+// Newline and tab used to be escaped here, on the reasoning that this
+// dump is line-oriented -- with the note that no corpus file exercised
+// it. Six real-world files carry a multi-line :alt:, so that stopped
+// being true, and docutils prints the newline raw with no indentation
+// on the continuation line.
+func TestDumpQuotesAttributesVerbatim(t *testing.T) {
+	for _, tc := range []struct{ name, value, want string }{
+		{"plain", "abc", `abc`},
+		{"a newline stays a newline", "a\nb", "a\nb"},
+		{"a tab stays a tab", "a	b", "a	b"},
+		{"a quote is not escaped", `a"b`, `a"b`},
+		{"a backslash is not escaped", `a\b`, `a\b`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			el := NewElement(TagImage)
+			el.SetAttr("alt", tc.value)
+			got := Dump(el)
+			want := `<image alt="` + tc.want + `">` + "\n"
+			if got != want {
+				t.Errorf("got  %q\nwant %q", got, want)
+			}
+		})
+	}
+}

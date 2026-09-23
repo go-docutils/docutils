@@ -1363,6 +1363,15 @@ doc := rst.Parse(source)
 fmt.Print(doctree.Dump(doc)) // this project's own pseudoxml-like debug format
 ```
 
+`Dump` follows `pseudo_quoteattr` for attribute values, which is
+literally `'"%s"' % value` and escapes NOTHING — not the double quote,
+not the backslash, not a newline or a tab (v0.124.0+). It used to escape
+newline and tab, on the reasoning that this dump is line-oriented, with
+the note that no corpus file exercised it. Six real-world files carry a
+multi-line `:alt:`, so that stopped being true; the shape argument was
+about OUR format, and the reference's answer is the one the corpus
+compares against.
+
 ## Writers
 
 **`html`**: `html.Render(doc) string` renders a doctree to an HTML
