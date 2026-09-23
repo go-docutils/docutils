@@ -1120,6 +1120,25 @@ it); it is ASCII, so an accented letter ends the address rather than
 continuing it; and `.` is a SEPARATOR between runs, `emailc+(\.emailc+)*`,
 which is why a leading, trailing or doubled dot is not an address at all.
 
+Both scans **backtrack** (v0.130.0+), which is the other half of that
+same `end_string_suffix`. docutils matches each with one pattern ending
+in `uri_end` plus the suffix, so when the longest span fails the trailing
+lookahead the regex engine shortens it until one fits; a scanner that
+checks the boundary once and gives up refuses a URI that is merely
+FOLLOWED by an unusual character. pytest's changelog template writes
+`https://github.com/pytest-dev/pytest/issues/{{ value[1:] }}`, and `{` is
+neither a URI character nor a closer, so the whole link was plain text
+where docutils links the `…/issues` prefix. The email half needed the
+same loop for `user@e.org/{` — found only by a 672-case differential
+probe, after a six-case check had said that path was already right.
+
+A bare `name_` reference **bounds** an implicit URI the same way an
+emphasis start-string does (v0.130.0+): it is another alternative of the
+same `patterns.initial`, matched in the first pass, so `file://x/y_` is
+the URI `file://x/` followed by a reference to `y` rather than one URI
+ending in an underscore. No real-world file writes one; the probe found
+it, 12 of its 672 cases.
+
 And when `standalone_uri` matches but the scheme is not in
 `urischemes.schemes`, docutils raises `MarkupMismatch`, after which
 `implicit_inline` returns the WHOLE text it was given as one plain
