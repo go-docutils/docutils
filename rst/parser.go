@@ -508,8 +508,10 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 			i = next
 			continue
 		}
-		if table, next, ok := p.tryParseSimpleTable(lines, i, 0); ok {
-			current.Append(table)
+		if nodes, next, ok := p.tryParseSimpleTable(lines, i, 0); ok {
+			for _, n := range nodes {
+				current.Append(n)
+			}
 			i = next
 			continue
 		}
@@ -758,8 +760,10 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 			i = next
 			continue
 		}
-		if table, next, ok := p.tryParseSimpleTable(lines, i, lineBase); ok {
-			parent.Append(table)
+		if nodes, next, ok := p.tryParseSimpleTable(lines, i, lineBase); ok {
+			for _, n := range nodes {
+				parent.Append(n)
+			}
 			i = next
 			continue
 		}
