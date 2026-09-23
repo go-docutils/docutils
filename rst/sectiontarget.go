@@ -2,72 +2,125 @@ package rst
 
 import (
 	"strings"
-	"unicode"
 )
 
-// makeID ports docutils.nodes.make_id: lowercase, fold common accented
-// Latin letters to their unaccented ASCII form, drop any character that
-// still isn't ASCII alphanumeric, collapse runs of the rest to a single
-// hyphen, and strip a leading digit/hyphen run or trailing hyphen run —
-// producing an identifier matching docutils' own documented
-// `[a-z](-?[a-z0-9]+)*` shape.
+// makeID ports docutils.nodes.make_id, in its own five steps and in its
+// own order (nodes.py, read directly):
 //
-// asciiFold below covers Latin-1 Supplement + the common Latin Extended-A
-// letters (à, ø, đ, ł, ...), the same digraphs/stroke letters real
-// docutils' own _non_id_translate table special-cases plus everything NFKD
-// decomposes to a plain ASCII base letter — not the full Unicode
-// normalization docutils gets from Python's unicodedata (this project has
-// no dependency on golang.org/x/text/unicode/norm, deliberately, matching
-// [[feedback-reference-libraries]]'s zero-third-party-dependency stance).
-// A rune outside that table and outside ASCII alphanumerics is dropped
-// entirely, same treatment as any other non-id character — a real, narrow
-// divergence for titles in scripts asciiFold doesn't cover (CJK, Cyrillic,
-// Greek, ...), not a correctness issue for the common case.
+//	id = string.lower()
+//	id = id.translate(_non_id_translate_digraphs)   # ß -> sz, æ -> ae, ...
+//	id = id.translate(_non_id_translate)            # ø -> o, đ -> d, ...
+//	id = unicodedata.normalize('NFKD', id).encode('ascii', 'ignore')...
+//	id = _non_id_chars.sub('-', ' '.join(id.split()))
+//	id = _non_id_at_ends.sub('', id)
+//
+// The order matters twice. The two translate tables run BEFORE the
+// normalization because they name letters NFKD does not decompose at all
+// — a stroke or a hook is part of the letter, not a combining mark — and
+// the normalization runs before the hyphen substitution because
+// ascii-ignore DELETES what it cannot represent, while the substitution
+// REPLACES it with a hyphen. Getting those two the wrong way round is
+// the whole difference between "whats-new" and "what-s-new".
+//
+// What this reimplemented by hand before was a single rune-to-rune fold
+// covering Latin-1 and some of Latin Extended-A, with three of docutils'
+// five digraphs mapped to ONE letter instead of two (ß to "s", not "sz";
+// æ to "a", not "ae"; œ to "o", not "oe") and every remaining non-ASCII
+// rune turned into a hyphen. See makeidfold.go for the generated answer
+// that replaces it.
+//
+// One documented divergence remains, and it is in the lowercasing rather
+// than in anything above: Go's strings.ToLower is Unicode's SIMPLE case
+// mapping, Python's str.lower the FULL one, so a rune whose lowercase is
+// several runes differs. Every such rune this could find either folds to
+// the same ASCII either way (U+0130 gives "i" both ways, since the
+// combining dot Python adds is dropped by ascii-ignore) or contributes
+// no ASCII at all.
 func makeID(s string) string {
 	var b strings.Builder
-	for _, r := range s {
-		r = unicode.ToLower(r)
-		if folded, ok := asciiFold[r]; ok {
-			r = folded
+	for _, r := range strings.ToLower(s) {
+		if d, ok := nonIDTranslateDigraphs[r]; ok {
+			b.WriteString(d)
+			continue
 		}
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+		if d, ok := nonIDTranslate[r]; ok {
+			b.WriteString(d)
+			continue
+		}
+		if r < 0x80 {
 			b.WriteRune(r)
-		} else {
-			b.WriteByte(' ')
+			continue
 		}
+		b.WriteString(asciiFold(r))
 	}
-	id := strings.Join(strings.Fields(b.String()), "-")
-	id = strings.TrimLeft(id, "-0123456789")
-	id = strings.TrimRight(id, "-")
-	return id
+	// " ".join(id.split()) then [^a-z0-9]+ -> "-": a run of any
+	// non-identifier characters, whitespace included, collapses to ONE
+	// hyphen.
+	var out strings.Builder
+	pendingHyphen := false
+	for _, r := range b.String() {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			if pendingHyphen && out.Len() > 0 {
+				out.WriteByte('-')
+			}
+			pendingHyphen = false
+			out.WriteRune(r)
+			continue
+		}
+		pendingHyphen = true
+	}
+	// _non_id_at_ends = '^[-0-9]+|-+$'
+	id := strings.TrimLeft(out.String(), "-0123456789")
+	return strings.TrimRight(id, "-")
 }
 
-// asciiFold maps a lowercase accented/digraph rune to its closest plain
-// ASCII letter. Latin-1 Supplement (à-ÿ) plus the handful of Latin
-// Extended-A stroke/digraph letters docutils' own _non_id_translate table
-// names explicitly.
-var asciiFold = map[rune]rune{
-	'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a', 'ā': 'a', 'ă': 'a', 'ą': 'a',
-	'ç': 'c', 'ć': 'c', 'ĉ': 'c', 'ċ': 'c', 'č': 'c',
-	'ð': 'd', 'đ': 'd',
-	'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e', 'ē': 'e', 'ĕ': 'e', 'ė': 'e', 'ę': 'e', 'ě': 'e',
-	'ĝ': 'g', 'ğ': 'g', 'ġ': 'g', 'ģ': 'g',
-	'ĥ': 'h', 'ħ': 'h',
-	'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i', 'ĩ': 'i', 'ī': 'i', 'ĭ': 'i', 'į': 'i', 'ı': 'i',
-	'ĵ': 'j',
-	'ķ': 'k',
-	'ĺ': 'l', 'ļ': 'l', 'ľ': 'l', 'ŀ': 'l', 'ł': 'l',
-	'ñ': 'n', 'ń': 'n', 'ņ': 'n', 'ň': 'n',
-	'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o', 'ø': 'o', 'ō': 'o', 'ŏ': 'o', 'ő': 'o',
-	'ŕ': 'r', 'ŗ': 'r', 'ř': 'r',
-	'ś': 's', 'ŝ': 's', 'ş': 's', 'š': 's', 'ß': 's',
-	'ţ': 't', 'ť': 't', 'ŧ': 't',
-	'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u', 'ũ': 'u', 'ū': 'u', 'ŭ': 'u', 'ů': 'u', 'ű': 'u', 'ų': 'u',
-	'ŵ': 'w',
-	'ý': 'y', 'ÿ': 'y', 'ŷ': 'y',
-	'ź': 'z', 'ż': 'z', 'ž': 'z',
-	'æ': 'a',
-	'œ': 'o',
+// nonIDTranslate and nonIDTranslateDigraphs are docutils' own two tables,
+// transcribed entry for entry. They exist because NFKD leaves these
+// letters alone: a stroke, a hook or a curl belongs to the letter itself,
+// so ø does not decompose to o and would otherwise be DELETED by
+// ascii-ignore rather than folded.
+var nonIDTranslate = map[rune]string{
+	0x00f8: "o", // o with stroke
+	0x0111: "d", // d with stroke
+	0x0127: "h", // h with stroke
+	0x0131: "i", // dotless i
+	0x0142: "l", // l with stroke
+	0x0167: "t", // t with stroke
+	0x0180: "b", // b with stroke
+	0x0183: "b", // b with topbar
+	0x0188: "c", // c with hook
+	0x018c: "d", // d with topbar
+	0x0192: "f", // f with hook
+	0x0199: "k", // k with hook
+	0x019a: "l", // l with bar
+	0x019e: "n", // n with long right leg
+	0x01a5: "p", // p with hook
+	0x01ab: "t", // t with palatal hook
+	0x01ad: "t", // t with hook
+	0x01b4: "y", // y with hook
+	0x01b6: "z", // z with stroke
+	0x01e5: "g", // g with stroke
+	0x0225: "z", // z with hook
+	0x0234: "l", // l with curl
+	0x0235: "n", // n with curl
+	0x0236: "t", // t with curl
+	0x0237: "j", // dotless j
+	0x023c: "c", // c with stroke
+	0x023f: "s", // s with swash tail
+	0x0240: "z", // z with swash tail
+	0x0247: "e", // e with stroke
+	0x0249: "j", // j with stroke
+	0x024b: "q", // q with hook tail
+	0x024d: "r", // r with stroke
+	0x024f: "y", // y with stroke
+}
+
+var nonIDTranslateDigraphs = map[rune]string{
+	0x00df: "sz", // ligature sz
+	0x00e6: "ae", // ae
+	0x0153: "oe", // ligature oe
+	0x0238: "db", // db digraph
+	0x0239: "qp", // qp digraph
 }
 
 // MakeID returns the identifier reStructuredText derives from a name —

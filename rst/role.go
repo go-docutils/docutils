@@ -208,63 +208,44 @@ func (p *parser) registerRole(lines []string, i, next, lineBase int, args string
 	return nil
 }
 
-// classOption mirrors docutils.parsers.rst.directives.class_option (via
-// nodes.make_id, both read directly): splits on whitespace, then
-// lowercases each token and replaces any character that isn't a letter,
-// digit, or hyphen with a hyphen. make_id's fuller Unicode-normalization
-// behavior (NFKD decomposition, leading-digit handling) isn't replicated —
-// every role/class name reaching this parser in practice is already a
-// plain ASCII identifier.
+// classOption and classOptionStrict are
+// docutils.parsers.rst.directives.class_option (read directly), which is
+// not a rule of its own at all:
+//
+//	names = argument.split()
+//	for name in names:
+//	    class_name = nodes.make_id(name)
+//	    if not class_name:
+//	        raise ValueError('cannot make "%s" into a class name' % name)
+//
+// One make_id per whitespace-separated token, and a ValueError when a
+// token yields nothing. Both functions used to REIMPLEMENT make_id
+// instead of calling it, each approximating a different subset, each
+// with a doc comment naming what it left out and excusing it with "no
+// corpus case exercises it". A corpus case did:
+// ".. table::\n   :class: longtable, borderless" gave class
+// "longtable-" here, because the comma became a hyphen and nothing
+// stripped it from the end — make_id's own `-+$` rule, sitting unused
+// in the other copy.
+//
+// The two now differ only in what they do with a token that makes no
+// identifier at all: strict reports it (the "role" directive's own
+// error path, corpus-verified in test_role.py[7]/[8]), lenient drops
+// it. Dropping is closer to docutils than what lenient did before —
+// ":class: 1" kept the class "1", which make_id cannot produce.
 func classOption(s string) []string {
 	var out []string
 	for _, tok := range strings.Fields(s) {
-		var b strings.Builder
-		for _, r := range strings.ToLower(tok) {
-			switch {
-			case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
-				b.WriteRune(r)
-			default:
-				b.WriteByte('-')
-			}
-		}
-		if b.Len() > 0 {
-			out = append(out, b.String())
+		if id := makeID(tok); id != "" {
+			out = append(out, id)
 		}
 	}
 	return out
 }
 
-// classOptionStrict mirrors class_option's real make_id-based validation
-// (nodes.make_id, read directly) more closely than classOption above: a
-// token whose result would start with only digits/hyphens is stripped of
-// that leading run (and any trailing hyphens) exactly like make_id's own
-// `_non_id_at_ends` step, and — the part classOption's own doc comment
-// already flagged as "not replicated" — if that leaves nothing at all
-// (e.g. a purely numeric token like "1"), this is now a real failure
-// (ValueError in real docutils), not silently kept as a digit-only class
-// name. A separate function from classOption, not a shared rewrite of it:
-// only the "role" directive's own error paths are corpus-verified to need
-// the strict failure signal (test_role.py[7]/[8]) — every OTHER
-// classOption caller (container, admonitions, ...) has no corpus fixture
-// exercising a digit-leading class name, so left as the existing lenient
-// behavior rather than risking an unverified behavior change there.
-// Doesn't collapse a RUN of consecutive invalid characters into a single
-// hyphen the way real make_id's own regex does (one hyphen per invalid
-// rune here, same simplification classOption already has) — no corpus
-// case exercises a multi-character invalid run either.
 func classOptionStrict(s string) (classes []string, failed string, ok bool) {
 	for _, tok := range strings.Fields(s) {
-		var b strings.Builder
-		for _, r := range strings.ToLower(tok) {
-			switch {
-			case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-				b.WriteRune(r)
-			default:
-				b.WriteByte('-')
-			}
-		}
-		id := strings.TrimLeft(b.String(), "-0123456789")
-		id = strings.TrimRight(id, "-")
+		id := makeID(tok)
 		if id == "" {
 			return nil, tok, false
 		}
