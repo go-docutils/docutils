@@ -1217,6 +1217,44 @@ func pad4(n int) string {
 	return s
 }
 
+// bareReferenceEnd reports where a bare "name_"/"name__" reference
+// starting at i ENDS, and whether there is one at all. Split out of
+// tryBareReference so that implicitLimit can ASK the question without
+// building a node: the two must agree, or an implicit URI would stop
+// short of a reference that then does not match.
+//
+// isValidEndBoundaryChar, not a blanket unicode.IsPunct -- the THIRD
+// place in this file to need saying so, and the last one still getting
+// it wrong. The URI scan was corrected in v0.63.0 and the email scan in
+// v0.87.0, each leaving a comment explaining that docutils'
+// end_string_suffix is a NAMED class, not a Unicode category, and that
+// the two disagree in both directions.
+//
+// They disagree on 12 of the 39 characters checked against real docutils
+// here. "*" is Unicode punctuation but not in the class, so "bdist_* to
+// stdlib" became a reference to "bdist" -- taking the underscore and the
+// asterisk out of the text with it -- where docutils has a plain
+// sentence. So did "(", "[", "{", "&", "%", "#", "@". In the other
+// direction ">" is a math SYMBOL and "\" is not punctuation at all, yet
+// both END a reference.
+func bareReferenceEnd(runes []rune, i int) (int, bool) {
+	if !isAlphaNumRune(runes[i]) || !validStartBoundary(runes, i, 0) {
+		return 0, false
+	}
+	j := scanSimpleName(runes, i)
+	if j == i || j >= len(runes) || runes[j] != '_' {
+		return 0, false
+	}
+	end := j + 1
+	if end < len(runes) && runes[end] == '_' {
+		end++
+	}
+	if end < len(runes) && !isValidEndBoundaryChar(runes[end]) {
+		return 0, false
+	}
+	return end, true
+}
+
 // tryBareReference recognizes a reference with no backtick delimiters
 // at all: word_ / word__ (docutils' 'whole' construct: a `simplename`
 // immediately followed by one or two trailing underscores — see
@@ -1224,35 +1262,15 @@ func pad4(n int) string {
 // internal single underscore, contrary to what an earlier version of this
 // comment claimed without checking).
 func tryBareReference(runes []rune, i int) (doctree.Node, int, bool) {
-	if !isAlphaNumRune(runes[i]) || !validStartBoundary(runes, i, 0) {
+	end, ok := bareReferenceEnd(runes, i)
+	if !ok {
 		return nil, 0, false
 	}
-	j := scanSimpleName(runes, i)
-	if j == i || j >= len(runes) || runes[j] != '_' {
-		return nil, 0, false
-	}
+	j := end - 1
 	anonymous := false
-	end := j + 1
-	if end < len(runes) && runes[end] == '_' {
+	if runes[j] == '_' && j-1 >= i && runes[j-1] == '_' {
 		anonymous = true
-		end++
-	}
-	// isValidEndBoundaryChar, not a blanket unicode.IsPunct -- the THIRD
-	// place in this file to need saying so, and the last one still
-	// getting it wrong. The URI scan was corrected in v0.63.0 and the
-	// email scan in v0.87.0, each leaving a comment explaining that
-	// docutils' end_string_suffix is a NAMED class, not a Unicode
-	// category, and that the two disagree in both directions.
-	//
-	// They disagree on 12 of the 39 characters checked against real
-	// docutils here. "*" is Unicode punctuation but not in the class, so
-	// "bdist_* to stdlib" became a reference to "bdist" -- taking the
-	// underscore and the asterisk out of the text with it -- where
-	// docutils has a plain sentence. So did "(", "[", "{", "&", "%",
-	// "#", "@". In the other direction ">" is a math SYMBOL and "\" is
-	// not punctuation at all, yet both END a reference.
-	if end < len(runes) && !isValidEndBoundaryChar(runes[end]) {
-		return nil, 0, false
+		j--
 	}
 	name := unescapeRunes(runes[i:j])
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: name})
@@ -1416,6 +1434,18 @@ func implicitLimit(runes []rune, i int) int {
 		if isExplicitStartAt(runes, k) {
 			return k
 		}
+		// A BARE reference ("name_") is another alternative of that same
+		// patterns.initial, not an implicit construct -- so it is found
+		// in the first pass too, and an implicit URI can no more swallow
+		// one than it can swallow an emphasis start-string.
+		// "file://x/y_" is where that shows: docutils reads the URI
+		// "file://x/" followed by a reference to "y", and a per-position
+		// scanner that tries the URI first reads one URI ending in an
+		// underscore. Found by a differential probe, not by the corpus:
+		// 12 of its 672 cases, and no real-world file writes one.
+		if _, ok := bareReferenceEnd(runes, k); ok {
+			return k
+		}
 	}
 	return len(runes)
 }
@@ -1495,15 +1525,29 @@ func tryURIScheme(runes []rune, i int) (node doctree.Node, consumed int, ok, rej
 	if k < len(runes) && unescapeRune(runes[k]) == '#' {
 		k = scanURIChars(runes, k+1)
 	}
-	end := trimToURIFinalChar(runes, start, k)
-	if end <= start {
-		return nil, 0, false, false
-	}
 	// isValidEndBoundaryChar, not a blanket unicode.IsPunct: ">" is a
 	// MATH SYMBOL in Unicode, not punctuation, so the ad-hoc check
 	// rejected the whole URI as soon as the scan correctly stopped at the
 	// ">" of "<http://example.org/x.>" instead of swallowing it. This is
 	// the same end_string_suffix class every other construct's close uses.
+	//
+	// The LOOP is what a regular expression does for free. docutils
+	// matches the URI with one pattern ending in "uri_end" plus
+	// "end_string_suffix", and when the longest span fails that trailing
+	// lookahead the engine BACKTRACKS to a shorter one that satisfies it.
+	// Checking once and giving up, as this did, refuses a URI that is
+	// merely followed by an unusual character: pytest's changelog
+	// template writes
+	// "https://github.com/pytest-dev/pytest/issues/{{ value[1:] }}", and
+	// "{" is neither a URI character nor a closer, so the whole link
+	// became plain text where docutils links its "…/issues" prefix.
+	end := trimToURIFinalChar(runes, start, k)
+	for end > start && end < len(runes) && !isValidEndBoundaryChar(runes[end]) {
+		end = trimToURIFinalChar(runes, start, end-1)
+	}
+	if end <= start {
+		return nil, 0, false, false
+	}
 	if end < len(runes) && !isValidEndBoundaryChar(runes[end]) {
 		return nil, 0, false, false
 	}
@@ -1543,7 +1587,19 @@ func tryEmail(runes []rune, i int) (doctree.Node, int, bool) {
 	// "a@b" is not, and "a.question.mark@end?" stops before the "?". The
 	// old rule -- "the domain must contain a dot" -- accepted neither
 	// "user@host" nor that fixture, and is nowhere in the pattern.
+	// The same BACKTRACKING the URI scan above does, and for the same
+	// reason: docutils matches this with one pattern ending in uri_end
+	// plus end_string_suffix, so a host that runs past a character the
+	// suffix will not accept is shortened until one fits, not abandoned.
+	// "user@e.org/{" is an address followed by text there and was plain
+	// text here -- emailc contains both "/" and "{", so the host ran to
+	// the brace and the single boundary check then refused everything.
+	// Four cases out of a 672-case differential probe, and the 6-case
+	// check that preceded it said this path was already right.
 	end := trimToURIFinalChar(runes, domainStart, j)
+	for end > domainStart && end < len(runes) && !isValidEndBoundaryChar(runes[end]) {
+		end = trimToURIFinalChar(runes, domainStart, end-1)
+	}
 	if end-domainStart < 2 {
 		return nil, 0, false
 	}
