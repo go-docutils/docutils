@@ -422,6 +422,26 @@ appends `'\x00' + text[i+1:i+2]`, empty at the end of the text, so
 Before another line it was already right, because there the escape had a
 newline to eat.
 
+A GRID table that does not FORM a table is now reported rather than
+silently abandoned (v0.121.0+). Once the top border matches, docutils has
+committed to a table: any failure is `Malformed table.` plus a detail
+(`Right border not aligned or missing.`, `Bottom border missing or
+corrupt.`) with the offending block quoted as a `literal_block`. This
+parser reported nothing and let the lines fall back to ordinary block
+parsing, so a broken table silently became a paragraph. Only the lines
+the block COVERS are consumed; whatever interrupted the table is parsed
+as itself afterwards.
+
+`Blank line required after table.` came with it, and applies to a
+well-formed table too: docutils raises it from `table_top`, the CALLER
+of the table parser, which is why neither path had it here.
+
+**Still missing:** the SIMPLE table's own malformed reporting, whose
+detail strings come from the table parser rather than from isolation
+(`Text in column margin in table line N.`). That one also loses content
+today — a row whose text falls outside the column bounds drops the text
+rather than refusing the table.
+
 A table's geometry is measured in CODE POINTS, with East Asian
 Wide and Fullwidth characters counting TWO (v0.109.0+ for grid tables,
 v0.115.0+ for simple ones; `eastasian.go`).

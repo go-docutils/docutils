@@ -51,7 +51,7 @@ func TestIsolateGridTable(t *testing.T) {
 		"",
 		"Not part of the table.",
 	}
-	block, next, ok := isolateGridTable(lines, 0)
+	block, next, _, _, ok := isolateGridTable(lines, 0)
 	if !ok {
 		t.Fatal("isolateGridTable failed to match a well-formed table")
 	}
@@ -69,7 +69,7 @@ func TestIsolateGridTableRejectsUnclosedTable(t *testing.T) {
 		"| a   | b   |",
 		"no border and no closing row at all",
 	}
-	if _, _, ok := isolateGridTable(lines, 0); ok {
+	if _, _, _, _, ok := isolateGridTable(lines, 0); ok {
 		t.Fatal("isolateGridTable matched a table with no valid bottom border")
 	}
 }
@@ -295,4 +295,67 @@ func TestTitleUnderlineUsesColumnWidth(t *testing.T) {
 	if got := doctree.Dump(Parse("Title\n=====\n\nbody\n")); strings.Contains(got, "too short") {
 		t.Errorf("an exact ASCII underline raised a warning:\n%s", got)
 	}
+}
+
+// TestMalformedGridTable covers what a grid table that does not FORM a
+// table produces. Once the top border matches, docutils has committed
+// to a table: any failure is "Malformed table." plus a detail, with the
+// offending block quoted as a literal_block. This parser reported
+// nothing at all and let the lines fall back to ordinary block parsing,
+// so a broken table silently became a paragraph.
+//
+// Every expectation was read off real docutils, including the LINE each
+// message carries, which differs per failure and is the fiddly part.
+func TestMalformedGridTable(t *testing.T) {
+	for _, tc := range []struct{ name, source, detail, line string }{
+		{
+			// A row wider than its border.
+			"right border not aligned",
+			"+--------+--------+\n| a     b    | c      |\n+========+========+\n| d      | e      |\n+--------+--------+\n",
+			"Right border not aligned or missing.", "2",
+		},
+		{
+			// A row that does not start with "+" or "|" truncates the
+			// block, and what is left has no bottom border.
+			"bottom border missing",
+			"+--------+--------+\n| a\nb    | c      |\n+========+========+\n| d      | e      |\n+--------+--------+\n",
+			"Bottom border missing or corrupt.", "3",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			if !strings.Contains(got, "Malformed table.\n") {
+				t.Fatalf("no Malformed table. error:\n%s", got)
+			}
+			if !strings.Contains(got, tc.detail) {
+				t.Errorf("detail %q missing:\n%s", tc.detail, got)
+			}
+			if !strings.Contains(got, `line="`+tc.line+`"`) {
+				t.Errorf("want line %s:\n%s", tc.line, got)
+			}
+			// The block itself must be quoted, or the reader cannot see
+			// WHICH table failed.
+			if !strings.Contains(got, "<literal_block>") {
+				t.Errorf("the offending block was not quoted:\n%s", got)
+			}
+		})
+	}
+	t.Run("a well-formed table is untouched", func(t *testing.T) {
+		got := doctree.Dump(Parse("+---+---+\n| a | b |\n+---+---+\n\nnext\n"))
+		if strings.Contains(got, "Malformed") || strings.Contains(got, "Blank line required") {
+			t.Errorf("a good table drew a diagnostic:\n%s", got)
+		}
+	})
+	t.Run("a table not followed by a blank line warns", func(t *testing.T) {
+		// docutils raises this from table_top, the CALLER of the table
+		// parser, so it applies to a well-formed table too -- which is
+		// why neither path had it here.
+		got := doctree.Dump(Parse("+---+---+\n| a | b |\n+---+---+\nnext\n"))
+		if !strings.Contains(got, "Blank line required after table.") {
+			t.Errorf("no warning:\n%s", got)
+		}
+		if !strings.Contains(got, `line="4"`) {
+			t.Errorf("want line 4:\n%s", got)
+		}
+	})
 }
