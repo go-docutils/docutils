@@ -217,6 +217,34 @@ func isDroppedEscape(r rune) bool {
 	return isEscapedRune(r) && (unescapeRune(r) == ' ' || unescapeRune(r) == '\n')
 }
 
+// unescapeRunesKeepingBackslashes is docutils'
+// unescape(text, restore_backslashes=True): it undoes the private-use
+// encoding escapeBackslashes applies WITHOUT removing the backslash
+// that caused it, so the text reads exactly as the author typed it.
+//
+// That is the rule for a <problematic> node's own visible content,
+// which quotes the source back: docutils' problematic() is built from
+// the RAWSOURCE, so ":file:`PC\\\\python_uwp.cpp`" keeps both
+// backslashes there while an ordinary unescape would leave one. Plain
+// unescapeRunes is still the rule everywhere the text is CONTENT rather
+// than a quotation of the source.
+func unescapeRunesKeepingBackslashes(rs []rune) string {
+	var b strings.Builder
+	for _, r := range rs {
+		if isDroppedEscape(r) {
+			b.WriteRune('\\')
+			continue
+		}
+		if u := unescapeRune(r); u != r {
+			b.WriteRune('\\')
+			b.WriteRune(u)
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 func unescapeRunes(rs []rune) string {
 	var b strings.Builder
 	for _, r := range rs {
@@ -800,7 +828,7 @@ func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) ([]doctree.Node,
 		}
 	}
 	if prefixRole != "" && suffixRole != "" {
-		return []doctree.Node{p.problematicMessage("2", "WARNING", string(runes[i:end]),
+		return []doctree.Node{p.problematicMessage("2", "WARNING", unescapeRunesKeepingBackslashes(runes[i:end]),
 			"Multiple roles in interpreted text (both prefix and suffix present; only one allowed).")}, end - i, true
 	}
 
@@ -809,10 +837,20 @@ func (p *parser) tryInterpretedOrPhraseRef(runes []rune, i int) ([]doctree.Node,
 	// phrase reference. The message names the position the role was in.
 	if role, position := prefixRole+suffixRole, positionOfRole(prefixRole, suffixRole); role != "" {
 		if refEnd, isRef := scanReferenceSuffix(runes, end); isRef {
-			return []doctree.Node{p.problematicMessage("2", "WARNING", string(runes[i:refEnd]),
+			return []doctree.Node{p.problematicMessage("2", "WARNING", unescapeRunesKeepingBackslashes(runes[i:refEnd]),
 				"Mismatch: both interpreted text role "+position+" and reference suffix.")}, refEnd - i, true
 		}
-		return []doctree.Node{p.roleElement(role, contentRunes, string(runes[i:end]))}, end - i, true
+		// unescapeRunes, not string(): these runes are still in
+		// escapeBackslashes' private-use encoding, and this text is
+		// shown to the READER as the <problematic> node's content when
+		// the role turns out to be unknown. Leaving it encoded put
+		// U+F005C -- the shifted backslash -- into the document, which
+		// is how PEP 773's ":file:`PC\\python_uwp.cpp`" came out.
+		//
+		// tryURIScheme carries the same note from v0.31.0, for the same
+		// leak in the standalone-URI path; these three sites are the
+		// ones it did not cover.
+		return []doctree.Node{p.roleElement(role, contentRunes, unescapeRunesKeepingBackslashes(runes[i:end]))}, end - i, true
 	}
 
 	nodes, extra := p.referenceOrPhrase(contentRunes, afterClose, runes)
@@ -1407,11 +1445,18 @@ func tryURIScheme(runes []rune, i int) (node doctree.Node, consumed int, ok, rej
 	if j >= len(runes) || runes[j] != ':' {
 		return nil, 0, false, false
 	}
+	// The hierarchical slashes are PART of the URI, not a prefix to
+	// skip past: "urilast" includes "/", so "file://" and "http://" end
+	// on a valid final character and are references, while "mailto:"
+	// and "news:" -- a scheme with no slash and nothing after -- are
+	// not. Starting the span AFTER the slashes made all four of them
+	// text, which is how PEP 610's "file://" came out unlinked.
 	start := j + 1
-	for k := 0; k < 2 && start < len(runes) && runes[start] == '/'; k++ {
-		start++
+	slashes := 0
+	for slashes < 2 && start+slashes < len(runes) && runes[start+slashes] == '/' {
+		slashes++
 	}
-	k := scanURIChars(runes, start)
+	k := scanURIChars(runes, start+slashes)
 	// The query and fragment introducers are not URI characters
 	// themselves; docutils' pattern adds each as its own optional group.
 	if k < len(runes) && unescapeRune(runes[k]) == '?' {

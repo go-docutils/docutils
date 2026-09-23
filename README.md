@@ -1040,6 +1040,21 @@ missing until v0.88.0. `rst-class` deliberately stays out of the shared
 helper: `runClassDirective` distinguishes `class` from its alias by the
 name as WRITTEN, so canonicalizing it would erase a real difference.
 
+A `<problematic>` node quotes the source AS WRITTEN (v0.123.0+):
+docutils builds its text from the rawsource with
+`unescape(..., restore_backslashes=True)`, so `` :file:`PC\\python_uwp.cpp` ``
+keeps both backslashes. Three sites passed the runes still carrying
+`escapeBackslashes`' private-use encoding, so U+F005C — a shifted
+backslash, not a character any document contains — went straight into
+the tree (PEP 773 came out with one). `tryURIScheme` had carried a note
+about that leak since v0.31.0; these were the sites it did not cover.
+
+A scheme whose path is EMPTY is still a URI (v0.123.0+) when it has a
+slash: `urilast` includes `/`, so `file://`, `http://` and `file:/` end
+on a valid final character, while `mailto:` and `news:` — a scheme with
+no slash and nothing after — do not. The slashes were being skipped
+PAST before the span was measured, which made all of them plain text.
+
 A bare hyperlink reference ends on that same class too (v0.112.0+) —
 the THIRD place in `inline.go` to need it, and the last one that was
 still testing `unicode.IsPunct` instead. The two are not the same set

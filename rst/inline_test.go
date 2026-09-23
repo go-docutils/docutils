@@ -323,3 +323,65 @@ func TestReferenceEndBoundary(t *testing.T) {
 		}
 	})
 }
+
+// TestProblematicQuotesTheSourceAsWritten covers the text a
+// <problematic> node shows. docutils builds it from the RAWSOURCE with
+// unescape(..., restore_backslashes=True), so it reads exactly as the
+// author typed it -- ":file:`PC\\\\python_uwp.cpp`" keeps BOTH
+// backslashes.
+//
+// Three sites passed the runes still carrying escapeBackslashes'
+// private-use encoding, so U+F005C -- a shifted backslash, not a
+// character any document contains -- went straight into the tree. PEP
+// 773 came out with one. tryURIScheme carries the same note from
+// v0.31.0 for the standalone-URI path; these were the sites it did not
+// cover.
+func TestProblematicQuotesTheSourceAsWritten(t *testing.T) {
+	for _, tc := range []struct{ name, source, want string }{
+		{"an escaped backslash stays escaped", "see :file:`PC\\\\python_uwp.cpp` here\n", ":file:`PC\\\\python_uwp.cpp`"},
+		{"a lone backslash stays", "see :file:`PC\\python_uwp.cpp` here\n", ":file:`PC\\python_uwp.cpp`"},
+		{"plain text, the control", "see :file:`PCpython` here\n", ":file:`PCpython`"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("want %q in:\n%s", tc.want, got)
+			}
+			// No private-use rune may ever reach the tree: that encoding
+			// is internal and a document cannot contain one.
+			for _, r := range got {
+				if r >= 0xF0000 {
+					t.Fatalf("private-use rune U+%04X leaked into the tree:\n%q", r, got)
+				}
+			}
+		})
+	}
+}
+
+// TestSchemeWithEmptyPathIsAURI covers a URI whose path is empty. The
+// hierarchical slashes are PART of it -- "urilast" includes "/" -- so
+// "file://" ends on a valid final character and is a reference, while
+// "mailto:" and "news:", a scheme with no slash and nothing after, are
+// not. This skipped PAST the slashes before measuring and made all four
+// plain text.
+func TestSchemeWithEmptyPathIsAURI(t *testing.T) {
+	for _, tc := range []struct{ source, want string }{
+		{"see file:// here\n", "file://"},
+		{"see http:// here\n", "http://"},
+		{"see file:/ here\n", "file:/"},
+		{"see file:///tmp here\n", "file:///tmp"},
+		{"see http://x.com/a here\n", "http://x.com/a"},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			if got := doctree.Dump(Parse(tc.source)); !strings.Contains(got, `refuri="`+tc.want+`"`) {
+				t.Errorf("want refuri %q in:\n%s", tc.want, got)
+			}
+		})
+	}
+	// The controls: no slash, nothing after -- not a URI.
+	for _, src := range []string{"see mailto: here\n", "see news: here\n"} {
+		if got := doctree.Dump(Parse(src)); strings.Contains(got, "refuri=") {
+			t.Errorf("%q became a reference:\n%s", src, got)
+		}
+	}
+}
