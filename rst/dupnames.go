@@ -173,6 +173,12 @@ func (p *parser) setDuplicateName(el *doctree.Element, name string, body *doctre
 	old, oldExplicit := entry.node, entry.explicit
 	entry.explicit = oldExplicit || explicit
 
+	// Every message below quotes the name with LITERAL quote characters,
+	// not with %q. The two look identical until a name contains a quote
+	// of its own: docutils writes f'Duplicate name "{name}" ...', a
+	// plain interpolation, while %q is strconv.Quote and ESCAPES what it
+	// interpolates. A PEP linking to `Python issue #16500 "Add an atfork
+	// module"` twice came out with \" inside the message.
 	level, msgType, text := 0, "", ""
 	switch {
 	case old != nil && sameDestination(el, old):
@@ -183,12 +189,12 @@ func (p *parser) setDuplicateName(el *doctree.Element, name string, body *doctre
 			ref = el.Attr("refname")
 		}
 		level, msgType = 1, "INFO"
-		text = fmt.Sprintf("Duplicate name %q for external target %q.", name, ref)
+		text = fmt.Sprintf("Duplicate name \"%s\" for external target \"%s\".", name, ref)
 		dupname(el, name)
 	case explicit:
 		if oldExplicit {
 			level, msgType = 2, "WARNING"
-			text = fmt.Sprintf("Duplicate explicit target name: %q.", name)
+			text = fmt.Sprintf("Duplicate explicit target name: \"%s\".", name)
 			dupname(el, name)
 			if old != nil {
 				dupname(old, name)
@@ -200,13 +206,13 @@ func (p *parser) setDuplicateName(el *doctree.Element, name string, body *doctre
 			entry.node = el
 			if old != nil {
 				level, msgType = 1, "INFO"
-				text = fmt.Sprintf("Target name overrides implicit target name %q.", name)
+				text = fmt.Sprintf("Target name overrides implicit target name \"%s\".", name)
 				dupname(old, name)
 			}
 		}
 	default:
 		level, msgType = 1, "INFO"
-		text = fmt.Sprintf("Duplicate implicit target name: %q.", name)
+		text = fmt.Sprintf("Duplicate implicit target name: \"%s\".", name)
 		dupname(el, name)
 		if old != nil && !oldExplicit {
 			dupname(old, name)
