@@ -23,8 +23,8 @@ import (
 // shape the table/list-table directives already have. Content is kept
 // verbatim (never inline-parsed): it's TeX source, not reST, so a
 // backslash or asterisk in it is math syntax rather than markup.
-func (p *parser) runMathDirective(lines []string, i, next int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+func (p *parser) runMathDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 
 	blanks := 0

@@ -192,7 +192,7 @@ func nestLineBlockSegment(parent *doctree.Element, items []lbLine) {
 // out of content, breaking that simple correspondence, not corpus-
 // tested here so left unhandled (lineno falls back to unknown, 0).
 func (p *parser) runLineBlockDirective(lines []string, i, lineBase, next int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	directiveName := "line-block"
 

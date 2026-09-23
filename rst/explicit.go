@@ -201,7 +201,7 @@ func (p *parser) parseExplicitMarkup(lines []string, i, lineBase int, parent *do
 		return p.parseHyperlinkTarget(lines, i, lineBase, rest[1:])
 	}
 	if subName, subRest, bodyStartIdx, ok := matchPipeLabelMultiline(lines, i, rest); ok {
-		if nodes, next, ok := p.parseSubstitutionDef(lines, i, bodyStartIdx, subName, subRest, parent); ok {
+		if nodes, next, ok := p.parseSubstitutionDef(lines, i, bodyStartIdx, lineBase, subName, subRest, parent); ok {
 			return nodes, next
 		}
 		// Malformed substitution definition: fall through to comment,
@@ -496,8 +496,8 @@ func matchPipeLabelMultiline(lines []string, i int, firstLineRest string) (name,
 // below is anchored there specifically so a line already consumed as
 // part of the (possibly multi-line) NAME is never re-offered to the
 // embedded directive as its own body content.
-func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx int, name, directiveRest string, parent *doctree.Element) (nodes []doctree.Node, nextOut int, okOut bool) {
-	lineno := i + 1
+func (p *parser) parseSubstitutionDef(lines []string, i, bodyStartIdx, lineBase int, name, directiveRest string, parent *doctree.Element) (nodes []doctree.Node, nextOut int, okOut bool) {
+	lineno := msgLine(i, lineBase)
 	subname := normalizeWhitespace(name)
 	body, blankFinish, next := gatherExplicitBody(lines, bodyStartIdx)
 	// The SAME "Explicit markup ends without a blank line" warning every
@@ -940,7 +940,7 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 		// "date" is the second directive of that shape: misc.Date.run
 		// opens by refusing any state that is not a SubstitutionDef,
 		// with the same sentence and the same ERROR level.
-		lineno := i + 1
+		lineno := msgLine(i, lineBase)
 		blockText := strings.Join(lines[i:next], "\n")
 		return []doctree.Node{sectionMessage("3", "ERROR",
 			`Invalid context: the "`+strings.ToLower(name)+`" directive can only be used within a substitution definition.`, lineno, blockText)}, next
@@ -997,7 +997,7 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 		// to become the ONLY remaining diff) — UNLESS the definition
 		// itself is malformed, in which case Role.run raises a real
 		// diagnostic (registerRole's own doc comment).
-		return p.registerRole(lines, i, next, args, body), next
+		return p.registerRole(lines, i, next, lineBase, args, body), next
 	}
 	if name == "table" {
 		return p.runTableDirective(lines, i, next, lineBase, args, body), next
@@ -1028,13 +1028,13 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 		return p.runHeaderOrFooterDirective(false, lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "default-role") {
-		return p.runDefaultRoleDirective(lines, i, next, args), next
+		return p.runDefaultRoleDirective(lines, i, next, lineBase, args), next
 	}
 	if strings.EqualFold(name, "line-block") {
 		return p.runLineBlockDirective(lines, i, lineBase, next, args, body), next
 	}
 	if strings.EqualFold(name, "math") {
-		return p.runMathDirective(lines, i, next, args, body), next
+		return p.runMathDirective(lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "topic") {
 		return p.runTopicOrSidebar(doctree.TagTopic, lines, i, lineBase, next, args, body, blankFinish, parent), next
@@ -1043,7 +1043,7 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 		return p.runTopicOrSidebar(doctree.TagSidebar, lines, i, lineBase, next, args, body, blankFinish, parent), next
 	}
 	if strings.EqualFold(name, "image") {
-		return p.runImageDirective(lines, i, next, args, body, ""), next
+		return p.runImageDirective(lines, i, next, lineBase, args, body, ""), next
 	}
 	if strings.EqualFold(name, "figure") {
 		return p.runFigureDirective(lines, i, next, lineBase, args, body), next
@@ -1062,13 +1062,13 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 		return p.runBlockQuoteDirective(name, args, body, bodyStartIndex(lines, i), lineBase), next
 	}
 	if isCodeDirectiveName(name) {
-		return p.runCodeDirective(name, lines, i, next, args, body), next
+		return p.runCodeDirective(name, lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "rubric") {
-		return p.runRubricDirective(lines, i, next, args, body), next
+		return p.runRubricDirective(lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "parsed-literal") {
-		return p.runParsedLiteralDirective(lines, i, next, args, body), next
+		return p.runParsedLiteralDirective(lines, i, next, lineBase, args, body), next
 	}
 	if strings.EqualFold(name, "meta") {
 		// Meta declares no arguments and no option_spec at all, so real

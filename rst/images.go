@@ -46,8 +46,8 @@ var cssLengthUnits = []string{"em", "ex", "ch", "rem", "vw", "vh", "vmin", "vmax
 // substitution-embedded path (parseSubstitutionDef) ever passes a preset
 // default (the substitution's own name, matching run_directive's own
 // "alt" option_preset, states.py, read directly).
-func (p *parser) runImageDirective(lines []string, i, next int, args string, body []string, presetAlt string) []doctree.Node {
-	lineno := i + 1
+func (p *parser) runImageDirective(lines []string, i, next, lineBase int, args string, body []string, presetAlt string) []doctree.Node {
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	blanks := 0
 	for j := i + 1; j < len(lines) && isBlankStr(lines[j]); j++ {
@@ -264,7 +264,7 @@ func directiveError(directiveName, detail string, lineno int, blockText string) 
 // something like ".. class:: custom" before its caption is not
 // reproduced byte-for-byte; the <target> pass-through alone still works.
 func (p *parser) runFigureDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	blanks := 0
 	for j := i + 1; j < len(lines) && isBlankStr(lines[j]); j++ {

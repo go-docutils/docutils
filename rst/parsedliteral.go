@@ -17,8 +17,8 @@ import (
 // text folds into the content's own first line exactly like compound's
 // does (runAdmonitionOrGeneric's own !hasArgument fold-back, reused here
 // via the same parseDirectiveBlock(combined, false) call).
-func (p *parser) runParsedLiteralDirective(lines []string, i, next int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+func (p *parser) runParsedLiteralDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 
 	blanks := 0
