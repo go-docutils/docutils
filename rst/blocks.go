@@ -179,9 +179,6 @@ func gatherListItemLines(lines []string, i, markerCol int, firstLine string, all
 		itemLines = append(itemLines, rest)
 		j++
 	}
-	for len(itemLines) > 0 && isBlankStr(itemLines[len(itemLines)-1]) {
-		itemLines = itemLines[:len(itemLines)-1]
-	}
 	return itemLines, j
 }
 
@@ -209,9 +206,6 @@ func consumeIndentedBlock(lines []string, i, indent int) ([]string, int) {
 		}
 		block = append(block, rest)
 		j++
-	}
-	for len(block) > 0 && isBlankStr(block[len(block)-1]) {
-		block = block[:len(block)-1]
 	}
 	return block, j
 }

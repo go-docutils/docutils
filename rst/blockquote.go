@@ -127,9 +127,6 @@ func consumeIndentedRun(lines []string, i int) ([]string, int) {
 		}
 		block = append(block, lines[k][minIndent:])
 	}
-	for len(block) > 0 && isBlankStr(block[len(block)-1]) {
-		block = block[:len(block)-1]
-	}
 	return block, j
 }
 
