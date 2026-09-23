@@ -1040,6 +1040,15 @@ missing until v0.88.0. `rst-class` deliberately stays out of the shared
 helper: `runClassDirective` distinguishes `class` from its alias by the
 name as WRITTEN, so canonicalizing it would erase a real difference.
 
+An embedded URI gets `mailto:` only when the WHOLE target is an email
+address (v0.125.0+), which is what `adjust_uri` tests — its email
+pattern, anchored with `$`. The heuristic this replaced ("contains `@`,
+does not contain `://`") was wrong in both directions: it prefixed
+`mailto:core@pytest.org` AGAIN, so pytest's own contact page pointed at
+`mailto:mailto:core@pytest.org`, and it prefixed `a@b`, which docutils
+leaves alone because the host half needs two characters. The grammar
+settles both without a special case, since `emailc` excludes `:`.
+
 A `<problematic>` node quotes the source AS WRITTEN (v0.123.0+):
 docutils builds its text from the rawsource with
 `unescape(..., restore_backslashes=True)`, so `` :file:`PC\\python_uwp.cpp` ``

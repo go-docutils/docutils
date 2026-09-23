@@ -751,10 +751,40 @@ func joinEmbeddedURI(targetRunes []rune) string {
 // adjustEmbeddedURI mirrors Inliner.adjust_uri: an embedded target that
 // looks like a bare email address gets "mailto:" prefixed.
 func adjustEmbeddedURI(uri string) string {
-	if strings.Contains(uri, "@") && !strings.Contains(uri, "://") {
+	if isWholeEmailAddress(uri) {
 		return "mailto:" + uri
 	}
 	return uri
+}
+
+// isWholeEmailAddress reports whether the WHOLE string is an email
+// address by the same grammar tryEmail uses -- docutils' adjust_uri
+// matches its email pattern anchored with "$" and prefixes "mailto:"
+// only then.
+//
+// The heuristic this replaces ("contains @, does not contain ://") got
+// two cases wrong in opposite directions. "mailto:core@pytest.org"
+// contains an "@" and no "://", so it was prefixed AGAIN and PEP 447
+// and pytest's own contact page came out pointing at
+// "mailto:mailto:core@pytest.org". And "a@b" was prefixed although
+// docutils leaves it alone, because emailc's host half needs the two
+// characters trimToURIFinalChar insists on.
+//
+// The grammar answers both without a special case: emailc excludes
+// ":", so "mailto:core" cannot be a local part at all.
+func isWholeEmailAddress(s string) bool {
+	runes := []rune(s)
+	j := scanEmailPart(runes, 0, false)
+	if j == 0 || j >= len(runes) || runes[j] != '@' {
+		return false
+	}
+	j++
+	domainStart := j
+	j = scanEmailPart(runes, j, true)
+	end := trimToURIFinalChar(runes, domainStart, j)
+	// Anchored: the address has to be the whole string, not a prefix of
+	// it.
+	return end == len(runes) && end-domainStart >= 2
 }
 
 // tryInterpretedOrPhraseRef handles every backtick-quoted construct:
