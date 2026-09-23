@@ -29,8 +29,8 @@ import (
 // lexical analysis (NumberLines, read directly): a leading <inline
 // class="ln"> line-number marker before the content and after every
 // embedded newline, right-padded to the width of the LAST line number.
-func (p *parser) runCodeDirective(name string, lines []string, i, next int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+func (p *parser) runCodeDirective(name string, lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 
 	blanks := 0

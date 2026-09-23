@@ -72,3 +72,48 @@ func TestCodeDirective(t *testing.T) {
 		})
 	}
 }
+
+// TestDirectiveDiagnosticCarriesAnAbsoluteLine covers the line a
+// DIRECTIVE's own error reports when the directive is nested.
+//
+// Fifteen directive runners computed "lineno := i + 1" -- a LOCAL index
+// -- against three that used msgLine(i, lineBase). Six of the fifteen
+// already RECEIVED lineBase and ignored it, which is the clearest form
+// of a mechanism built and never wired: the parameter was there, the
+// call sites passed it, and nothing read it.
+//
+// A nested code-block therefore reported line 3 where docutils reports
+// 159 (sphinx's own test-footnotes fixture), because 3 was its offset
+// inside the footnote body rather than its place in the file.
+//
+// The top-level case is the control: lineBase is 0 there, so
+// msgLine(i, 0) is i+1 and nothing about it changes.
+func TestDirectiveDiagnosticCarriesAnAbsoluteLine(t *testing.T) {
+	for _, tc := range []struct{ name, source, want string }{
+		{
+			"at the top level, the control",
+			"a\n\nb\n\n.. code-block:: python\n   :caption: x\n\n   y\n",
+			`line="5"`,
+		},
+		{
+			"inside a footnote body",
+			"a\n\nb\n\n.. [#] note\n\n       .. code-block:: python\n          :caption: x\n\n          y\n",
+			`line="7"`,
+		},
+		{
+			"inside a list item",
+			"a\n\nb\n\n- item\n\n  .. code-block:: python\n     :caption: x\n\n     y\n",
+			`line="7"`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			if !strings.Contains(got, "unknown option") {
+				t.Fatalf("no directive error at all:\n%s", got)
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("want %s in:\n%s", tc.want, got)
+			}
+		})
+	}
+}

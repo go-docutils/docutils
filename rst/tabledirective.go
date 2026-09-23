@@ -234,7 +234,7 @@ func applyExplicitColWidths(table *doctree.Element, widths []int) {
 // project's existing simple/grid table parser and require exactly one
 // <table> to result.
 func (p *parser) runTableDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	options, content := parseDirectiveOptions(body)
 	// content is a SUFFIX of body; see bodyStartIndex.
@@ -283,7 +283,7 @@ func singleChildOfTag(container *doctree.Element, tag string) (*doctree.Element,
 // row with the same number of cells) — each innermost list item's
 // already-parsed children become one <entry>'s content directly.
 func (p *parser) runListTableDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	options, content := parseDirectiveOptions(body)
 	// content is a SUFFIX of body; see bodyStartIndex.

@@ -125,8 +125,8 @@ func parseRoleArgs(args string) (name, base string, ok bool) {
 // it — caught by the existing TestRoleDirective suite immediately, not
 // the corpus (the raw/code-based-role cases there have no blank line
 // between the argument and their first option).
-func (p *parser) registerRole(lines []string, i, next int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+func (p *parser) registerRole(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 
 	blanks := 0
@@ -284,14 +284,14 @@ func classOptionStrict(s string) (classes []string, failed string, ok bool) {
 // has it there; optional_arguments=1/final_argument_whitespace=False
 // means it's a single token anyway, so no multi-line body-gathering is
 // needed the way admonitions/topic/sidebar's own REQUIRED arguments do).
-func (p *parser) runDefaultRoleDirective(lines []string, i, next int, args string) []doctree.Node {
+func (p *parser) runDefaultRoleDirective(lines []string, i, next, lineBase int, args string) []doctree.Node {
 	roleName := strings.TrimSpace(args)
 	if roleName == "" {
 		p.defaultRole = ""
 		return nil
 	}
 	if !p.isKnownRoleName(roleName) {
-		lineno := i + 1
+		lineno := msgLine(i, lineBase)
 		blockText := strings.Join(lines[i:next], "\n")
 		return unknownRoleDiagnostics(roleName, lineno, blockText)
 	}

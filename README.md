@@ -1170,6 +1170,18 @@ telling case is a SECOND paragraph in the body, which reports its own
 first line rather than the footnote's — so the rule cannot be satisfied
 by remembering where the footnote started.
 
+**A directive's own diagnostics** followed in v0.126.0. Fifteen runners
+computed `lineno := i + 1` — a LOCAL index — against three that used
+`msgLine(i, lineBase)`, so a nested `code-block` reported line 3 where
+docutils reports 159: 3 was its offset inside the footnote body rather
+than its place in the file. Six of the fifteen already RECEIVED
+`lineBase` and ignored it, which is the clearest form of a mechanism
+built and never wired — the parameter was there, the call sites passed
+it, and nothing read it. Seventeen sites in all, counted by grepping the
+old form afterwards rather than trusting the list drawn up first: two
+more turned up that way, in `parseDirectiveBody` and
+`parseSubstitutionDef`.
+
 **Table cells** followed in v0.114.0, which leaves one caller passing the
 sentinel in the whole package. Every cell in a row needs a DIFFERENT
 base, which is why this could never have been one value per table: for a

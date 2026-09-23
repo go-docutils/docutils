@@ -18,8 +18,8 @@ import (
 // since no OTHER directive ported so far has needed it (every one either
 // declares has_content=True, or simply never LOOKS at leftover content
 // rather than erroring on it).
-func (p *parser) runRubricDirective(lines []string, i, next int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+func (p *parser) runRubricDirective(lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 
 	blanks := 0

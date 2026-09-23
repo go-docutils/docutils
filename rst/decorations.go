@@ -20,7 +20,7 @@ import (
 // hoistDecoration, run once at the end of Parse — see headerEl/footerEl's
 // own doc comment on the parser struct.
 func (p *parser) runHeaderOrFooterDirective(isHeader bool, lines []string, i, next, lineBase int, args string, body []string) []doctree.Node {
-	lineno := i + 1
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	directiveName := "footer"
 	if isHeader {

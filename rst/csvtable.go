@@ -24,7 +24,7 @@ import (
 // the same fallback ".. raw::" without a format takes -- see the
 // README's own SCOPE note. No corpus file on either side uses one.
 func (p *parser) runCSVTableDirective(lines []string, i, next, lineBase int, args string, body []string) ([]doctree.Node, bool) {
-	lineno := i + 1
+	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	options, content := parseDirectiveOptions(body)
 	for _, unsupported := range []string{"file", "url", "delim", "quote", "escape", "keepspace", "encoding"} {
