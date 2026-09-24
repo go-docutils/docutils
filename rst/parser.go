@@ -252,14 +252,26 @@ type parser struct {
 	// for twelve shapes (paragraph lengths 1-5, at four different
 	// positions, with and without a trailing block).
 	//
-	// It is deliberately NOT set inside a nested block. There the
-	// enclosing block's own extent clamps the value -- a one-line
-	// paragraph at the end of a block quote reports its own line, not
-	// one past -- and reproducing that needs the nested block's extent
-	// threaded through the recursion, the same larger undertaking
-	// currentLine's own doc comment describes. Zero means "unknown", and
-	// the two callers fall back to currentLine.
+	// Inside a NESTED block the same value is CLAMPED to that block's own
+	// last line, which is what blockEndLine carries. The reason is not
+	// about paragraphs at all: the reporter's get_source_and_line is
+	// bound ONCE, to the DOCUMENT-level state machine (RSTStateMachine.run
+	// sets it; NestedStateMachine.run does not), so every inline-raised
+	// message reports where the DOCUMENT machine sits -- and a block
+	// handed to a nested parse was collected by get_indented, which ends
+	// on the block's last line ("next_line(len(indented) - 1)") and
+	// cannot move past it. At the top level the document machine CAN sit
+	// one line past the end, which is why the clamp applies only when
+	// nested. Traced directly, by wrapping get_source_and_line on the
+	// reference and reading its line_offset/input_offset back.
 	currentSMLine int
+	// smFreeze is that document-machine position once a NESTED construct
+	// has been entered: the last line of the block the document-level
+	// dispatch collected, FROZEN for everything inside it however deep,
+	// because the document machine does not move again until the nested
+	// parse returns. Zero means "not inside one", and a paragraph then
+	// computes the position itself. See currentSMLine.
+	smFreeze int
 	// docTitle is the ".. title::" directive's argument, which becomes an
 	// attribute on <document> rather than a node.
 	docTitle string
@@ -685,6 +697,12 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 // topic/sidebar's own content, see runTopicOrSidebar) — most existing
 // callers still pass -1 unchanged; only topics.go computes a real one.
 func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBase int) {
+	// Every parseBlockLines frame is a NESTED parse: the document's own
+	// loop (and a section body's, which docutils treats identically --
+	// traced) is parseDocument, which leaves smFreeze at zero. Only the
+	// OUTERMOST such frame sets it, which is what "the document machine
+	// stopped here" means.
+	defer p.freezeSMLine(msgLine(len(lines)-1, lineBase))()
 	i := 0
 	// The index just past an adornment line already reported as an
 	// unexpected title/transition -- see the match_titles=False branch
@@ -949,6 +967,7 @@ func (p *parser) parseBulletList(lines []string, i, lineBase int) (*doctree.Elem
 	list := doctree.NewElement(doctree.TagBulletList)
 	list.SetAttr("bullet", string(bulletChar))
 	itemNext := i
+	var restoreFreeze func()
 	for i < len(lines) && isBulletLine(lines[i]) && []rune(lines[i])[0] == bulletChar {
 		col := bulletContentColumn(lines[i])
 		first := ""
@@ -956,6 +975,16 @@ func (p *parser) parseBulletList(lines []string, i, lineBase int) (*doctree.Elem
 			first = lines[i][col:]
 		}
 		itemLines, next := gatherListItemLines(lines, i, col, first, false)
+		// A list hands only its FIRST item to the document machine:
+		// docutils' bullet()/field_marker()/option_marker()/
+		// definition_list_item() parses item one itself and gives the
+		// REST to a nested list machine, so the document machine stops
+		// at the end of item one and every inline-raised message in the
+		// whole list reports that line. See parser.smFreeze.
+		if restoreFreeze == nil {
+			restoreFreeze = p.freezeSMLine(msgLine(next-1, lineBase))
+			defer func() { restoreFreeze() }()
+		}
 		item := doctree.NewElement(doctree.TagListItem)
 		p.parseBlockLines(itemLines, item, nestedLineBase(i, lineBase))
 		list.Append(item)
@@ -1015,12 +1044,23 @@ func (p *parser) parseEnumeratedList(lines []string, i, lineBase int) (*doctree.
 	}
 	auto := sequence == "#"
 	lastOrdinal := ordinal
+	var restoreFreeze func()
 	for {
 		first := ""
 		if len(lines[i]) > col {
 			first = lines[i][col:]
 		}
 		itemLines, next := gatherListItemLines(lines, i, col, first, false)
+		// A list hands only its FIRST item to the document machine:
+		// docutils' bullet()/field_marker()/option_marker()/
+		// definition_list_item() parses item one itself and gives the
+		// REST to a nested list machine, so the document machine stops
+		// at the end of item one and every inline-raised message in the
+		// whole list reports that line. See parser.smFreeze.
+		if restoreFreeze == nil {
+			restoreFreeze = p.freezeSMLine(msgLine(next-1, lineBase))
+			defer func() { restoreFreeze() }()
+		}
 		item := doctree.NewElement(doctree.TagListItem)
 		p.parseBlockLines(itemLines, item, nestedLineBase(i, lineBase))
 		list.Append(item)
@@ -1482,8 +1522,12 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 		}
 		savedSM := p.currentSMLine
 		if lineBase >= 0 {
+			// Inside a nested construct the position is frozen where
+			// the document machine stopped; outside one it is
 			// max(first+1, last) -- see parser.currentSMLine.
-			if last := j + lineBase; last > lineno+1 {
+			if p.smFreeze != 0 {
+				p.currentSMLine = p.smFreeze
+			} else if last := j + lineBase; last > lineno+1 {
 				p.currentSMLine = last
 			} else {
 				p.currentSMLine = lineno + 1
@@ -1506,6 +1550,18 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 // (meaning "leave it unset", see sectionMessage) when lineBase is
 // negative, matching consumeParagraph's own established convention for
 // a rebased/nested context with no known absolute correspondence.
+// freezeSMLine records where the DOCUMENT-level state machine stopped, if
+// nothing has recorded it yet, and returns the restore. Only the
+// outermost nested construct sets it: an inner one cannot move a machine
+// that is not running.
+func (p *parser) freezeSMLine(line int) func() {
+	saved := p.smFreeze
+	if p.smFreeze == 0 && line > 0 {
+		p.smFreeze = line
+	}
+	return func() { p.smFreeze = saved }
+}
+
 func msgLine(pos, lineBase int) int {
 	if lineBase < 0 {
 		return 0

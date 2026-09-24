@@ -993,6 +993,33 @@ correspondence is exact wherever the sub-slice comes from
 so entry *k* is the parent's line *i+k* — the same derivation v0.44.0
 made for topic/sidebar content.
 
+A message raised during INLINE parsing does not follow that derivation at
+all, and v0.132.0 is where this stopped being guesswork. docutils binds
+`Reporter.get_source_and_line` ONCE, to the **document-level** state
+machine (`RSTStateMachine.run` sets it; `NestedStateMachine.run` does
+not), so a message with no line of its own and no already-parented
+`base_node` — which is every duplicate-name notice, since the `<target>`
+it describes is built before it is attached — reports wherever *that*
+machine happens to sit. Three rules cover it, and none of them mentions
+the nesting depth:
+
+- outside any nested construct, including inside a **section** (docutils
+  parses a section's body with the document machine itself): the
+  paragraph's own `max(first+1, last)`;
+- inside one: **frozen** at the last line of the block the document-level
+  dispatch collected, however deep the message is raised — a duplicate in
+  the middle of a long block quote reports the quote's LAST line;
+- and a **list** hands only its FIRST item to that dispatch (the rest go
+  to a nested list machine), so every message anywhere in a list reports
+  the end of item one.
+
+This file recorded the whole family as "not derivable" for many rounds.
+It became derivable by TRACING the reference — wrapping
+`get_source_and_line` and reading its `line_offset`/`input_offset` back —
+rather than by reading `states.py` again: 26 shapes, all 26 agreeing, and
+**fourteen** real-world corpus files. A table cell is the one shape whose
+agreement is still a coincidence rather than a derivation.
+
 Those two, and the block-quote gatherer, used to trim trailing blank
 lines as well (v0.131.0 stopped them, for what that cost see below).
 `StringList.get_indented` trims nothing from the end — it stops at the
