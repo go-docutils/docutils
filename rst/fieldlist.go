@@ -99,6 +99,7 @@ func matchFieldMarker(line string) (name string, contentCol int, ok bool) {
 func (p *parser) parseFieldList(lines []string, i, lineBase int) (*doctree.Element, []*doctree.Element, int) {
 	fl := doctree.NewElement(doctree.TagFieldList)
 	bodyNext := i
+	var restoreFreeze func()
 	for i < len(lines) {
 		name, col, ok := matchFieldMarker(lines[i])
 		if !ok {
@@ -110,6 +111,14 @@ func (p *parser) parseFieldList(lines []string, i, lineBase int) (*doctree.Eleme
 		}
 		bodyLines, next := gatherListItemLines(lines, i, col, first, true)
 		bodyNext = next
+		// Only the FIRST item reaches the document machine; the rest
+		// go to a nested list machine, so every inline-raised message
+		// in the list reports the end of item one. See parser.smFreeze.
+		if restoreFreeze == nil {
+			restoreFreeze = p.freezeSMLine(msgLine(next-1, lineBase))
+			defer func() { restoreFreeze() }()
+		}
+
 		field := doctree.NewElement(doctree.TagField)
 		nameLineno := 0
 		if lineBase >= 0 {
@@ -321,6 +330,7 @@ func splitEscapedClassifierText(rs []rune) []string {
 func (p *parser) parseDefinitionList(lines []string, i, lineBase int) (*doctree.Element, []*doctree.Element, int) {
 	dl := doctree.NewElement(doctree.TagDefinitionList)
 	bodyNext := i
+	var restoreFreeze func()
 	for i < len(lines) && isDefinitionTermLine(lines, i) {
 		// An adornment-shaped line is never a CONTINUING term: docutils'
 		// definition list ends on the unindent, Body dispatches the line
@@ -343,6 +353,14 @@ func (p *parser) parseDefinitionList(lines []string, i, lineBase int) (*doctree.
 		indent := leadingSpaces(lines[i+1])
 		block, next := consumeIndentedBlock(lines, i+1, indent)
 		bodyNext = next
+		// Only the FIRST item reaches the document machine; the rest
+		// go to a nested list machine, so every inline-raised message
+		// in the list reports the end of item one. See parser.smFreeze.
+		if restoreFreeze == nil {
+			restoreFreeze = p.freezeSMLine(msgLine(next-1, lineBase))
+			defer func() { restoreFreeze() }()
+		}
+
 		item := doctree.NewElement(doctree.TagDefinitionListItem)
 		termLineno := 0
 		if lineBase >= 0 {
