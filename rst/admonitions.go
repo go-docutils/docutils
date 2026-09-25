@@ -73,7 +73,15 @@ func (p *parser) runAdmonitionOrGeneric(tag, requireArg string, lines []string, 
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content, contentStart := parseDirectiveBlockAt(combined, requireArg != "")
+	argument, options, content, contentStart, optionLines := parseDirectiveBlockAt(combined, requireArg != "")
+	// Option parsing happens in parse_directive_block, BEFORE run() is
+	// reached, so an unknown option beats both the missing-argument and
+	// the missing-content error. Checked against the reference for
+	// ".. admonition::" with no argument AND a bad option: the option
+	// wins.
+	if msg := p.unknownDirectiveOption(directiveName, directiveName, optionLines, lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 	if requireArg != "" && argument == "" {
 		return []doctree.Node{sectionMessage("3", "ERROR",
 			"Error in \""+directiveName+"\" directive:\n1 argument(s) required, 0 supplied.", lineno, blockText)}
@@ -134,7 +142,7 @@ func (p *parser) runAdmonitionOrGeneric(tag, requireArg string, lines []string, 
 // parseDirectiveBlock is parseDirectiveBlockAt without the offset, for
 // the callers that only want the split.
 func parseDirectiveBlock(combined []string, hasArgument bool) (argument string, options map[string]string, content []string) {
-	argument, options, content, _ = parseDirectiveBlockAt(combined, hasArgument)
+	argument, options, content, _, _ = parseDirectiveBlockAt(combined, hasArgument)
 	return argument, options, content
 }
 
@@ -145,7 +153,7 @@ func parseDirectiveBlock(combined []string, hasArgument bool) (argument string, 
 // into an absolute source line -- which is what a diagnostic raised
 // INSIDE a directive's content needs in order to carry a line number at
 // all. Without it every such message came out with none.
-func parseDirectiveBlockAt(combined []string, hasArgument bool) (argument string, options map[string]string, content []string, contentStart int) {
+func parseDirectiveBlockAt(combined []string, hasArgument bool) (argument string, options map[string]string, content []string, contentStart int, optionLines []string) {
 	off := 0
 	for len(combined) > 0 && isBlankStr(combined[len(combined)-1]) {
 		combined = combined[:len(combined)-1]
@@ -194,6 +202,7 @@ func parseDirectiveBlockAt(combined []string, hasArgument bool) (argument string
 		argBlock = argBlock[:optStart]
 	}
 	options = parseFieldListBlock(optBlock)
+	optionLines = optBlock
 
 	content = rest
 	contentStart = off
@@ -236,7 +245,7 @@ func parseDirectiveBlockAt(combined []string, hasArgument bool) (argument string
 	// two source lines keeps the line break; only a MULTI-line argument
 	// is affected at all, a single-line one being identical either way.
 	argument = strings.TrimSpace(strings.Join(argBlock, "\n"))
-	return argument, options, content, contentStart
+	return argument, options, content, contentStart, optionLines
 }
 
 // parseFieldListBlock parses lines as a plain ":key: value" run —

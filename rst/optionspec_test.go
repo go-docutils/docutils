@@ -62,15 +62,89 @@ func TestDirectiveOptionSpec(t *testing.T) {
 	}
 }
 
-// TestUnwiredDirectiveIsNotValidated pins the opt-in: a directive listed
-// in the table but not wired to the validator keeps its previous
-// behaviour, silently ignoring an option it does not know. Stating it
-// prevents the table from being read as a promise the callers do not
-// yet keep.
+// TestUnwiredDirectiveIsNotValidated pins what the table still does NOT
+// promise. Every directive listed in it is now wired to the validator
+// (v0.133.0: the eleven admonition-shaped ones, container, image, figure,
+// table, list-table, topic, sidebar, rubric, parsed-literal, line-block,
+// joining code and math); a directive ABSENT from it is not validated at
+// all, and docutils does reject an unknown option there too. csv-table is
+// the case, and this states the divergence rather than leaving the table
+// to be read as complete.
 func TestUnwiredDirectiveIsNotValidated(t *testing.T) {
-	got := doctree.Dump(Parse(".. note::\n   :bogus: x\n\n   body\n"))
+	got := doctree.Dump(Parse(".. csv-table:: T\n   :bogus: x\n\n   a, b\n"))
 	if strings.Contains(got, "unknown option") {
-		t.Errorf("note is not wired to the validator yet, but rejected an option:\n%s", got)
+		t.Errorf("csv-table is absent from the spec table, so it cannot be validated; it rejected an option anyway:\n%s", got)
+	}
+}
+
+// TestWiredDirectivesRejectAnUnknownOption is the other half: one case per
+// wired directive, each the reference's own error. A table entry alone
+// changes nothing, so the only way to know a directive is enforced is to
+// ask it.
+func TestWiredDirectivesRejectAnUnknownOption(t *testing.T) {
+	cases := []struct{ name, source, written string }{
+		{"note", ".. note::\n   :bogus: x\n\n   body\n", "note"},
+		{"hint with sphinx :collapsible:", ".. hint::\n   :collapsible: closed\n\n   body\n", "hint"},
+		{"admonition", ".. admonition:: T\n   :bogus: x\n\n   body\n", "admonition"},
+		{"compound", ".. compound::\n   :bogus: x\n\n   body\n", "compound"},
+		{"container", ".. container:: cls\n   :bogus: x\n\n   body\n", "container"},
+		{"image", ".. image:: a.png\n   :bogus: x\n", "image"},
+		{"figure", ".. figure:: a.png\n   :bogus: x\n", "figure"},
+		{"table", ".. table::\n   :bogus: x\n\n   ==  ==\n   a   b\n   ==  ==\n", "table"},
+		{"list-table", ".. list-table:: T\n   :bogus: x\n\n   * - a\n", "list-table"},
+		{"topic", ".. topic:: T\n   :bogus: x\n\n   body\n", "topic"},
+		{"sidebar", ".. sidebar:: S\n   :bogus: x\n\n   body\n", "sidebar"},
+		{"rubric", ".. rubric:: R\n   :bogus: x\n", "rubric"},
+		{"parsed-literal", ".. parsed-literal::\n   :bogus: x\n\n   a\n", "parsed-literal"},
+		{"line-block", ".. line-block::\n   :bogus: x\n\n   | a\n", "line-block"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			want := `Error in "` + tc.written + `" directive:`
+			if !strings.Contains(got, want) || !strings.Contains(got, `unknown option: "`) {
+				t.Errorf("want %q and an unknown-option line in:\n%s", want, got)
+			}
+		})
+	}
+}
+
+// TestWiredDirectivesStillAcceptTheirOwnOptions is the CONTROL for the
+// list above: the same directives, each with an option its own spec
+// declares, must be unaffected. Without it, a validator that rejected
+// EVERYTHING would pass every case above.
+func TestWiredDirectivesStillAcceptTheirOwnOptions(t *testing.T) {
+	cases := []struct{ name, source, wantNode string }{
+		{"note :class:", ".. note::\n   :class: c\n\n   body\n", `<note class="c">`},
+		{"admonition :name:", ".. admonition:: T\n   :name: n\n\n   body\n", `name="n"`},
+		{"container :name:", ".. container:: cls\n   :name: n\n\n   body\n", `name="n"`},
+		{"image :alt:", ".. image:: a.png\n   :alt: text\n", `alt="text"`},
+		{"figure :figclass:", ".. figure:: a.png\n   :figclass: f\n", `class="f"`},
+		{"table :widths:", ".. table::\n   :widths: 30,70\n\n   ==  ==\n   a   b\n   ==  ==\n", `colwidths-given`},
+		{"list-table :header-rows:", ".. list-table:: T\n   :header-rows: 1\n\n   * - head\n   * - body\n", `<thead>`},
+		{"topic :class:", ".. topic:: T\n   :class: c\n\n   body\n", `<topic class="c">`},
+		{"sidebar :subtitle:", ".. sidebar:: S\n   :subtitle: sub\n\n   body\n", `<subtitle>`},
+		{"rubric :class:", ".. rubric:: R\n   :class: c\n", `<rubric class="c">`},
+		{"parsed-literal :class:", ".. parsed-literal::\n   :class: c\n\n   a\n", `<literal_block class="c">`},
+		{"line-block :class:", ".. line-block::\n   :class: c\n\n   | a\n", `<line_block class="c">`},
+		{
+			// The control the code directive paid two real-world files
+			// for, re-stated for a directive whose content is free text:
+			// a field-marker-shaped first CONTENT line is not an option.
+			"a field-shaped first content line is not an option",
+			".. note::\n\n   :x: not an option\n", `<field_name>`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			if strings.Contains(got, "unknown option") {
+				t.Errorf("a declared option was rejected:\n%s", got)
+			}
+			if !strings.Contains(got, tc.wantNode) {
+				t.Errorf("want %s in:\n%s", tc.wantNode, got)
+			}
+		})
 	}
 }
 

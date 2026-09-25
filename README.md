@@ -171,14 +171,28 @@ at the very top, the simpler shape this project's `table`/`list-table`
 options still use, since no corpus case has needed the general form
 there — so real content is free to precede the options, and a role
 invocation elsewhere in that content is never mistaken for one.
-Directive-level argument/option-syntax errors, e.g. a malformed
-`:widths:` value or an unknown option key entirely, are NOT validated
-for any directive (`:align:`/`:loading:`/`:target:` on `image`/`figure`
-are the one exception, all three directly corpus-tested — an empty
-`:target:` raises the same "argument required but none supplied" error
-`unchanged_required` raises, at option-assembly time, so no image
-survives it), matching this project's own
-established scope boundary — see "Not yet ported" below, hyperlink
+An UNKNOWN option KEY is an ERROR naming it, for every directive listed
+in `optionspec.go`'s transcribed table — seventeen of them as of
+v0.133.0 (the eleven admonition-shaped ones, `container`, `image`,
+`figure`, `table`, `list-table`, `topic`, `sidebar`, `rubric`,
+`parsed-literal`, `line-block`, joining `code` and `math`). The table was
+complete two dozen versions before its callers were: an entry alone
+enforces nothing, which is why `TestWiredDirectivesRejectAnUnknownOption`
+asks each directive rather than reading the table. `csv-table` is the one
+implemented directive still absent from it, and is documented as such by
+a test of its own. Option VALUE conversion (a malformed `:widths:`, a
+`:height:` that is not a length) is still not validated, except
+`:align:`/`:loading:`/`:target:` on `image`/`figure`, all three directly
+corpus-tested — an empty `:target:` raises the same "argument required
+but none supplied" error `unchanged_required` raises, at option-assembly
+time, so no image survives it.
+
+Being faithful here COSTS a rendered block, and the count is the point of
+`Options.ReportUnknownDirectiveOptions`: 28 real-world corpus files lost
+one to a sphinx-only option before v0.133.0 and 32 do now, the four new
+ones being exactly the four files the corpus newly matches.
+`go-richdoc/rst` sets the flag false for that reason. Matching this
+project's own established scope boundary — see "Not yet ported" below, hyperlink
 targets with reference resolution — including INDIRECT targets
 (`.. _a: b_` and the backquoted phrase form `` .. _a: `b c`_ ``, whose
 value is itself another target's name, chased

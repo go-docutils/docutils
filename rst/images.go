@@ -56,7 +56,10 @@ func (p *parser) runImageDirective(lines []string, i, next, lineBase int, args s
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content := parseDirectiveBlock(combined, true)
+	argument, options, content, _, optionLines := parseDirectiveBlockAt(combined, true)
+	if msg := p.unknownDirectiveOption("image", "image", optionLines, lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 	return p.finishImageDirective("image", argument, options, content, presetAlt, lineno, blockText)
 }
 
@@ -324,7 +327,10 @@ func (p *parser) runFigureDirective(lines []string, i, next, lineBase int, args 
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content, contentStart := parseDirectiveBlockAt(combined, true)
+	argument, options, content, contentStart, optionLines := parseDirectiveBlockAt(combined, true)
+	if msg := p.unknownDirectiveOption("figure", "figure", optionLines, lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 	if argument == "" {
 		return []doctree.Node{directiveError("figure", "1 argument(s) required, 0 supplied", lineno, blockText)}
 	}

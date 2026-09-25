@@ -79,7 +79,10 @@ func (p *parser) runTopicOrSidebar(tag string, lines []string, i, lineBase, next
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content := parseDirectiveBlock(combined, true)
+	argument, options, content, _, optionLines := parseDirectiveBlockAt(combined, true)
+	if msg := p.unknownDirectiveOption(tag, tag, optionLines, lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 	contentLineBase := -1
 	if lineBase >= 0 {
 		contentLineBase = i + (len(combined) - len(content)) + lineBase
