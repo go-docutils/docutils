@@ -1,6 +1,7 @@
 package rst
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -202,7 +203,11 @@ func (p *parser) tryParseGridTable(lines []string, i, lineBase int) ([]doctree.N
 	if !ok {
 		return nil, 0, false
 	}
-	table, ok := p.buildGridTable(block, i, lineBase)
+	table, detail, offset, ok := p.buildGridTable(block, i, lineBase)
+	if detail != "" {
+		return blankLineAfterTable([]doctree.Node{malformedTable(block, detail, offset, i, lineBase)},
+			lines, next, lineBase), next, true
+	}
 	if !ok {
 		return nil, 0, false
 	}
@@ -227,10 +232,20 @@ type gridCell struct {
 	lines                    []string
 }
 
-func (p *parser) buildGridTable(block []string, i, lineBase int) (*doctree.Element, bool) {
+// buildGridTable returns a detail string for the two conditions the
+// GridTableParser itself raises TableMarkupError for once a block has
+// been isolated -- a second head/body separator, and a parse that does
+// not complete -- which docutils reports as "Malformed table." plus that
+// detail rather than silently degrading to a paragraph. The other two
+// early returns below stay silent on purpose: a block under three lines
+// and a non-rectangular one are both excluded by isolateGridTable
+// already, so docutils cannot reach its own parser with either, and
+// inventing a message for them would be guessing at output nothing
+// produces.
+func (p *parser) buildGridTable(block []string, i, lineBase int) (el *doctree.Element, detail string, offset int, ok bool) {
 	n := len(block)
 	if n < 3 {
-		return nil, false
+		return nil, "", 0, false
 	}
 	// Code points, not bytes: see eastasian.go for why, and for the
 	// padding the block already carries by the time it gets here.
@@ -239,7 +254,7 @@ func (p *parser) buildGridTable(block []string, i, lineBase int) (*doctree.Eleme
 	for i, l := range block {
 		r := []rune(l)
 		if len(r) != width {
-			return nil, false
+			return nil, "", 0, false
 		}
 		grid[i] = r
 	}
@@ -250,7 +265,12 @@ func (p *parser) buildGridTable(block []string, i, lineBase int) (*doctree.Eleme
 	for i := 1; i < n-1; i++ {
 		if isGridTableHeadSepLine(string(grid[i])) {
 			if headBodySepRow >= 0 {
-				return nil, false // multiple head/body separators
+				// find_head_body_sep's own message (tableparser.py, read
+				// directly), with TABLE-relative line numbers, 1-based,
+				// and the second separator's own index as the offset.
+				return nil, fmt.Sprintf(
+					"Multiple head/body row separators (table lines %d and %d); only one allowed.",
+					headBodySepRow+1, i+1), i, false
 			}
 			headBodySepRow = i
 			for c := range grid[i] {
@@ -304,11 +324,15 @@ func (p *parser) buildGridTable(block []string, i, lineBase int) (*doctree.Eleme
 	last := bottom - 1
 	for col := 0; col < right; col++ {
 		if done[col] != last {
-			return nil, false // malformed: parse incomplete
+			// check_parse_complete: the cell scan left part of the block
+			// unaccounted for, which is a malformed table and not a
+			// non-table. No offset -- the message points at the table's
+			// own first line.
+			return nil, "Malformed table; parse incomplete.", 0, false
 		}
 	}
 
-	return p.gridTableFromCells(cells, rowseps, colseps, headBodySepRow, i, lineBase), true
+	return p.gridTableFromCells(cells, rowseps, colseps, headBodySepRow, i, lineBase), "", 0, true
 }
 
 // scanCell traces one cell rectangle starting at its upper-left corner

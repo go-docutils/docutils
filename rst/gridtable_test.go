@@ -75,22 +75,32 @@ func TestIsolateGridTableRejectsUnclosedTable(t *testing.T) {
 }
 
 // TestTryParseGridTableRejectsMultipleHeadSeps exercises the "more than
-// one head/body separator" rejection: docutils raises a
-// TableMarkupError for this; this parser just doesn't recognize the
-// table at all (see gridtable.go's SCOPE note on diagnostics).
+// one head/body separator" case. It used to assert that this parser did
+// not recognize the table AT ALL, which was the documented scope gap:
+// docutils raises a TableMarkupError, and Body.table turns that into a
+// "Malformed table." ERROR quoting the block. Since v0.136.8 that
+// message is produced here too, so the assertion is the message rather
+// than the refusal -- refusing quietly and reporting are exactly what
+// this case has to tell apart, and the whole dump is compared against the
+// reference's own output for this input.
 func TestTryParseGridTableRejectsMultipleHeadSeps(t *testing.T) {
-	p := &parser{}
-	lines := []string{
-		"+-----+-----+",
-		"| a   | b   |",
-		"+=====+=====+",
-		"| c   | d   |",
-		"+=====+=====+",
-		"| e   | f   |",
-		"+-----+-----+",
-	}
-	if _, _, ok := p.tryParseGridTable(lines, 0, 0); ok {
-		t.Fatal("tryParseGridTable matched a table with two head/body separators")
+	const src = "+-----+-----+\n| a   | b   |\n+=====+=====+\n| c   | d   |\n+=====+=====+\n| e   | f   |\n+-----+-----+\n"
+	want := "<document>\n" +
+		"    <system_message level=\"3\" line=\"5\" type=\"ERROR\">\n" +
+		"        <paragraph>\n" +
+		"            Malformed table.\n" +
+		"            Multiple head/body row separators (table lines 3 and 5); only one allowed.\n" +
+		"        <literal_block>\n" +
+		"            +-----+-----+\n" +
+		"            | a   | b   |\n" +
+		"            +=====+=====+\n" +
+		"            | c   | d   |\n" +
+		"            +=====+=====+\n" +
+		"            | e   | f   |\n" +
+		"            +-----+-----+\n"
+	got := doctree.Dump(Parse(src))
+	if strings.TrimRight(got, "\n") != strings.TrimRight(want, "\n") {
+		t.Errorf("dump =\n%s\nwant:\n%s", got, want)
 	}
 }
 
@@ -358,4 +368,45 @@ func TestMalformedGridTable(t *testing.T) {
 			t.Errorf("want line 4:\n%s", got)
 		}
 	})
+}
+
+// TestGridTableParseIncomplete is the docutils testsuite's own
+// test_TableParser.py[grid_tables][8]: a table whose cells are not
+// rectangles. GridTableParser.parse_table ends with check_parse_complete
+// and raises TableMarkupError when the cell scan has not accounted for
+// the whole block, which Body.table turns into "Malformed table." with
+// that detail. This package returned "not a table" instead, so the whole
+// thing came out as a paragraph and nothing said why -- and because the
+// testsuite records an EXCEPTION for this case (it exercises tableparser
+// directly), it was never judged here until the corpus gained a
+// document-level expectation for it (v0.136.8).
+//
+// The second case is the CONTROL: the scan must still complete for a
+// table whose cells DO span, or "report when incomplete" would quietly
+// become "report whenever a cell is not a plain rectangle".
+func TestGridTableParseIncomplete(t *testing.T) {
+	const src = "+--------------+-------------+\n| A bad table. |             |\n+--------------+             |\n| Cells must be rectangles.  |\n+----------------------------+\n"
+	want := "<document>\n" +
+		"    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n" +
+		"        <paragraph>\n" +
+		"            Malformed table.\n" +
+		"            Malformed table; parse incomplete.\n" +
+		"        <literal_block>\n" +
+		"            +--------------+-------------+\n" +
+		"            | A bad table. |             |\n" +
+		"            +--------------+             |\n" +
+		"            | Cells must be rectangles.  |\n" +
+		"            +----------------------------+\n"
+	if got := doctree.Dump(Parse(src)); strings.TrimRight(got, "\n") != strings.TrimRight(want, "\n") {
+		t.Errorf("dump =\n%s\nwant:\n%s", got, want)
+	}
+	// A legal column span over the same shape.
+	spanned := "+--------------+-------------+\n| a            | b           |\n+--------------+-------------+\n| a real span                |\n+----------------------------+\n"
+	got := doctree.Dump(Parse(spanned))
+	if strings.Contains(got, "Malformed") {
+		t.Errorf("a legal span was reported as malformed:\n%s", got)
+	}
+	if !strings.Contains(got, "morecols=\"1\"") {
+		t.Errorf("the span did not survive:\n%s", got)
+	}
 }

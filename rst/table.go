@@ -42,9 +42,19 @@ import (
 
 type tableColumn struct{ start, end int }
 
-// isSimpleTableTopLine is docutils' simple_table_top_pat: 2+ groups of
-// "=" separated by spaces.
+// isSimpleTableTopLine is docutils' simple_table_top_pat,
+// "=+( +=+)+ *$": 2+ groups of "=" separated by spaces, and NOTHING
+// else on the line. The anchoring is the whole rule -- without it, any
+// prose containing two "=" signs ("we use u = Unicode and s = Python")
+// counted as a table top, because parseColumnsChar only looks for runs
+// of the character and ignores what sits between them. That was latent
+// for as long as a failed table attempt fell through silently; the first
+// diagnostic on that path turned it into a "Malformed table." ERROR in
+// 68 real-world corpus files.
 func isSimpleTableTopLine(s string) bool {
+	if !isSimpleTableBorderLine(s) {
+		return false
+	}
 	cols := parseColumnsChar(s, '=', nil, 0)
 	return len(cols) >= 2
 }
@@ -121,23 +131,52 @@ func (p *parser) tryParseSimpleTable(lines []string, i, lineBase int) ([]doctree
 	// line or end of input.
 	toplen := len(strings.TrimRight(lines[i], " "))
 	found := 0
+	foundAt := -1
 	end := -1
 	for j := i + 1; j < len(lines); j++ {
 		if isSimpleTableBorderLine(lines[j]) {
 			if len(strings.TrimRight(lines[j], " ")) != toplen {
-				return nil, 0, false // bottom/header rule doesn't match top border width
+				// A border line of a DIFFERENT width than the top border
+				// is not "this is not a table": isolate_simple_table
+				// (states.py, read directly) reports it, consumes through
+				// that line, and hands the block to malformed_table with
+				// the block-relative offset. This returned false instead,
+				// so the whole thing degraded to a paragraph with no
+				// diagnostic at all -- the docutils testsuite's own
+				// test_SimpleTableParser.py[5].
+				block := lines[i : j+1]
+				next := j + 1
+				return blankLineAfterTable([]doctree.Node{malformedTable(block,
+					"Bottom border or header rule does not match top border.", j-i, i, lineBase)},
+					lines, next, lineBase), next, true
 			}
 			found++
-			end = j
+			foundAt = j
 			atEnd := j == len(lines)-1
 			nextBlank := !atEnd && isBlankStr(lines[j+1])
 			if found == 2 || atEnd || nextBlank {
+				end = j
 				break
 			}
 		}
 	}
+	// Running off the end is isolate_simple_table's own for/ELSE branch,
+	// and it is a malformed table, not a non-table. Which detail depends
+	// on whether any border was seen at all, and so does how much is
+	// consumed: through the last border found, or the whole block when
+	// there was none. Reaching the end with a border already found used to
+	// BUILD a table here, accepting one the reference refuses.
 	if end < 0 {
-		return nil, 0, false
+		details := "No bottom table border found"
+		block := lines[i:]
+		next := len(lines)
+		if found > 0 {
+			details += " or no blank line after table bottom"
+			block = lines[i : foundAt+1]
+			next = foundAt + 1
+		}
+		return blankLineAfterTable([]doctree.Node{malformedTable(block, details+".", 0, i, lineBase)},
+			lines, next, lineBase), next, true
 	}
 	// Same two steps the grid table takes (eastasian.go): pad, so an
 	// East Asian Wide character spans the two columns it occupies, then
