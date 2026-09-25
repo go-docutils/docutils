@@ -1057,9 +1057,20 @@ func (p *parser) parseEnumeratedList(lines []string, i, lineBase int) (*doctree.
 	var siblings []*doctree.Element
 	if ordinal != 1 {
 		list.SetAttr("start", strconv.Itoa(ordinal))
+		// The line is the LIST's own, absolute: docutils raises this one
+		// with base_node=enumlist (states.py), and system_message reads
+		// base_node's own source/line rather than consulting the
+		// reporter's cursor at all (utils.Reporter.system_message, read
+		// directly) -- and enumlist.line was set from
+		// state_machine.get_source_and_line(), which a NESTED machine
+		// maps back to an absolute line through its input_offset. A bare
+		// i+1 is that same number only at the top level, so every nested
+		// enumerated list starting at an ordinal other than 1 reported
+		// its offset WITHIN the block it was nested in: 7 real-world
+		// corpus files, one saying line="1" for a list on line 704.
 		siblings = append(siblings, sectionMessage("1", "INFO",
 			"Enumerated list start value not ordinal-1: \""+text+"\" (ordinal "+strconv.Itoa(ordinal)+")",
-			i+1, ""))
+			msgLine(i, lineBase), ""))
 	}
 	auto := sequence == "#"
 	lastOrdinal := ordinal
