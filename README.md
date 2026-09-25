@@ -1069,9 +1069,17 @@ whole cost of the change was ONE emptiness test: an option marker with
 nothing after it (`-f` alone) now yields a slice holding one blank line
 instead of an empty one, and `option_list` read that as a description.
 `allBlank`, not `len() == 0`, is the test that does not depend on how
-many blank lines the gatherer happened to absorb. **Still
-placeholder**: a table cell (whose content is genuinely not a contiguous
-parent slice) and any directive whose body goes through
+many blank lines the gatherer happened to absorb. A CSV-TABLE cell is no longer among them (v0.136.3): a diagnostic raised
+inside one reports the directive's content OFFSET — one less than the first
+content line's number — plus the line index WITHIN THE CELL, and nothing
+for the row, because docutils hands each cell to `nested_parse` as its own
+`StringList` starting at zero. Two cells in different rows therefore report
+the SAME line while two lines of one quoted cell report different ones,
+which is why the rule had to be traced rather than assumed; that is exactly
+a line base of `contentOffset - 1`, so the cells needed no machinery, only
+the base this had been passing as "unknown". **Still placeholder**: a GRID
+or SIMPLE table cell (whose content is genuinely not a contiguous parent
+slice) and any directive whose body goes through
 `parseDirectiveBlock`, whose fold-back branch breaks the
 correspondence.
 
@@ -1087,6 +1095,18 @@ needed. A parse tree holds the placeholder; nothing has to run, and
 `nodes.pending.pformat` gives its exact shape (details SORTED BY KEY,
 values in Python `repr` form). `title` is the odd one out: it sets the
 document's own `title` ATTRIBUTE and leaves no node behind at all.
+
+`class` and `title` are also the two whose `option_spec` is **None**, and
+`parse_directive_block` only looks for options when there IS one — so
+their ARGUMENT is the whole block up to the first blank line, and a
+field-marker-shaped line inside it belongs to the argument (v0.136.3).
+sphinx's `extdev/appapi.rst` writes `.. class:: Sphinx` with `:no-index:`
+on the next line, which is the two classes `sphinx` and `no-index`; this
+read the second line as CONTENT and built a field list out of it, and with
+a plain word there it produced a second paragraph beside the real one. The
+blank line is what separates the two readings, so the runner is told how
+many followed the directive — `gatherExplicitBody` drops them, and without
+that count an argument continuation and a content block look identical.
 `target-notes` validates its options (v0.74.0+) — an unknown one, or one
 given with no value, is docutils' own
 `Error in "target-notes" directive: ...`. That was portable for this

@@ -96,21 +96,59 @@ func pyReprList(items []string) string {
 // normalized the same way every other :class: option is, and the
 // directive's own name is recorded because "class" and its alias
 // "rst-class" produce different details.
-func (p *parser) runClassDirective(name, args string, body []string, bodyStart, lineBase int) []doctree.Node {
+func (p *parser) runClassDirective(name, args string, body []string, bodyStart, lineBase, blanksAfter int) []doctree.Node {
 	// NOT parseDirectiveBlock: gatherExplicitBody has already trimmed the
 	// blank line that separates a same-line argument from the content, so
 	// that split would run past it and read the first content paragraph as
 	// more class names. Class declares exactly ONE argument and NO options,
 	// so the division needs no scanning: the argument is the same-line
 	// text when there is any, else the first body line.
+	// The ARGUMENT is the whole block up to the first blank line, not just
+	// the same-line text: Class declares final_argument_whitespace=True
+	// and option_spec=None, and parse_directive_block only looks for
+	// options when there IS an option_spec -- so a field-marker-shaped
+	// line in that block is part of the argument, not an option and not
+	// content. sphinx's own extdev/appapi.rst writes
+	//
+	//	.. class:: Sphinx
+	//	   :no-index:
+	//
+	// which is the two classes "sphinx" and "no-index"; this read
+	// ":no-index:" as CONTENT and built a field list out of it, and
+	// ".. class:: a\n   b" produced a paragraph "b" beside the real one
+	// instead of the classes "a b".
 	argument, content := args, body
-	if strings.TrimSpace(argument) == "" {
-		argument, content = "", nil
-		for i, l := range body {
-			if !isBlankStr(l) {
-				argument, content = l, body[i+1:]
-				break
+	if blanksAfter == 0 {
+		// No blank line under the directive, so the lines that follow
+		// CONTINUE the argument block -- up to the first blank inside the
+		// body -- rather than being content.
+		argLines := 0
+		for argLines < len(body) && !isBlankStr(body[argLines]) {
+			argLines++
+		}
+		if argLines > 0 {
+			if strings.TrimSpace(argument) == "" {
+				argument = strings.Join(body[:argLines], "\n")
+			} else {
+				argument += "\n" + strings.Join(body[:argLines], "\n")
 			}
+			content = body[argLines:]
+		}
+	} else if strings.TrimSpace(argument) == "" {
+		// Nothing on the directive line: the argument block is the first
+		// non-blank run of the body, and the content follows it.
+		for i, l := range body {
+			if isBlankStr(l) {
+				continue
+			}
+			rest := body[i:]
+			argLines := 0
+			for argLines < len(rest) && !isBlankStr(rest[argLines]) {
+				argLines++
+			}
+			argument = strings.Join(rest[:argLines], "\n")
+			content = rest[argLines:]
+			break
 		}
 	}
 	for len(content) > 0 && isBlankStr(content[0]) {
