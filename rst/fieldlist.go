@@ -107,7 +107,20 @@ func (p *parser) parseFieldList(lines []string, i, lineBase int) (*doctree.Eleme
 		}
 		first := ""
 		if len(lines[i]) > col {
-			first = lines[i][col:]
+			// LEFT-STRIPPED: the space after ":name:" is a separator, not
+			// indentation. ":Description:  text" -- two spaces, which is
+			// how a PEP aligns a column of field values -- made the body
+			// an indented block, so the value came out as a <block_quote>
+			// and a second line after it drew a spurious "Block quote
+			// ends without a blank line" warning, splitting one field
+			// body into three nodes. docutils reaches the same place by
+			// another road: get_indented cuts the first line at the
+			// marker and then trims the block by the minimum indent of
+			// the lines AFTER it, so whatever the first line has left
+			// over never sets an indent at all. Checked against the
+			// reference for one, two and five spaces, and for a
+			// continuation both shallower and deeper than the marker.
+			first = strings.TrimLeft(lines[i][col:], " ")
 		}
 		bodyLines, next := gatherListItemLines(lines, i, col, first, true)
 		bodyNext = next
