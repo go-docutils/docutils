@@ -679,7 +679,11 @@ neither "unknown" nor "implemented" (v0.136.0+): docutils binds
 raises `Interpreted text role "..." not implemented.` with no lookup INFO
 in front of it. This package knew one of the eleven and rendered the rest
 as a bare `<inline role="...">`, silently accepting `` :index:`word` ``,
-which three sphinx corpus files write. The twelfth name,
+which three sphinx corpus files write. They are gated by
+`ReportUnknownRoles` even though, strictly, the lookup succeeds and it is
+the role FUNCTION that errors: a consumer turning that flag off wants the
+same outcome for both, `` :index:`word` `` rendering as "word" rather
+than as the raw `` :index:`word` `` a `<problematic>` carries. The twelfth name,
 `restructuredtext-unimplemented-role`, is the exception that says the set
 cannot be derived from the registry alone: it is in the registry and NOT
 in the language module, so its lookup misses first and it draws the INFO
