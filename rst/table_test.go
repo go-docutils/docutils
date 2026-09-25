@@ -14,6 +14,16 @@ func TestIsSimpleTableTopLine(t *testing.T) {
 		"=====":        false, // only one group: not a valid top border
 		"":             false,
 		"not a border": false,
+		// simple_table_top_pat is ANCHORED ("=+( +=+)+ *$"), and these
+		// are why that matters: prose with two "=" signs in it has two
+		// runs of "=" separated by spaces, which is all the column
+		// scanner looks at. 68 real-world corpus files contain a line
+		// like the first one, and each drew a "Malformed table." ERROR
+		// the moment a failed table attempt stopped being silent.
+		"we use u = Unicode object and s = Python string": false,
+		"a = b":          false,
+		"=====  =====  ": true, // trailing spaces are allowed
+		"=====  ===== x": false,
 	}
 	for in, want := range cases {
 		if got := isSimpleTableTopLine(in); got != want {
@@ -257,6 +267,62 @@ func TestMalformedSimpleTable(t *testing.T) {
 		got := doctree.Dump(Parse("========  ========\na         b\n========  ========\n\nnext\n"))
 		if strings.Contains(got, "Malformed") || strings.Contains(got, "Blank line required") {
 			t.Errorf("a good table drew a diagnostic:\n%s", got)
+		}
+	})
+
+	// The four cases below are isolate_simple_table's own failure exits
+	// (states.py, read directly), which this package used to leave
+	// silent: two of them degraded to a paragraph with no diagnostic at
+	// all, and the third BUILT a table the reference refuses. The first
+	// is the docutils testsuite's own test_SimpleTableParser.py[5], whose
+	// recorded expectation is a TableMarkupError because that file
+	// exercises tableparser directly -- so it was never judged here until
+	// the corpus gained a document-level expectation for it (v0.136.8).
+	// Every dump below is the reference's own output for that input.
+	t.Run("a border of a different width than the top border", func(t *testing.T) {
+		got := doctree.Dump(Parse("=======  =====  ======\nA bad table     cell 2\ncell 3          cell 4\n============  ======\n"))
+		want := "<document>\n" +
+			"    <system_message level=\"3\" line=\"4\" type=\"ERROR\">\n" +
+			"        <paragraph>\n" +
+			"            Malformed table.\n" +
+			"            Bottom border or header rule does not match top border.\n" +
+			"        <literal_block>\n" +
+			"            =======  =====  ======\n" +
+			"            A bad table     cell 2\n" +
+			"            cell 3          cell 4\n" +
+			"            ============  ======\n"
+		if strings.TrimRight(got, "\n") != strings.TrimRight(want, "\n") {
+			t.Errorf("dump =\n%s\nwant:\n%s", got, want)
+		}
+	})
+	t.Run("no bottom border before the end of the input", func(t *testing.T) {
+		got := doctree.Dump(Parse("======  ======\na       b\n"))
+		if !strings.Contains(got, "No bottom table border found.") {
+			t.Errorf("no diagnostic:\n%s", got)
+		}
+		if strings.Contains(got, "or no blank line") {
+			t.Errorf("the wrong half of the message: no border was found at all:\n%s", got)
+		}
+	})
+	t.Run("a bottom border with no blank line after it is NOT a table", func(t *testing.T) {
+		got := doctree.Dump(Parse("======  ======\na       b\n======  ======\ntext\n"))
+		if !strings.Contains(got, "No bottom table border found or no blank line after table bottom.") {
+			t.Errorf("no diagnostic:\n%s", got)
+		}
+		// This is the half that USED to build a table: the border was
+		// found, so the old code took it as success.
+		if strings.Contains(got, "<table>") {
+			t.Errorf("a table was built where the reference refuses one:\n%s", got)
+		}
+		// And what followed it is still parsed as itself.
+		if !strings.Contains(got, "Blank line required after table.") || !strings.Contains(got, "\n        text\n") {
+			t.Errorf("the trailing text or its warning is missing:\n%s", got)
+		}
+	})
+	t.Run("CONTROL: prose with two = signs is still a paragraph", func(t *testing.T) {
+		got := doctree.Dump(Parse("- In examples we use u = Unicode object and s = Python string\n"))
+		if strings.Contains(got, "Malformed") {
+			t.Errorf("prose was read as a table top border:\n%s", got)
 		}
 	})
 }

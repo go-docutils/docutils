@@ -498,9 +498,38 @@ The block is quoted AS WRITTEN: `setup()` rewrites the `=` borders to
 `-` on a COPY there, and doing it in place quoted `--------` where the
 author typed `========`.
 
-**Still missing:** the other `TableMarkupError` kinds — `Malformed
-table; parse incomplete.`, the head/body separator rules, and the two
-column-span ones — which still fall back silently.
+The rest of the failure exits followed in v0.136.8, and the reason they
+had stayed silent is worth naming: the docutils testsuite records an
+EXCEPTION for each of them, because `test_SimpleTableParser.py` and
+`test_TableParser.py` exercise `tableparser` directly rather than through a
+document. The corpus extraction had no tree to record, so five cases were
+skipped — and three of the five were real defects nothing was measuring.
+Their inputs are ordinary documents, so a document-level expectation exists
+and the corpus now carries it:
+
+| detail | what it used to do |
+|---|---|
+| `Bottom border or header rule does not match top border.` | a paragraph, no diagnostic |
+| `No bottom table border found.` | a paragraph, no diagnostic |
+| `No bottom table border found or no blank line after table bottom.` | **built a table** the reference refuses |
+| `Malformed table; parse incomplete.` | a paragraph, no diagnostic |
+| `Multiple head/body row separators (table lines N and M); only one allowed.` | a paragraph, no diagnostic |
+
+Two of `find_head_body_sep`'s own errors are NOT ported, and the witnesses
+say why: "the head/body row separator may not be the first or last line of
+the table" cannot be reached through a document parse, because a `+=====+`
+first line is not a grid-table top border at all (the block never becomes a
+table), and a `+=====+` last line is refused earlier as
+`Bottom border missing or corrupt.`. Both were checked against the
+reference rather than assumed.
+
+Reporting these exposed a latent defect the silence had been hiding.
+`simple_table_top_pat` is ANCHORED — `=+( +=+)+ *$` — and this package
+asked only "does the line contain two or more runs of `=`", which is true
+of ordinary prose: `we use u = Unicode object and s = Python string` has
+two. It cost nothing while a failed table attempt fell through quietly, and
+the moment the first diagnostic appeared on that path it became a
+`Malformed table.` ERROR in **68** real-world corpus files.
 
 A table's geometry is measured in CODE POINTS, with East Asian
 Wide and Fullwidth characters counting TWO (v0.109.0+ for grid tables,
@@ -1172,9 +1201,13 @@ content where the recorded expectation is an error about a path the corpus
 itself broke. Further fidelity work needs a corpus whose files sit where
 they were written.
 
-**The testsuite corpus is at its own floor too**, as of v0.136.7: 573 of
-579, with 5 cases skipped (their recorded output is not pseudoxml) and ONE
-mismatch, `test_directives/test_role.py[role][2]`. That one is an artefact
+**The testsuite corpus is at its own floor too**, as of v0.136.8: **578 of
+579, and nothing is skipped any more**. The five cases whose recorded
+output is a `TableMarkupError` rather than a tree now carry a
+document-level expectation generated from the live reference (see the table
+diagnostics above) — the population a sweep measures is defined by the
+sweep, and five unmeasured cases were hiding three real defects. That
+leaves ONE mismatch, `test_directives/test_role.py[role][2]`. That one is an artefact
 of docutils' own test file rather than a divergence, and the check is
 short: run that input through the live reference BY ITSELF and it produces
 what this package produces — the unknown-role INFO and ERROR, and
