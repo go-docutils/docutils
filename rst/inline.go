@@ -568,14 +568,17 @@ func (p *parser) referenceOrPhrase(contentRunes []rune, afterClose int, runes []
 		text = display
 	}
 	if hasEmbedded && text == "" {
-		// Omitted reference text ("`<uri>`_"/"`<alias_>`__"): the
-		// alias/URI text itself becomes the reference's own display
-		// text too (real docutils: "if not text: text = alias").
-		if kind == "uri" {
-			text = joinEmbeddedURI(targetRunes)
-		} else {
-			text = normalizeWhitespace(unescapeRunes(targetRunes))
-		}
+		// Omitted reference text ("`<uri>`_"/"`<alias_>`__"): docutils is
+		// "if not text: text = alias", and ALIAS is the value already
+		// computed above -- not a second derivation from the same runes.
+		// Re-deriving it got both branches wrong, each in its own way: a
+		// name alias kept the spelling as written where alias is
+		// normalize_name (so "`<Feature Negotiation_>`__" displayed
+		// "Feature Negotiation" against docutils' "feature negotiation"),
+		// and a URI alias skipped adjust_uri (so "`<user@e.org>`__"
+		// displayed the address where docutils displays the whole
+		// "mailto:user@e.org" it links to).
+		text = targetValue
 	}
 	el := doctree.NewElement(doctree.TagReference, &doctree.Text{Data: text})
 	el.SetAttr("name", normalizeWhitespace(text))

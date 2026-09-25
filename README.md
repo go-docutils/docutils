@@ -279,8 +279,13 @@ starting on a later physical line, or its own value wrapping across
 one, both real, corpus-tested shapes — joins with all REAL whitespace
 inside it stripped entirely, while a backslash-escaped space/newline
 there becomes exactly one literal space instead; omitting the display
-text (`` `<uri>`_ ``) reuses the URI/alias itself as both display text
-and the target's own name; a NAMED (single `_`) reference like this
+text (`` `<uri>`_ ``) reuses the ALIAS AS COMPUTED as both display text
+and the target's own name (v0.134.0+), which is docutils' one-line "if
+not text: text = alias" — so a name alias displays its NORMALIZED name
+(`` `<Feature Negotiation_>`__ `` shows "feature negotiation", as two
+PEPs do) and an email alias displays the whole `mailto:` URI it links
+to; re-deriving that text instead of reusing the computed alias got both
+branches wrong, each differently; a NAMED (single `_`) reference like this
 also emits a real `<target>` sibling, so another reference elsewhere to
 the same display text can resolve to it too — an ANONYMOUS (`__`) one
 never does, resolving directly off its own refuri/refname instead of
@@ -1125,6 +1130,19 @@ were handled at their own call sites, and `code-block`/`sourcecode` were
 missing until v0.88.0. `rst-class` deliberately stays out of the shared
 helper: `runClassDirective` distinguishes `class` from its alias by the
 name as WRITTEN, so canonicalizing it would erase a real difference.
+
+The space after a field marker is a SEPARATOR, never indentation
+(v0.134.0+). `:Description:  value` — two spaces, which is how a PEP
+aligns a column of field values — made the value an indented block here,
+so it became a `<block_quote>`, and a continuation line after it drew a
+spurious "Block quote ends without a blank line" warning that split one
+field body into three nodes. docutils arrives at the plain paragraph from
+the other side: `get_first_known_indented` cuts the first line at the
+marker and trims the block by the minimum indent of the lines AFTER it,
+so whatever the first line has left over never sets an indent for
+anything to be measured against — a continuation indented DEEPER than the
+marker joins the same paragraph, which is the case that says this is not
+about alignment at all.
 
 An embedded URI gets `mailto:` only when the WHOLE target is an email
 address (v0.125.0+), which is what `adjust_uri` tests — its email
