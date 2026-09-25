@@ -989,6 +989,19 @@ and two overlines with no title text between — no section created).
 That is a threshold, not a blanket rule, and checking the length first
 suppressed every well-formed short title.
 
+Which handler runs at all is decided by PATTERN, on the line AFTER the
+overline, and `'underline'` is tried before `'text'`
+(`Text.initial_transitions`, inherited by `SpecializedText` and so by
+`Line`): a uniform punctuation line therefore always reaches
+`Line.underline` — the `"Invalid section title or transition marker"`
+ERROR, or `short_overline`'s rewind under 4 columns — and the three-line
+`Line.text` path never even looks at it (v0.136.7). Testing "is line i+2
+an underline equal to line i" first, which this package did, is true of
+three IDENTICAL adornment lines: `====`/`====`/`====` became a `<section>`
+whose title was `====` with the rest silently dropped, and
+`...`/`...`/`...` swallowed its own third line. Only an equal first and
+third line reach it, which is why `====`/`----`/`Title` was always right.
+
 What happens AFTER the demotion is docutils' "bubble-up" (v0.84.0+):
 `short_overline` calls `previous_line()`, so the demoted line goes back
 into the Body state as ordinary text — where it can be a title's OWN
@@ -1157,9 +1170,19 @@ floor, not the parser's — implementing `include` faithfully would make
 these files diverge MORE, since a working inclusion produces the included
 content where the recorded expectation is an error about a path the corpus
 itself broke. Further fidelity work needs a corpus whose files sit where
-they were written, or the testsuite side (572 of 579, the two left being a
-global-state artefact in `test_role.py` and one `test_section_headers.py`
-overline case).
+they were written.
+
+**The testsuite corpus is at its own floor too**, as of v0.136.7: 573 of
+579, with 5 cases skipped (their recorded output is not pseudoxml) and ONE
+mismatch, `test_directives/test_role.py[role][2]`. That one is an artefact
+of docutils' own test file rather than a divergence, and the check is
+short: run that input through the live reference BY ITSELF and it produces
+what this package produces — the unknown-role INFO and ERROR, and
+`<inline classes="custom">` for the use after the definition. The recorded
+expectation instead has `<inline classes="custom-class">` for the use
+BEFORE it, which needs a `custom` role left in the registry by an earlier
+case in the same file. A corpus entry that the reference itself no longer
+reproduces in isolation cannot be met without reproducing the leak.
 
 **Five `Options` fields decide whether a docutils behaviour that is NOT
 part of parsing happens at parse time here**, and each default follows

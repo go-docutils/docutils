@@ -1148,6 +1148,22 @@ func matchTitle(lines []string, i int, demoted bool) (title string, style titleS
 			// Line.text calls self.section(title.lstrip(), ...), stripping
 			// the inset rather than gating on its absence (states.py, read
 			// directly).
+			// The line AFTER an overline decides which of Line's own
+			// handlers runs, by PATTERN, and 'underline' is tried before
+			// 'text' (states.py: Text.initial_transitions, which
+			// SpecializedText and so Line inherit). A uniform punctuation
+			// line therefore reaches Line.underline -- an "Invalid section
+			// title or transition marker" ERROR, or short_overline's
+			// rewind when the overline is under 4 characters -- and the
+			// three-line Line.text path is never even considered. Without
+			// this, "====\n====\n====" became a <section> whose TITLE was
+			// "====" (the remaining lines silently dropped), and
+			// "...\n...\n..." swallowed its own third line: the shapes are
+			// only reachable when the first and third lines are equal,
+			// which is why "====\n----\nTitle" was already right.
+			if _, secondIsLine := isUniformLine(text); secondIsLine {
+				text = ""
+			}
 			if !isBlankStr(text) {
 				overline := trimTrailingSpace(lines[i])
 				underline := trimTrailingSpace(lines[i+2])
