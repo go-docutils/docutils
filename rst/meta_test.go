@@ -80,16 +80,19 @@ func TestMetaDirective(t *testing.T) {
 			"<document>\n    <meta content=\"escaped linebreak\" name=\"name:with:colons\">\n    <meta content=\"content\" name=\"unescaped:embedded:colons\">\n",
 		},
 		{
-			// Not corpus-tested (no test_meta.py case combines the two)
-			// — a deliberate, safety-motivated divergence from real
-			// docutils' own literal exclusion set, documented in
-			// hoistMetaNodes' own doc comment: hoisting a meta node
-			// AHEAD of a leading, still-unpromoted field list would push
-			// it off document position 0, silently breaking
-			// promoteDocInfo's own strict leading-position check.
-			"a leading docinfo-eligible field list stays at position 0, meta lands right after it",
+			// The meta nodes go AHEAD of a leading field list, and the
+			// docinfo promotion still happens (v0.136.5). This case used
+			// to expect the opposite, on the reasoning that hoisting a
+			// meta ahead of an unpromoted field list would push it off
+			// position 0 and break promoteDocInfo's strict
+			// leading-position check -- which was true of that check, not
+			// of docutils: its DocInfo transform locates the field list
+			// by SKIPPING every leading PreBibliographic node, and a
+			// <meta> is one. Both rules are ported now, and this is what
+			// the reference's own full pipeline prints for this input.
+			"meta nodes precede a leading field list, which is still promoted",
 			":date: 2026-01-01\n\n.. meta::\n   :name: content\n",
-			"<document>\n    <docinfo>\n        <date>\n            2026-01-01\n    <meta content=\"content\" name=\"name\">\n",
+			"<document>\n    <meta content=\"content\" name=\"name\">\n    <docinfo>\n        <date>\n            2026-01-01\n",
 		},
 	}
 	for _, tc := range cases {

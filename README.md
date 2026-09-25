@@ -44,8 +44,13 @@ ITEM's content column is fixed by its marker, so the same shallower line
 ENDS a bullet/enumerated list and becomes a block quote with the usual
 unindent warning, v0.65.0+; a BARE marker with nothing after it takes
 its column from wherever its first indented line starts, narrower or
-wider alike, independently of that distinction) — with a leading field list (the document's
-very own first child) promoted to a typed `<docinfo>`, registered
+wider alike, independently of that distinction) — with a leading field list (the first
+child that is not PreBibliographic: a `<meta>`, comment, decoration,
+system message, target or substitution definition is stepped over, which
+is `first_child_not_matching_class(nodes.PreBibliographic)` in the
+transform itself, v0.136.5 — requiring position 0 exactly made docinfo
+promotion and the `meta` hoist mutually exclusive) promoted to a typed
+`<docinfo>`, registered
 bibliographic names (author, authors, organization, address, contact,
 version, revision, status, date, copyright, dedication, abstract,
 matched the same case/whitespace-insensitive way as any other reST
@@ -159,10 +164,12 @@ of whatever fields already parsed. The distinctive part: NONE of a
 real docutils splices them straight into the document ROOT's children,
 at the front, however deeply the directive itself was nested; this
 project defers that same effect to a single post-pass at the end of
-parsing rather than mutating the tree mid-walk, careful not to hoist a
-meta node ahead of an as-yet-unpromoted leading field list, which would
-otherwise silently break docinfo promotion's own strict leading-position
-check); `:class:`/`:name:` options work
+parsing rather than mutating the tree mid-walk. The insertion point is
+docutils' own `first_child_not_matching_class((nodes.Titular,
+nodes.meta))` (v0.136.5): the meta nodes go after a leading title,
+subtitle or rubric and after the meta nodes already hoisted, but AHEAD of
+everything else — including a leading field list, which the DocInfo
+transform then still finds by stepping over them); `:class:`/`:name:` options work
 the same way real docutils' own generic option/content-block split does
 (`Body.parse_directive_block`, read directly): the option block is
 whatever TRAILING run of `:key: value` lines the directive's own body
@@ -1107,6 +1114,16 @@ a plain word there it produced a second paragraph beside the real one. The
 blank line is what separates the two readings, so the runner is told how
 many followed the directive — `gatherExplicitBody` drops them, and without
 that count an argument continuation and a content block look identical.
+That argument then goes through `directives.class_option`, which is one
+`nodes.make_id` per whitespace-separated token and raises `ValueError` on
+any token whose id comes out EMPTY — caught into
+`Invalid class attribute value for "class" directive: "..."`, quoting the
+WHOLE argument as written, not the offending token (v0.136.5). This
+package used to drop the empty ids and apply whatever was left, so
+`.. class:: 1` produced a class-less block instead of an error. What the
+check must NOT do is reject punctuation `make_id` merely folds away:
+sphinx's two cpp-domain pages write `.. class:: template<typename T,` and
+those are the classes `template-typename t int n`.
 `target-notes` validates its options (v0.74.0+) — an unknown one, or one
 given with no value, is docutils' own
 `Error in "target-notes" directive: ...`. That was portable for this

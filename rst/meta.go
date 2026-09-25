@@ -145,12 +145,29 @@ func hoistMetaNodes(doc *doctree.Element, metaNodes []doctree.Node) {
 	if len(metaNodes) == 0 {
 		return
 	}
+	// Meta.run's own rule, read directly:
+	//
+	//	index = document.first_child_not_matching_class((Titular, meta)) or 0
+	//	document[index:index] = node.children
+	//
+	// TITULAR is title, subtitle and rubric; a FIELD LIST is none of them,
+	// so a document opening with one -- which is every PEP, and sphinx's
+	// own test-metadata root -- takes the meta nodes at index 0, BEFORE
+	// it. This skipped a leading field list instead, which put them after
+	// it. (The docinfo case is the same: DocInfo is a transform that
+	// rewrites the field list in place, so the metas stay ahead of it
+	// either way.)
 	insertAt := 0
-	if len(doc.Children) > 0 {
-		if el, ok := doc.Children[0].(*doctree.Element); ok &&
-			(el.Tag == doctree.TagFieldList || el.Tag == doctree.TagDocinfo) {
-			insertAt = 1
+	for insertAt < len(doc.Children) {
+		el, ok := doc.Children[insertAt].(*doctree.Element)
+		if !ok {
+			break
 		}
+		if el.Tag != doctree.TagTitle && el.Tag != doctree.TagSubtitle &&
+			el.Tag != doctree.TagRubric && el.Tag != doctree.TagMeta {
+			break
+		}
+		insertAt++
 	}
 	front := append(append([]doctree.Node{}, doc.Children[:insertAt]...), metaNodes...)
 	doc.Children = append(front, doc.Children[insertAt:]...)
