@@ -448,7 +448,19 @@ func admitsBodyElements(tag string) bool {
 		doctree.TagBlockQuote, doctree.TagFootnote, doctree.TagCitation,
 		doctree.TagDefinition, doctree.TagFieldBody, doctree.TagTopic,
 		doctree.TagSidebar, doctree.TagContainer, doctree.TagCompound,
-		doctree.TagAdmonition, doctree.TagEntry:
+		doctree.TagAdmonition, doctree.TagEntry,
+		// The NINE specific admonitions, and header/footer. This list
+		// named ".. admonition::" and not one of the nine it shares its
+		// content model with, so a duplicate name inside a ".. note::"
+		// put its message BEFORE the note where docutils puts it inside,
+		// as the note's first child. PEP 813 is the corpus file; every
+		// one of the eleven was then checked against the reference
+		// individually, since a family is exactly what this kind of list
+		// gets wrong.
+		doctree.TagAttention, doctree.TagCaution, doctree.TagDanger,
+		doctree.TagErrorAdmonition, doctree.TagHint, doctree.TagImportant,
+		doctree.TagNote, doctree.TagTip, doctree.TagWarningAdmonition,
+		doctree.TagHeader, doctree.TagFooter:
 		return true
 	}
 	return false
