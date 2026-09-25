@@ -126,3 +126,81 @@ func TestShortOverlineBubblesUp(t *testing.T) {
 		t.Errorf("the INFO is missing from the control:\n%s", got)
 	}
 }
+
+// TestAPunctuationLineUnderAnOverlineIsNeverATitle pins which of Line's
+// own handlers runs for the line AFTER an overline. The dispatch is by
+// PATTERN and 'underline' is tried before 'text' (states.py:
+// Text.initial_transitions, inherited by SpecializedText and so by Line),
+// so a uniform punctuation line always reaches Line.underline -- an
+// "Invalid section title or transition marker" ERROR, or short_overline's
+// own rewind when the overline is under four characters -- and the
+// three-line Line.text path never even gets to look at it.
+//
+// This package tested "is line i+2 an underline equal to line i" first,
+// which is true of three identical adornment lines. So "====\n====\n===="
+// became a <section> whose TITLE was "====", with the remaining lines
+// silently dropped, and "...\n...\n..." swallowed its own third line. Only
+// the first and third lines being EQUAL reaches the bug, which is why
+// "====\n----\nTitle" was already right -- and why it is a control here.
+//
+// The last case is the docutils testsuite's own
+// test_section_headers.py[32], the last mismatch this package had in that
+// corpus other than one artefact of the testsuite's own shared state: its
+// third section returns to the DOCUMENT level, because the demoted line's
+// underline style ('.') is the one already established there, and the
+// nested reading kept it a grandchild. Every expectation below was
+// compared against the reference; where it promotes a lone top-level
+// section to the document title and this package does not (its own
+// documented scope boundary), only that hoisting differs -- the messages,
+// their lines and their order are identical.
+func TestAPunctuationLineUnderAnOverlineIsNeverATitle(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			"a punctuation line under a LONG overline is an invalid marker, not a title",
+			"====\n====\n====\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Invalid section title or transition marker.\n        <literal_block>\n            ====\n            ====\n    <transition>\n",
+		},
+		{
+			"the same under a SHORT overline demotes the overline to text",
+			"...\n...\n...\n",
+			"<document>\n    <system_message level=\"1\" line=\"1\" type=\"INFO\">\n        <paragraph>\n            Possible incomplete section title.\n            Treating the overline as ordinary text because it's so short.\n    <section id=\"section-1\" name=\"...\">\n        <title>\n            ...\n        <paragraph>\n            ...\n",
+		},
+		{
+			"CONTROL: a one-character second line matches underline too",
+			"====\n-\nTitle\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Invalid section title or transition marker.\n        <literal_block>\n            ====\n            -\n    <paragraph>\n        Title\n",
+		},
+		{
+			"CONTROL: the invalid pair does not consume the real title after it",
+			"====\n====\nTitle\n====\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Invalid section title or transition marker.\n        <literal_block>\n            ====\n            ====\n    <section id=\"title\" name=\"title\">\n        <title>\n            Title\n        <system_message level=\"2\" line=\"4\" type=\"WARNING\">\n            <paragraph>\n                Title underline too short.\n            <literal_block>\n                Title\n                ====\n",
+		},
+		{
+			"CONTROL: a genuine overlined title still works",
+			"====\nTitle\n====\n",
+			"<document>\n    <section id=\"title\" name=\"title\">\n        <title>\n            Title\n        <system_message level=\"2\" line=\"1\" type=\"WARNING\">\n            <paragraph>\n                Title overline too short.\n            <literal_block>\n                ====\n                Title\n                ====\n",
+		},
+		{
+			"CONTROL: a DIFFERENT punctuation line was already an invalid marker",
+			"====\n----\nTitle\n",
+			"<document>\n    <system_message level=\"3\" line=\"1\" type=\"ERROR\">\n        <paragraph>\n            Invalid section title or transition marker.\n        <literal_block>\n            ====\n            ----\n    <paragraph>\n        Title\n",
+		},
+		{
+			"the testsuite's own section_headers[32]",
+			"...\n...\n\n...\n---\n\n...\n...\n...\n",
+			"<document>\n    <system_message level=\"1\" line=\"1\" type=\"INFO\">\n        <paragraph>\n            Possible incomplete section title.\n            Treating the overline as ordinary text because it's so short.\n    <section dupname=\"...\" id=\"section-1\">\n        <title>\n            ...\n        <system_message level=\"1\" line=\"4\" type=\"INFO\">\n            <paragraph>\n                Possible incomplete section title.\n                Treating the overline as ordinary text because it's so short.\n        <section dupname=\"...\" id=\"section-2\">\n            <title>\n                ...\n            <system_message backref=\"section-2\" level=\"1\" line=\"5\" type=\"INFO\">\n                <paragraph>\n                    Duplicate implicit target name: \"...\".\n            <system_message level=\"1\" line=\"7\" type=\"INFO\">\n                <paragraph>\n                    Possible incomplete section title.\n                    Treating the overline as ordinary text because it's so short.\n    <section dupname=\"...\" id=\"section-3\">\n        <title>\n            ...\n        <system_message backref=\"section-3\" level=\"1\" line=\"8\" type=\"INFO\">\n            <paragraph>\n                Duplicate implicit target name: \"...\".\n        <paragraph>\n            ...\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := doctree.Dump(Parse(tc.source))
+			if strings.TrimRight(got, "\n") != strings.TrimRight(tc.want, "\n") {
+				t.Errorf("Parse(%q) dump =\n%s\nwant:\n%s", tc.source, got, tc.want)
+			}
+		})
+	}
+}
