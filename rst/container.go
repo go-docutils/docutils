@@ -35,7 +35,10 @@ func (p *parser) runContainerDirective(lines []string, i, next, lineBase int, ar
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content, contentStart := parseDirectiveBlockAt(combined, true)
+	argument, options, content, contentStart, optionLines := parseDirectiveBlockAt(combined, true)
+	if msg := p.unknownDirectiveOption("container", directiveName, optionLines, lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 
 	if len(content) == 0 || allBlank(content) {
 		return []doctree.Node{sectionMessage("3", "ERROR",

@@ -43,11 +43,11 @@ func (p *parser) runCodeDirective(name string, lines []string, i, next, lineBase
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content, contentStart := parseDirectiveBlockAt(combined, true)
+	argument, options, content, _, optionLines := parseDirectiveBlockAt(combined, true)
 
 	// The shared spec table, not a bespoke loop: this directive was the
 	// first to need option validation and had its own copy.
-	if msg := p.unknownDirectiveOption("code", name, combined[:min(contentStart, len(combined))], lineno, blockText); msg != nil {
+	if msg := p.unknownDirectiveOption("code", name, optionLines, lineno, blockText); msg != nil {
 		return []doctree.Node{msg}
 	}
 

@@ -206,7 +206,10 @@ func (p *parser) runLineBlockDirective(lines []string, i, lineBase, next int, ar
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	_, options, content := parseDirectiveBlock(combined, false)
+	_, options, content, _, optionLines := parseDirectiveBlockAt(combined, false)
+	if msg := p.unknownDirectiveOption("line-block", directiveName, optionLines, lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 
 	if len(content) == 0 || allBlank(content) {
 		return []doctree.Node{sectionMessage("3", "ERROR",

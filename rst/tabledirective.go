@@ -258,6 +258,9 @@ func (p *parser) runTableDirective(lines []string, i, next, lineBase int, args s
 	options, content := parseDirectiveOptions(body)
 	// content is a SUFFIX of body; see bodyStartIndex.
 	contentBase := nestedLineBase(bodyStartIndex(lines, i)+len(body)-len(content), lineBase)
+	if msg := p.unknownDirectiveOption("table", "table", body[:len(body)-len(content)], lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 	if len(content) == 0 || allBlank(content) {
 		return []doctree.Node{sectionMessage("2", "WARNING",
 			`Content block expected for the "table" directive; none found.`, lineno, blockText)}
@@ -307,6 +310,9 @@ func (p *parser) runListTableDirective(lines []string, i, next, lineBase int, ar
 	options, content := parseDirectiveOptions(body)
 	// content is a SUFFIX of body; see bodyStartIndex.
 	contentBase := nestedLineBase(bodyStartIndex(lines, i)+len(body)-len(content), lineBase)
+	if msg := p.unknownDirectiveOption("list-table", "list-table", body[:len(body)-len(content)], lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 	if len(content) == 0 || allBlank(content) {
 		return []doctree.Node{sectionMessage("3", "ERROR",
 			`The "list-table" directive is empty; content required.`, lineno, blockText)}

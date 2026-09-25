@@ -32,7 +32,10 @@ func (p *parser) runRubricDirective(lines []string, i, next, lineBase int, args 
 		combined = append(combined, "")
 	}
 	combined = append(combined, body...)
-	argument, options, content := parseDirectiveBlock(combined, true)
+	argument, options, content, _, optionLines := parseDirectiveBlockAt(combined, true)
+	if msg := p.unknownDirectiveOption("rubric", "rubric", optionLines, lineno, blockText); msg != nil {
+		return []doctree.Node{msg}
+	}
 
 	if argument == "" {
 		return []doctree.Node{sectionMessage("3", "ERROR",
