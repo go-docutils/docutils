@@ -1363,20 +1363,22 @@ grid table a cell's content is block rows `top+1..bottom-1` and
 simple table `cell.lineOffset` is already the row's first line within the
 block, so it is `i+lineOffset+lineBase`, with no border row to skip.
 
-The one still passing `-1` is a **csv-table** cell, and deliberately: a
-cell's text comes out of a CSV reader that does not record which body
-line each row began on, and a quoted field may span several. Tracking
-that is a real change to the CSV parsing, and measured against the
-corpus it is worth exactly ONE file — so it is named here rather than
-guessed at.
+A **csv-table** cell passed `-1` until v0.136.3, on the reasoning that a
+CSV reader does not record which body line each row began on. It does not
+have to: docutils does not report the row either. Every diagnostic from
+any cell carries the directive's content OFFSET plus the line index WITHIN
+the cell, which is a line base of `contentOffset - 1` and no bookkeeping
+at all — a rule that had to be TRACED, since five probes made it look like
+a constant before a sixth (a role on the second line of a quoted cell)
+moved it.
 
 Two derivations are
 needed, because `class` and the table directives split their options off
 themselves rather than through `parseDirectiveBlock`, so their content is
 a SUFFIX of the body (`bodyStartIndex`) rather than an offset into the
-combined block. **Still `-1`**: a table CELL, which needs a per-row
-offset — so the table directives' own threading, while correct, cannot
-be observed until that is done.
+combined block. **Still `-1`**: a GRID or SIMPLE table cell, which needs a per-row
+offset — so those table directives' own threading, while correct, cannot
+be observed until that is done. A csv-table cell no longer is: see above.
 
 `.. csv-table::` (v0.101.0+) reads its content — and its `:header:`
 option — as CSV and lays the result out with the same
@@ -1384,11 +1386,18 @@ option — as CSV and lays the result out with the same
 uses. The dialect is docutils' own `DocutilsDialect` defaults (comma,
 `"` quote, doubled quotes, whitespace after a delimiter discarded),
 which is Go's `encoding/csv` with `TrimLeadingSpace`. Ragged rows are
-padded to the widest rather than rejected. **Not ported**: `:file:` and
-`:url:`, which read from the filesystem or network while parsing, and
-`:delim:`/`:quote:`/`:escape:`/`:keepspace:`, which change the dialect —
-such an invocation falls back to the structural `<directive>` capture
-rather than producing a wrong table.
+padded to the widest rather than rejected. `:delim:` and `:keepspace:` ARE ported (v0.136.4+), because both are
+fields of that same reader — `Comma` and `TrimLeadingSpace` — and the
+delimiter takes any spelling `single_char_or_whitespace_or_unicode` takes:
+a character, the words `tab`/`space`, or a Unicode code written decimal,
+hex (six prefixes) or as an XML entity. sphinx's own `latex.rst` writes a
+table with `:delim: ;` inside a list item, and refusing it turned the
+whole table into a `<directive>` node holding its own source. **Not
+ported**: `:file:` and `:url:`, which read from the filesystem or network
+while parsing, and `:quote:`/`:escape:`, which need a reader field
+`encoding/csv` does not have — such an invocation, and a `:delim:` value
+that is not a character at all, still fall back to the structural
+`<directive>` capture rather than producing a wrong table.
 
 A directive argument spanning two source lines keeps its LINE BREAK
 (v0.100.0+): `parse_directive_arguments` joins the argument block with

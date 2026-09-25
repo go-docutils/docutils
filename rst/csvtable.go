@@ -23,11 +23,62 @@ import (
 // using any of those falls back to the structural <directive> capture,
 // the same fallback ".. raw::" without a format takes -- see the
 // README's own SCOPE note. No corpus file on either side uses one.
+// csvDelimiter ports directives.single_char_or_whitespace_or_unicode: a
+// single character, the words "tab" and "space", or a Unicode code written
+// as a decimal number, as hex with one of the six prefixes docutils
+// accepts ("0x", "x", "\\x", "U+", "u", "\\u") or as an XML numeric
+// entity ("&#x262E;"). Anything else is not a delimiter.
+func csvDelimiter(arg string) (rune, bool) {
+	switch arg {
+	case "tab":
+		return '\t', true
+	case "space":
+		return ' ', true
+	}
+	if r := []rune(arg); len(r) == 1 {
+		return r[0], true
+	}
+	lower := strings.ToLower(arg)
+	digits := ""
+	switch {
+	case isAllDigits(arg):
+		n, err := strconv.Atoi(arg)
+		if err != nil || n < 0 || n > 0x10FFFF {
+			return 0, false
+		}
+		return rune(n), true
+	case strings.HasPrefix(lower, "&#x") && strings.HasSuffix(arg, ";"):
+		digits = arg[3 : len(arg)-1]
+	case strings.HasPrefix(lower, "0x"):
+		digits = arg[2:]
+	case strings.HasPrefix(lower, "u+"):
+		digits = arg[2:]
+	case strings.HasPrefix(arg, "\\x"), strings.HasPrefix(arg, "\\u"):
+		digits = arg[2:]
+	case strings.HasPrefix(lower, "x"), strings.HasPrefix(lower, "u"):
+		digits = arg[1:]
+	default:
+		return 0, false
+	}
+	n, err := strconv.ParseInt(digits, 16, 32)
+	if err != nil || n < 0 || n > 0x10FFFF {
+		return 0, false
+	}
+	return rune(n), true
+}
+
 func (p *parser) runCSVTableDirective(lines []string, i, next, lineBase int, args string, body []string) ([]doctree.Node, bool) {
 	lineno := msgLine(i, lineBase)
 	blockText := strings.Join(lines[i:next], "\n")
 	options, content := parseDirectiveOptions(body)
-	for _, unsupported := range []string{"file", "url", "delim", "quote", "escape", "keepspace", "encoding"} {
+	// ":delim:" and ":keepspace:" ARE supported now -- both map onto
+	// encoding/csv's own reader (Comma, TrimLeadingSpace), which is where
+	// this list came from: the options left in it need a configurable
+	// quote or escape character, which that reader has no field for, or
+	// file I/O this package does not do. sphinx's own latex.rst writes a
+	// table with ":delim: ;" inside a list item, and refusing the whole
+	// directive turned it into a <directive> node holding its own source.
+	for _, unsupported := range []string{"file", "url", "quote", "escape", "encoding"} {
 		if _, ok := options[unsupported]; ok {
 			return nil, false
 		}
@@ -37,10 +88,28 @@ func (p *parser) runCSVTableDirective(lines []string, i, next, lineBase int, arg
 			`The "csv-table" directive requires content; none supplied.`, lineno, blockText)}, true
 	}
 
+	// single_char_or_whitespace_or_unicode: a single character, the words
+	// "tab" and "space", or a Unicode code written decimal, hex ("0x",
+	// "x", "\x", "U+", "u", "\u") or as an XML entity ("&#x262E;").
+	delim, delimOK := ',', true
+	if v, ok := options["delim"]; ok {
+		delim, delimOK = csvDelimiter(v)
+	}
+	if !delimOK {
+		// An unusable delimiter joins the unsupported options above rather
+		// than inventing a diagnostic: docutils raises an "invalid option
+		// value" error here, and this package's own scope note says
+		// directive option VALUE validation is not built (see the README).
+		return nil, false
+	}
 	readRows := func(text string) ([][]string, bool) {
 		r := csv.NewReader(strings.NewReader(text))
 		r.FieldsPerRecord = -1 // ragged rows are padded, not rejected
-		r.TrimLeadingSpace = true
+		r.Comma = delim
+		// ":keepspace:" is a FLAG: present means keep the leading
+		// whitespace of each field, absent means strip it.
+		_, keepspace := options["keepspace"]
+		r.TrimLeadingSpace = !keepspace
 		recs, err := r.ReadAll()
 		if err != nil {
 			return nil, false

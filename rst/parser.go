@@ -590,7 +590,18 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 				p.nameLines = map[*doctree.Element]int{}
 			}
 			p.nameLines[sec] = i + consumed
+			// The same line serves the STATE MACHINE's position while the
+			// title is inline-parsed: docutils has read the whole title
+			// construct -- text and its closing adornment -- before the
+			// Inliner runs, so a message that falls back to
+			// get_source_and_line reports the ADORNMENT's line, not the
+			// text's. sphinx's latex.rst has a ":code-tex:" role in a
+			// section title whose "Cannot analyze code" warning is off by
+			// exactly that one line. See parser.currentSMLine.
+			savedSM := p.currentSMLine
+			p.currentSMLine = i + consumed
 			titleNodes, titleMsgs := p.parseInline(title, titleLine)
+			p.currentSMLine = savedSM
 			titleEl := doctree.NewElement(doctree.TagTitle, titleNodes...)
 			sec.Append(titleEl)
 			// The id is claimed HERE, as the section is parsed, not in a
