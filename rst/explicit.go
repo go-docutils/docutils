@@ -983,7 +983,8 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 		return []doctree.Node{el}, next
 	}
 	if strings.EqualFold(name, "class") || strings.EqualFold(name, "rst-class") {
-		return p.runClassDirective(name, args, body, bodyStartIndex(lines, i), lineBase, blankLinesAfter(lines, i)), next
+		return p.runClassDirective(name, args, body, bodyStartIndex(lines, i), lineBase, blankLinesAfter(lines, i),
+			msgLine(i, lineBase), strings.Join(lines[i:next], "\n")), next
 	}
 	if strings.EqualFold(name, "sectnum") || strings.EqualFold(name, "section-numbering") {
 		return runSectnumDirective(args, body), next

@@ -52,10 +52,26 @@ import (
 // match the corpus — any leading field list at all will show as a
 // corpus mismatch (promoted here, plain there), and that's expected.
 func promoteDocInfo(doc *doctree.Element) {
-	if len(doc.Children) == 0 {
+	// The field list is located by SKIPPING every leading
+	// PreBibliographic node, which is docutils' own
+	//
+	//	index = document.first_child_not_matching_class(nodes.PreBibliographic)
+	//
+	// (transforms.frontmatter.DocInfo.apply, read directly). A <meta> is
+	// PreBibliographic, and so are a comment, a decoration, a
+	// system_message, a target and a substitution definition -- so a
+	// document whose ".. meta::" hoists to position 0 still has its
+	// docinfo promoted. Requiring position 0 exactly made the two
+	// features exclusive: with the meta nodes correctly ahead of it
+	// (v0.136.5), the field list stopped being promoted at all.
+	idx := 0
+	for idx < len(doc.Children) && isPreBibliographic(doc.Children[idx]) {
+		idx++
+	}
+	if idx >= len(doc.Children) {
 		return
 	}
-	fl, ok := doc.Children[0].(*doctree.Element)
+	fl, ok := doc.Children[idx].(*doctree.Element)
 	if !ok || fl.Tag != doctree.TagFieldList {
 		return
 	}
@@ -100,7 +116,38 @@ func promoteDocInfo(doc *doctree.Element) {
 	for _, t := range topics {
 		out = append(out, t)
 	}
-	doc.Children = append(out, doc.Children[1:]...)
+	// The docinfo goes where the transform puts it -- at the first child
+	// that is neither Titular, a decoration nor a meta -- and the rest of
+	// the document follows the field list it replaced.
+	at := 0
+	for at < len(doc.Children) {
+		el, ok := doc.Children[at].(*doctree.Element)
+		if !ok || (el.Tag != doctree.TagTitle && el.Tag != doctree.TagSubtitle &&
+			el.Tag != doctree.TagRubric && el.Tag != doctree.TagDecoration &&
+			el.Tag != doctree.TagMeta) {
+			break
+		}
+		at++
+	}
+	rest := append(append([]doctree.Node{}, doc.Children[at:idx]...), doc.Children[idx+1:]...)
+	head := append([]doctree.Node{}, doc.Children[:at]...)
+	doc.Children = append(append(head, out...), rest...)
+}
+
+// isPreBibliographic reports whether n is one of docutils'
+// PreBibliographic nodes -- the ones the DocInfo transform steps over
+// when it looks for the document's own leading field list.
+func isPreBibliographic(n doctree.Node) bool {
+	el, ok := n.(*doctree.Element)
+	if !ok {
+		return false
+	}
+	switch el.Tag {
+	case doctree.TagMeta, doctree.TagComment, doctree.TagDecoration,
+		doctree.TagSystemMessage, doctree.TagTarget, doctree.TagSubstitutionDef:
+		return true
+	}
+	return false
 }
 
 var biblioFields = map[string]string{

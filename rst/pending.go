@@ -96,7 +96,7 @@ func pyReprList(items []string) string {
 // normalized the same way every other :class: option is, and the
 // directive's own name is recorded because "class" and its alias
 // "rst-class" produce different details.
-func (p *parser) runClassDirective(name, args string, body []string, bodyStart, lineBase, blanksAfter int) []doctree.Node {
+func (p *parser) runClassDirective(name, args string, body []string, bodyStart, lineBase, blanksAfter, lineno int, blockText string) []doctree.Node {
 	// NOT parseDirectiveBlock: gatherExplicitBody has already trimmed the
 	// blank line that separates a same-line argument from the content, so
 	// that split would run past it and read the first content paragraph as
@@ -154,9 +154,19 @@ func (p *parser) runClassDirective(name, args string, body []string, bodyStart, 
 	for len(content) > 0 && isBlankStr(content[0]) {
 		content = content[1:]
 	}
-	var classes []string
-	for _, f := range strings.Fields(argument) {
-		classes = append(classes, makeID(f))
+	// classOptionStrict, not a bare makeID loop: class_option RAISES for a
+	// token that makes no identifier (a digit-only one, or punctuation
+	// alone), and Class.run turns that into its own ERROR quoting the
+	// WHOLE argument -- newlines and all. sphinx's cpp-domain test roots
+	// write ".. class:: template<typename TParamType, \" over several
+	// lines, whose tokens include one that yields nothing, and this built
+	// a class list out of it instead.
+	classes, failed, ok := classOptionStrict(argument)
+	if !ok {
+		_ = failed
+		return []doctree.Node{sectionMessage("3", "ERROR",
+			`Invalid class attribute value for "`+name+`" directive: "`+argument+`".`,
+			lineno, blockText)}
 	}
 
 	// WITH content, Class.run parses it and adds the classes to each
