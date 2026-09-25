@@ -2,10 +2,53 @@ package rst
 
 import (
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
 func isBlankStr(s string) bool { return strings.TrimSpace(s) == "" }
+
+// leadingWhitespaceWidth is Python's "len(line) - len(line.lstrip())":
+// the number of leading WHITESPACE CHARACTERS, by Unicode's definition
+// rather than by the plain-space test leadingSpaces makes.
+//
+// docutils uses the two for DIFFERENT questions and this package used one
+// for both. "Is this line indented?" is "line[0] != ' '", a plain space
+// (statemachine.py's own get_indented). "How deep is it?" is
+// "len(line) - len(stripped)" with stripped = line.lstrip(), which counts
+// a NO-BREAK SPACE too, because str.lstrip() strips all Unicode
+// whitespace. pytest's own documentation has a literal block whose first
+// line is written "     pytest ...": indented by one plain space
+// as far as the first test is concerned, five CHARACTERS deep as far as
+// the second is, and docutils dedents all five. Counting plain spaces
+// dedented one, so the block kept four characters of phantom indentation.
+//
+// The count is in RUNES, not bytes, because the dedent that follows has
+// to remove the same units the minimum was taken in -- a NO-BREAK SPACE
+// is one character and two bytes.
+func leadingWhitespaceWidth(s string) int {
+	n := 0
+	for _, r := range s {
+		if !unicode.IsSpace(r) {
+			break
+		}
+		n++
+	}
+	return n
+}
+
+// trimLeadingRunes drops n leading runes, or everything if the string is
+// shorter -- StringList.trim_left's own "line[length:]".
+func trimLeadingRunes(s string, n int) string {
+	for i := 0; i < n; i++ {
+		_, size := utf8.DecodeRuneInString(s)
+		if size == 0 {
+			return ""
+		}
+		s = s[size:]
+	}
+	return s
+}
 
 func leadingSpaces(s string) int {
 	n := 0

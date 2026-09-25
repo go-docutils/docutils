@@ -1636,8 +1636,10 @@ func collectLiteralIndented(lines []string, i int, untilBlank bool) (block []str
 			blankFinish = end > i && isBlankStr(lines[end-1])
 			break
 		}
-		if stripped := strings.TrimLeft(line, " "); stripped != "" {
-			if li := len(line) - len(stripped); known == -1 || li < known {
+		if strings.TrimSpace(line) != "" {
+			// leadingWhitespaceWidth, not a plain-space count: see its own
+			// doc comment for the asymmetry docutils has here.
+			if li := leadingWhitespaceWidth(line); known == -1 || li < known {
 				known = li
 			}
 		} else if untilBlank {
@@ -1652,11 +1654,7 @@ func collectLiteralIndented(lines []string, i int, untilBlank bool) (block []str
 	block = append([]string{}, lines[i:end]...)
 	if known > 0 {
 		for idx := range block {
-			if len(block[idx]) >= known {
-				block[idx] = block[idx][known:]
-			} else {
-				block[idx] = ""
-			}
+			block[idx] = trimLeadingRunes(block[idx], known)
 		}
 	} else {
 		known = 0
