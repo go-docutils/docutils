@@ -141,6 +141,14 @@ type Options struct {
 	// transform. A consumer that would rather keep the text of a role it
 	// has never heard of (a Sphinx ":doc:" reference, say) sets it false
 	// and gets the lenient <inline role="..."> back.
+	//
+	// It ALSO gates the eleven roles docutils registers and then refuses
+	// to run (roles.unimplemented_role: index, target, uri-reference and
+	// friends -- see unimplementedRoles). Strictly those are a different
+	// thing: the lookup SUCCEEDS and the role function itself errors. They
+	// share the flag because a consumer that turns it off wants the same
+	// outcome for both -- ":index:`word`" rendering as "word" rather than
+	// as the raw ":index:`word`" a <problematic> would carry.
 	ReportUnknownRoles bool
 
 	// ReportUnknownDirectiveOptions emits the ERROR docutils raises for an
