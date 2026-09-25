@@ -944,6 +944,14 @@ func (p *parser) parseDirective(lines []string, i, lineBase int, name, args stri
 
 func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args string, parent *doctree.Element) ([]doctree.Node, int) {
 	body, blankFinish, next := gatherExplicitBody(lines, i)
+	// The document machine stopped at the end of the DIRECTIVE's block,
+	// not at the end of its content -- get_first_known_indented collects
+	// the trailing blank lines too. PEP 813 has a ".. note::" followed by
+	// two blank lines before the next section, and a duplicate-name notice
+	// raised inside it reports the SECOND of those. Freezing from the
+	// content's own parseBlockLines frame gave the content's last line
+	// instead. See parser.smFreeze.
+	defer p.freezeSMLine(msgLine(next-1, lineBase))()
 	if strings.EqualFold(name, "replace") || strings.EqualFold(name, "date") {
 		// Real docutils' Replace.run (misc.py, read directly) is only
 		// ever invoked FROM WITHIN a substitution definition's own

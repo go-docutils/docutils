@@ -1089,11 +1089,24 @@ values in Python `repr` form). `title` is the odd one out: it sets the
 document's own `title` ATTRIBUTE and leaves no node behind at all.
 `target-notes` validates its options (v0.74.0+) — an unknown one, or one
 given with no value, is docutils' own
-`Error in "target-notes" directive: ...`. That is portable for this
-directive alone because its whole `option_spec` is a single `:class:`
-entry; the GENERAL per-directive option validation described further
-down is still not implemented. **Still not dispatched**: `contents` and
-`date`.
+`Error in "target-notes" directive: ...`. That was portable for this
+directive alone when it was written, because its whole `option_spec` is a
+single `:class:` entry; the GENERAL per-directive validation described
+further down arrived in v0.133.0 and now covers seventeen. **Still not
+dispatched**: `contents` and `date`.
+
+`include` and `raw`'s `:file:`/`:url:` forms are a DELIBERATE non-target,
+and the real-world corpus makes the reason visible: ten of its files use
+`.. include::`, and docutils reports each as
+`Problems with "include" directive path: InputError: [Errno 2] No such
+file or directory: '...'` — because the corpus flattens every file into
+one directory, so every relative path is broken. Matching that output
+would mean doing file I/O *and* reproducing the text of a Python
+`OSError`. This package emits its own unknown-directive diagnostics
+instead, which is why those ten files stay mismatched and will: the
+divergence is the corpus's own arrangement meeting a scope boundary, not
+a defect. A consumer that wants inclusion resolves it before parsing, or
+after, with the tree in hand.
 
 **Five `Options` fields decide whether a docutils behaviour that is NOT
 part of parsing happens at parse time here**, and each default follows
@@ -1399,6 +1412,20 @@ same pair (`.. role::` with an unknown base, `.. default-role::` with an
 unknown name) already had it right, which is how one corpus file and one
 capital letter showed that two of three call sites agreed and the third
 did not.
+
+A duplicate-name notice lands INSIDE the innermost container, right
+before the paragraph whose inline parsing raised it — docutils appends it
+to whatever body element is being filled at that moment. The list of tags
+that can hold one named `.. admonition::` and not one of the NINE
+specific admonitions it shares its content model with (v0.136.2 adds
+them), so the notice for a duplicate inside a `.. note::` went BEFORE the
+note. A family is exactly what a list like that gets wrong, so every
+container was then checked against the reference one at a time. `header`
+and `footer` admit one too and this package still raises none there: the
+duplicate-name pass runs before `hoistDecoration`, and moving the hoist
+earlier would make the walk see a header BEFORE the line-1 reference it
+follows in the source, where docutils registers names in SOURCE order. No
+corpus file has a duplicate name inside a header.
 
 An inline literal whose whole content is a LONE BACKSLASH — ``` ``\`` ```,
 which is how PEP 12 documents line continuations — is a literal, not a
