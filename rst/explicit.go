@@ -983,7 +983,7 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 		return []doctree.Node{el}, next
 	}
 	if strings.EqualFold(name, "class") || strings.EqualFold(name, "rst-class") {
-		return p.runClassDirective(name, args, body, bodyStartIndex(lines, i), lineBase), next
+		return p.runClassDirective(name, args, body, bodyStartIndex(lines, i), lineBase, blankLinesAfter(lines, i)), next
 	}
 	if strings.EqualFold(name, "sectnum") || strings.EqualFold(name, "section-numbering") {
 		return runSectnumDirective(args, body), next
@@ -1009,8 +1009,24 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 	if strings.EqualFold(name, "title") {
 		// ".. title:: text" sets the document's own title ATTRIBUTE and
 		// leaves no node behind at all (directives.parts.DocTitle).
-		if t := strings.TrimSpace(args); t != "" {
-			p.docTitle = t
+		//
+		// Its argument is the whole block up to the first blank line, for
+		// the same reason Class's is (final_argument_whitespace=True,
+		// option_spec=None): ".. title:: My Title\n   :x:" is the title
+		// "My Title\n:x:", newline and all, not "My Title" with an option.
+		title := strings.TrimSpace(args)
+		for _, l := range body {
+			if isBlankStr(l) {
+				break
+			}
+			if title == "" {
+				title = strings.TrimSpace(l)
+			} else {
+				title += "\n" + strings.TrimSpace(l)
+			}
+		}
+		if title != "" {
+			p.docTitle = title
 		}
 		return nil, next
 	}
@@ -1244,6 +1260,20 @@ func (p *parser) parseComment(lines []string, i, lineBase int, rest string) ([]d
 // embedded URI, both of which already set id correctly — so this
 // specific construct's own gap stayed invisible until a fixture combined
 // it with a substitution reference).
+// blankLinesAfter counts the blank lines immediately following lines[i].
+// gatherExplicitBody drops them, and a directive whose ARGUMENT block may
+// continue onto the next line cannot tell an argument continuation from
+// content without knowing whether one was there -- ".. class:: c1" plus a
+// blank line plus indented text is an argument and its content, while
+// ".. class:: c1" with ":no-index:" right under it is one argument block.
+func blankLinesAfter(lines []string, i int) int {
+	n := 0
+	for j := i + 1; j < len(lines) && isBlankStr(lines[j]); j++ {
+		n++
+	}
+	return n
+}
+
 // unindentWarning is the "<what> ends without a blank line; unexpected
 // unindent." WARNING docutils raises when a construct is interrupted by
 // a line that is neither blank nor indented under it.

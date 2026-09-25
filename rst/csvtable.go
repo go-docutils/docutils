@@ -85,6 +85,22 @@ func (p *parser) runCSVTableDirective(lines []string, i, next, lineBase int, arg
 
 	title, titleMsgs := p.parseTableTitle(args, lineno)
 
+	// A diagnostic raised inside a cell reports the directive's content
+	// OFFSET -- one less than the first content line's number -- plus the
+	// line index WITHIN THE CELL. The ROW does not enter into it: docutils
+	// hands each cell to nested_parse as its own StringList starting at
+	// zero, so two cells in different rows report the same line and two
+	// lines of one quoted cell report different ones. Traced on the
+	// reference (wrapping Reporter.system_message to print the line it is
+	// handed): 5, 5, 5, 4, 8 for a role in row one, in row two, on the
+	// second line of a quoted cell, with no option block, and further
+	// down the document.
+	//
+	// That is exactly what a lineBase of contentOffset-1 gives, so the
+	// cells need no special line machinery -- only the base this used to
+	// pass as -1, leaving every diagnostic in every csv table with no
+	// line at all.
+	cellBase := msgLine(bodyStartIndex(lines, i)+len(body)-len(content), lineBase) - 2
 	cellEntry := func(text string) *doctree.Node {
 		container := doctree.NewElement(doctree.TagDocument)
 		// splitLines, not one line holding newlines: a QUOTED csv cell may
@@ -99,7 +115,7 @@ func (p *parser) runCSVTableDirective(lines []string, i, next, lineBase int, arg
 		//
 		// -- the opening quote alone on the line, which PEP 578 does --
 		// began with an EMPTY line inside the paragraph.
-		p.parseBlockLines(splitLines(text), container, -1)
+		p.parseBlockLines(splitLines(text), container, cellBase)
 		entry := doctree.NewElement(doctree.TagEntry, container.Children...)
 		var n doctree.Node = entry
 		return &n
