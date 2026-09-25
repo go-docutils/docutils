@@ -30,7 +30,13 @@ rejected outright rather than treated as a valid ordinal, `enumtype`/
 `prefix`/`suffix`/`start` attributes, and the "start value not
 ordinal-1" INFO + "ends without a blank line" WARNING diagnostics (both
 land as SIBLINGS of the `<enumerated_list>`, never nested inside it,
-matching `self.parent += msg` read directly) — enumerator-sequence
+matching `self.parent += msg` read directly; the start-value INFO's own
+LINE is the list's, absolute — docutils raises it with
+`base_node=enumlist`, and `Reporter.system_message` reads that node's own
+`source`/`line` instead of consulting its cursor at all, v0.136.6: passing
+the index within the current nesting level is the same number only at the
+top level, and seven real-world corpus files had a nested list saying
+`line="1"` for a list on line 704) — enumerator-sequence
 validation WITHIN an already-started list (docutils errors on a
 non-consecutive ordinal mid-list; this parser's own continuation check
 already requires exact `+1`, so a gap just ends the list instead of
@@ -1133,17 +1139,27 @@ further down arrived in v0.133.0 and now covers seventeen. **Still not
 dispatched**: `contents` and `date`.
 
 `include` and `raw`'s `:file:`/`:url:` forms are a DELIBERATE non-target,
-and the real-world corpus makes the reason visible: ten of its files use
+and the real-world corpus makes the reason visible: eleven of its files use
 `.. include::`, and docutils reports each as
 `Problems with "include" directive path: InputError: [Errno 2] No such
 file or directory: '...'` — because the corpus flattens every file into
 one directory, so every relative path is broken. Matching that output
 would mean doing file I/O *and* reproducing the text of a Python
 `OSError`. This package emits its own unknown-directive diagnostics
-instead, which is why those ten files stay mismatched and will: the
+instead, which is why those eleven files stay mismatched and will: the
 divergence is the corpus's own arrangement meeting a scope boundary, not
 a defect. A consumer that wants inclusion resolves it before parsing, or
 after, with the tree in hand.
+
+As of v0.136.6 those eleven are **the whole remainder**: 1553 of the 1564
+files match, and every mismatch left is one of them. That is the corpus's
+floor, not the parser's — implementing `include` faithfully would make
+these files diverge MORE, since a working inclusion produces the included
+content where the recorded expectation is an error about a path the corpus
+itself broke. Further fidelity work needs a corpus whose files sit where
+they were written, or the testsuite side (572 of 579, the two left being a
+global-state artefact in `test_role.py` and one `test_section_headers.py`
+overline case).
 
 **Five `Options` fields decide whether a docutils behaviour that is NOT
 part of parsing happens at parse time here**, and each default follows
