@@ -663,17 +663,30 @@ bare `pep-123`/`RFC 123` text with no `:PEP:`/`:RFC:` role markup at all
 own `pep_references`/`rfc_references` settings default to **off**, so
 implementing this unconditionally would diverge from upstream's own
 default rather than fill a real gap; the `:PEP:`/`:RFC:` roles
-themselves ARE ported, see above), and an unknown
-interpreted-text role's rewrite to `problematic` — deliberately, not for
-lack of the machinery: this parser has a real role registry now (see
-`.. role::` below), which resolves exactly what it needs to (a custom
-role's own `raw` indirection), but this project chose not to also start
-rewriting every OTHER unrecognized name to `problematic`, since that
-would be a real leniency REGRESSION for any document using a role this
-parser has simply never heard of (a Sphinx/extension role, say) rather
-than a gap filled — real docutils always errors there, this parser
-still doesn't, on purpose. **That leniency covers the role being
-UNRECOGNIZED, not the role markup being malformed**: the two syntax
+themselves ARE ported, see above), and — see
+`Options.ReportUnknownRoles`, which defaults TRUE — an unknown
+interpreted-text role's rewrite to `problematic`, the leniency this
+paragraph used to describe as permanent now being the flag's `false`
+side, for a consumer that would rather keep a Sphinx `:doc:` reference as
+text.
+
+Eleven role names are KNOWN and still error, which is a third case
+neither "unknown" nor "implemented" (v0.136.0+): docutils binds
+`anonymous-reference`, `citation-reference`, `footnote-reference`,
+`index`, `named-reference`, `substitution-reference`, `target`,
+`uri-reference` and the aliases `i`, `uri`, `url` to
+`roles.unimplemented_role`, so the lookup SUCCEEDS and the role then
+raises `Interpreted text role "..." not implemented.` with no lookup INFO
+in front of it. This package knew one of the eleven and rendered the rest
+as a bare `<inline role="...">`, silently accepting `` :index:`word` ``,
+which three sphinx corpus files write. The twelfth name,
+`restructuredtext-unimplemented-role`, is the exception that says the set
+cannot be derived from the registry alone: it is in the registry and NOT
+in the language module, so its lookup misses first and it draws the INFO
+too.
+
+**The unknown-role leniency covers the role being UNRECOGNIZED, not the
+role markup being malformed**: the two syntax
 errors docutils raises in `interpreted_or_phrase_ref` *before* it
 resolves the role at all ARE ported (v0.54.0+) — a role in both
 positions at once (`` :a:`x`:b: ``,

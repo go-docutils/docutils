@@ -87,7 +87,19 @@ func (p *parser) runCSVTableDirective(lines []string, i, next, lineBase int, arg
 
 	cellEntry := func(text string) *doctree.Node {
 		container := doctree.NewElement(doctree.TagDocument)
-		p.parseBlockLines([]string{text}, container, -1)
+		// splitLines, not one line holding newlines: a QUOTED csv cell may
+		// span several source lines, and docutils hands the cell to
+		// nested_parse as "cell.splitlines()" -- a block. Passing the whole
+		// value as a single line kept its own newlines inside the
+		// paragraph's text, so a cell written
+		//
+		//	``compile``, ``exec``, "
+		//	Detect dynamic code compilation, ...
+		//	"
+		//
+		// -- the opening quote alone on the line, which PEP 578 does --
+		// began with an EMPTY line inside the paragraph.
+		p.parseBlockLines(splitLines(text), container, -1)
 		entry := doctree.NewElement(doctree.TagEntry, container.Children...)
 		var n doctree.Node = entry
 		return &n
