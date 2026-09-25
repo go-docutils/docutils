@@ -1357,6 +1357,32 @@ stripped. Without the expansion a leading tab counted as ZERO indent,
 so a tab-indented block escaped whatever construct it belonged to —
 sphinx's C-domain documentation indents with tabs.
 
+Two different questions are asked about that indentation, and this package
+had collapsed them into one (v0.135.0). "Is this line indented?" is
+`line[0] != ' '` — a PLAIN space. "How deep is it?" is
+`len(line) - len(line.lstrip())`, and `str.lstrip()` strips every Unicode
+whitespace character, a NO-BREAK SPACE included. pytest's own
+documentation has a literal block whose first line reads
+`"     pytest …"`: one plain space deep by the first test, five
+CHARACTERS deep by the second, and docutils dedents all five — counting
+plain spaces dedented one, leaving four characters of phantom indentation
+in a block that preserves it. The two cannot be merged in either
+direction: a line indented with NO-BREAK SPACES ALONE is not indented at
+all, so a block quote written that way is an ordinary paragraph and a
+literal block is "expected; none found". The count is in CHARACTERS,
+because the dedent that follows removes the same units the minimum was
+taken in.
+
+All three messages an unknown role raises quote the role AS THE AUTHOR
+WROTE IT (v0.135.0) — `roles.role` builds two of them from its own
+`role_name` and `Inliner.interpreted` the third from `role`. The
+lowercased spelling is for LOOKUP only, and quoting it made
+`` :Class:`x` `` report "class". The two DIRECTIVE paths that raise the
+same pair (`.. role::` with an unknown base, `.. default-role::` with an
+unknown name) already had it right, which is how one corpus file and one
+capital letter showed that two of three call sites agreed and the third
+did not.
+
 An inline literal whose whole content is a LONE BACKSLASH — ``` ``\`` ```,
 which is how PEP 12 documents line continuations — is a literal, not a
 `<problematic>` (v0.103.0+). Inside a literal a backslash is not an

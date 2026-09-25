@@ -1066,7 +1066,13 @@ func (p *parser) roleElement(role string, contentRunes []rune, rawSource string)
 	// unknown-DIRECTIVE fallback hit with ".. raw::" in v0.68.0.
 	_, registered := p.roles[name]
 	if p.opts.ReportUnknownRoles && rawSource != "" && !registered && !p.isKnownRoleName(name) {
-		return p.unknownRoleProblematic(name, rawSource)
+		// `role`, not `name`: every one of these three messages quotes the
+		// role AS WRITTEN (roles.role's own "role_name", and
+		// Inliner.interpreted's own `role`), so ":Class:`x`" says "Class".
+		// The lowercased form is for LOOKUP only. The two directive paths
+		// that raise the same pair already had this right, which is how
+		// the corpus caught it: one file, one capital letter.
+		return p.unknownRoleProblematic(role, rawSource)
 	}
 	el := doctree.NewElement(doctree.TagInline, &doctree.Text{Data: unescapeRunes(contentRunes)})
 	el.SetAttr("role", name)

@@ -107,12 +107,15 @@ func consumeIndentedRun(lines []string, i int) ([]string, int) {
 			j++
 			continue
 		}
-		ls := leadingSpaces(lines[j])
-		if ls == 0 {
+		// Two different questions, as in collectLiteralIndented: whether
+		// the line is indented at all is a PLAIN space (leadingSpaces),
+		// how deep it is counts Unicode whitespace in CHARACTERS
+		// (leadingWhitespaceWidth) -- see that helper's doc comment.
+		if leadingSpaces(lines[j]) == 0 {
 			break
 		}
-		if minIndent == -1 || ls < minIndent {
-			minIndent = ls
+		if w := leadingWhitespaceWidth(lines[j]); minIndent == -1 || w < minIndent {
+			minIndent = w
 		}
 		j++
 	}
@@ -125,7 +128,7 @@ func consumeIndentedRun(lines []string, i int) ([]string, int) {
 			block = append(block, "")
 			continue
 		}
-		block = append(block, lines[k][minIndent:])
+		block = append(block, trimLeadingRunes(lines[k], minIndent))
 	}
 	return block, j
 }
