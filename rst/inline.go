@@ -945,6 +945,33 @@ func tryRoleName(runes []rune, from int) (name string, after int, ok bool) {
 // (pep_reference_role/rfc_reference_role) are NOT simple tag aliases —
 // each has its own real validation/class-list logic — see roleElement's
 // own dispatch for those, codeRoleElement, pepRole, rfcRole.
+// unimplementedRoles is docutils' own registry entries bound to
+// roles.unimplemented_role, plus the aliases the English language module
+// maps onto them ("i" for index, "uri"/"url" for uri-reference). Every one
+// is a KNOWN role name -- roles.role() finds it -- and every one then
+// raises 'Interpreted text role "..." not implemented.', so the
+// construct becomes a <problematic> with no INFO in front of it.
+//
+// This package knew exactly ONE of them
+// ("restructuredtext-unimplemented-role", the only one whose name is
+// absent from the language module and so ALSO draws the lookup INFO) and
+// rendered the other ten as a bare <inline role="...">, silently
+// accepting ":index:`word`" -- which three sphinx corpus files write.
+var unimplementedRoles = map[string]bool{
+	"anonymous-reference":                 true,
+	"citation-reference":                  true,
+	"footnote-reference":                  true,
+	"i":                                   true,
+	"index":                               true,
+	"named-reference":                     true,
+	"restructuredtext-unimplemented-role": true,
+	"substitution-reference":              true,
+	"target":                              true,
+	"uri":                                 true,
+	"uri-reference":                       true,
+	"url":                                 true,
+}
+
 var roleTags = map[string]string{
 	"emphasis":        doctree.TagEmphasis,
 	"strong":          doctree.TagStrong,
@@ -1021,6 +1048,17 @@ func (p *parser) roleElement(role string, contentRunes []rune, rawSource string)
 					"The \"raw\" role cannot be used directly.\n"+
 					"Instead, use the \"role\" directive to create a new role with an associated format.")
 		}
+	}
+	if unimplementedRoles[name] && p.opts.ReportUnknownRoles && rawSource != "" {
+		// "restructuredtext-unimplemented-role" is the one name the
+		// language module does NOT list, so its lookup misses first and
+		// the INFO pair comes with it; the other ten are found and go
+		// straight to the error. Both verified against the reference.
+		if strings.EqualFold(name, "restructuredtext-unimplemented-role") {
+			return p.unknownRoleProblematic(role, rawSource)
+		}
+		return p.problematicMessage("3", "ERROR", rawSource,
+			`Interpreted text role "`+role+`" not implemented.`)
 	}
 	if tag, ok := roleTags[name]; ok {
 		return doctree.NewElement(tag, &doctree.Text{Data: roleText(name, contentRunes)})
