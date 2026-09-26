@@ -1654,14 +1654,19 @@ the message that shows it — docutils raises it with no line argument at
 all, so it is the cursor by construction, and the locally computed value it
 used to carry is the same number only at the top level.
 
-One divergence in that probe is still open, and it is the last one it
-finds: `text` then `::` as a footnote body's own final lines puts
-`Literal block expected; none found.` on the blank line after the footnote,
-where the reference puts it one line further on. The same input in the
-eleven other wrappers, and at the top level, agrees. It is a different
-mechanism — `QuotedLiteralBlock.eof` passes `abs_line_number()` from a
-machine whose input is empty — and naming it would need more witnesses than
-the one shape that shows it.
+The last divergence that probe found is closed too (v0.136.10), and what
+closed it was the fifteen witnesses the previous round said it needed.
+`Literal block expected; none found.` is reported where the nested block
+RUNS OUT, so its line depends on whether the enclosing construct's block
+kept its trailing blank lines — and the two constructs differ:
+`get_first_known_indented` hands a footnote's or citation's block to the
+nested parse WITH them, while `parse_directive_block` trims a directive's.
+So `text` then `::` reports the blank line inside a note or a topic, one
+line further inside a footnote, and two further where two blank lines
+follow. This package trimmed before parsing and gave the directive's
+answer everywhere. **The probe now agrees with the reference on all 348
+cases**, which is the same state both corpora are in: every remaining
+difference is named, and each name has a witness.
 
 A NESTED context (docutils' `match_titles=False`) applies
 `Text.underline`'s own checks IN ORDER (v0.136.9). An underline has no
