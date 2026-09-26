@@ -126,12 +126,16 @@ func (p *parser) runTopicOrSidebar(tag string, lines []string, i, lineBase, next
 			}
 		}
 	}
+	// Topic.run builds the node as "node_class(text, *(titles + messages))"
+	// (body.py, read directly): the title, then the subtitle when there is
+	// one, then EVERY message from both of them, and only then the parsed
+	// content. Siblings is what Table.run does, not this.
+	for _, m := range titleMsgs {
+		el.Append(m)
+	}
 	p.parseBlockLines(content, el, contentLineBase)
 
 	out := []doctree.Node{el}
-	for _, m := range titleMsgs {
-		out = append(out, m)
-	}
 	out = append(out, warnings...)
 	return out
 }

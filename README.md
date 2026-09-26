@@ -863,7 +863,30 @@ block line) at that construct's own point of origin — real docutils'
 `RSTState.paragraph`/`new_subsection`/`parse_attribution`/`field`/
 `line_block_line`/`term` all `return`/`+=` these messages as siblings,
 states.py read directly — NEVER collected into the trailing
-`system-messages` section above. That section is real docutils' own
+`system-messages` section above.
+
+Where "sibling" stops being the rule is a directive's own TITLE argument,
+and docutils decides it PER CONSTRUCT rather than generally (v0.136.11).
+`BaseAdmonition.run` does `admonition_node += title` and then
+`admonition_node += messages`, and only then parses the content into that
+node, so the messages sit between the title and the body.
+`Topic.run` builds `node_class(text, *(titles + messages))` — title,
+subtitle when there is one, then every message from both. But `Table.run`
+really does return `[table_node] + messages`, genuinely siblings, and so
+does `Rubric`. This package applied the table's shape to all of them, which
+put an admonition's, topic's or sidebar's title messages outside the element
+entirely; a 930-case inline probe (30 inline constructs × 31 containers,
+`/Users/Shared/rstcorpus/nestprobe/inlineprobe.py`) found exactly those
+three and left the tables and the rubric alone, which is why the tables are
+now pinned as controls rather than "fixed" too.
+
+The same probe found the other half of the attribution rule:
+`parse_attribution` passes `1 + line_offset` — the attribution's OWN first
+line — to `inline_text`, and this package passed zero, so every inline
+diagnostic in an attribution came out with no line attribute at all. Where
+the messages GO was already right (`Body.block_quote` does
+`elements += messages`, so they are the block quote's siblings). The probe
+now agrees with the reference on all 930 cases. That section is real docutils' own
 `transforms.universal.Messages`, and it wraps only messages with no
 parent at all (`if not msg.parent`, read directly) — an inline-markup
 message already has one the moment it's attached, so it is categorically
