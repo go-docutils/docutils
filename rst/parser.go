@@ -843,11 +843,23 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 		// error and a stray paragraph, where docutils reports the
 		// adornment AND then the title under it.
 		if i == 0 || isBlankStr(lines[i-1]) || i == resumedAfterAdornment {
-			if i+1 < len(lines) && isTransitionLine(lines[i+1]) && !isBlankStr(lines[i]) && leadingSpaces(lines[i]) == 0 {
+			if title, underline, warn, ok := nestedTitleAttempt(lines, i, resumedAfterAdornment); ok {
 				// An adornment directly under a single line of text is a
 				// TITLE UNDERLINE: both lines are consumed, and the
-				// message is reported against the underline's own line.
-				block := trimTrailingSpace(lines[i]) + "\n" + trimTrailingSpace(lines[i+1])
+				// message is reported against the underline's own line
+				// (checked against the reference with more content after
+				// the attempt: the line stays the underline's, so this one
+				// does NOT come from the frozen cursor).
+				block := title + "\n" + underline
+				if warn {
+					// Text.underline appends the too-short WARNING to its
+					// own `messages` and emits it BEFORE the error, in the
+					// match_titles=False branch as much as elsewhere
+					// (states.py, read directly). This path had the error
+					// and not the warning.
+					parent.Append(sectionMessage("2", "WARNING", "Title underline too short.",
+						msgLine(i+1, lineBase), block))
+				}
 				parent.Append(sectionMessage("3", "ERROR", "Unexpected section title.",
 					msgLine(i+1, lineBase), block))
 				i += 2
@@ -873,9 +885,29 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 				parent.Append(sectionMessage("1", "INFO",
 					"Unexpected possible title overline or transition.\nTreating it as ordinary text because it's so short.",
 					msgLine(i, lineBase), ""))
-				// deliberately no `continue`: the line falls through to
-				// the paragraph handling below, which is what "treating
-				// it as ordinary text" means.
+				// "Ordinary text" means the line goes back through the
+				// dispatch, not that it becomes a paragraph: state_correction
+				// calls previous_line() and re-raises into the Body state,
+				// where the demoted line can be a TITLE's own text with the
+				// adornment below it as its underline. At the top level that
+				// is the bubble-up matchTitle's own `demoted` flag already
+				// models ("..." over "..." is a section); here it is the
+				// same construct meeting match_titles=False, so it is the
+				// ERROR instead -- 11 of the 348 probe shapes, where this
+				// swallowed both lines into one paragraph.
+				if title, underline, warn, ok := nestedTitleAttempt(lines, i, i); ok {
+					block := title + "\n" + underline
+					if warn {
+						parent.Append(sectionMessage("2", "WARNING", "Title underline too short.",
+							msgLine(i+1, lineBase), block))
+					}
+					parent.Append(sectionMessage("3", "ERROR", "Unexpected section title.",
+						msgLine(i+1, lineBase), block))
+					i += 2
+					continue
+				}
+				// Otherwise the line really does fall through to the
+				// paragraph handling below.
 			}
 		}
 		if isDefinitionTermLine(lines, i) {
@@ -1606,6 +1638,49 @@ func (p *parser) freezeSMLine(line int) func() {
 		p.smFreeze = line
 	}
 	return func() { p.smFreeze = saved }
+}
+
+// nestedTitleAttempt answers Text.underline's own question for a NESTED
+// (match_titles=False) context: are lines[i]/lines[i+1] a title and its
+// underline, and does the pair also draw the too-short WARNING?
+//
+// The underline has NO minimum length -- docutils' underline pattern is
+// the `line` pattern, one punctuation character repeated, so a
+// three-character rule under a three-character title is a title. This
+// package tested isTransitionLine, whose four-character floor belongs to
+// TRANSITIONS, so "dup" over "===" inside a block quote came out as a
+// paragraph where the reference reports "Unexpected section title." --
+// four of the shapes in a 276-case nesting probe, and none of them
+// anywhere in either corpus.
+//
+// The width rule is the reference's own first check, and it comes BEFORE
+// the match_titles one: a title WIDER than its underline is not a title
+// when the underline is under four characters (TransitionCorrection sends
+// both lines back as ordinary text, which is why "Title" over "===" is a
+// paragraph in every context), and merely too short above that.
+func nestedTitleAttempt(lines []string, i, resumedAfterAdornment int) (title, underline string, warn, ok bool) {
+	if i+1 >= len(lines) || isBlankStr(lines[i]) || leadingSpaces(lines[i]) != 0 {
+		return "", "", false, false
+	}
+	if _, isLine := isUniformLine(lines[i+1]); !isLine {
+		return "", "", false, false
+	}
+	// A uniform FIRST line is an overline, not a title: at a block start
+	// docutils dispatches Body.line before Body.text, so that pair belongs
+	// to the Line state. It can only be a title's own text here if it has
+	// just been demoted and handed back.
+	if _, selfLine := isUniformLine(lines[i]); selfLine && i != resumedAfterAdornment {
+		return "", "", false, false
+	}
+	title = trimTrailingSpace(lines[i])
+	underline = trimTrailingSpace(lines[i+1])
+	if ColumnWidth(title) > len([]rune(underline)) {
+		if len([]rune(underline)) < 4 {
+			return "", "", false, false
+		}
+		warn = true
+	}
+	return title, underline, warn, true
 }
 
 func msgLine(pos, lineBase int) int {

@@ -678,14 +678,16 @@ which used to always report `line="1"` regardless of its real position
 in the document, an index local to the outer topic/sidebar's own
 rebased content rather than the real document; `runTopicOrSidebar`'s
 own doc comment has the derivation for computing a real absolute line
-for topic/sidebar content specifically). A bare hyperlink target or
-generic directive interrupted the same way is still missing this one
-diagnostic even though the construct itself is correctly captured, and
-still always reports a placeholder line number when nested (the
-broader "any nested directive gets a real absolute line number, not
-just topic/sidebar" undertaking — parser.go's own `parseBlockLines`
-now threads a real `lineBase` when its caller can compute one, but
-topics.go is still the only caller that does). A diagnostic about a
+for topic/sidebar content specifically). The "nested constructs report a
+placeholder line" claim this paragraph used to make is no longer true, and
+what replaced it is a MEASUREMENT rather than a claim: a differential probe
+of 348 cases — 29 diagnostic-producing snippets crossed with 12 nesting
+wrappers (block quote, bullet item, enumerated item, definition and field
+bodies, note, topic, sidebar, footnote body, and three nested-twice
+shapes), at `/Users/Shared/rstcorpus/nestprobe` — agrees with the reference
+on 347 of them. Neither corpus contains ANY of these shapes, which is why a
+probe was needed at all: both corpora read the same before and after every
+fix it found. A diagnostic about a
 construct's own missing content names the LAST LINE THE BLOCK CONSUMED,
 which for a blank-terminated block is the blank line itself; since
 docutils consumes and counts trailing blank lines too (`.. [c]\n\n`
@@ -1642,10 +1644,39 @@ instead. For a top-level paragraph that is `max(firstLine+1, lastLine)`:
 continuation, then stops on the last line of the block it read. Three
 earlier attempts guessed a single formula for both and were each
 contradicted by the next probe; what settled it was instrumenting the
-reference rather than re-reading it. Inside a NESTED block the enclosing
-block's own extent clamps the value, and that extent is not threaded
-through the recursion — so a duplicate inside a block quote or a list
-item still reports this parser's ordinary line.
+reference rather than re-reading it. Inside a NESTED block the position is the enclosing
+block's own end, which is what `smFreeze` holds. That end includes the
+blank line(s) that TERMINATED the block, because `get_indented` reads them
+and leaves the cursor on the last one (v0.136.9): a message taking its line
+from the cursor was one line early inside a directive or footnote body, and
+two early where two blank lines followed. `Citation content expected.` is
+the message that shows it — docutils raises it with no line argument at
+all, so it is the cursor by construction, and the locally computed value it
+used to carry is the same number only at the top level.
+
+One divergence in that probe is still open, and it is the last one it
+finds: `text` then `::` as a footnote body's own final lines puts
+`Literal block expected; none found.` on the blank line after the footnote,
+where the reference puts it one line further on. The same input in the
+eleven other wrappers, and at the top level, agrees. It is a different
+mechanism — `QuotedLiteralBlock.eof` passes `abs_line_number()` from a
+machine whose input is empty — and naming it would need more witnesses than
+the one shape that shows it.
+
+A NESTED context (docutils' `match_titles=False`) applies
+`Text.underline`'s own checks IN ORDER (v0.136.9). An underline has no
+minimum length — the pattern is the `line` pattern, one punctuation
+character repeated — so `dup` over `===` is a title attempt and draws
+`Unexpected section title.`; this package tested its transition predicate
+instead, whose four-character floor belongs to transitions, and produced a
+paragraph. The width rule runs BEFORE the match_titles one: a title wider
+than an under-four-character underline is not a title in any context
+(`TransitionCorrection` sends both lines back as text), and above that it
+is merely too short, where the WARNING is emitted BEFORE the error. And a
+DEMOTED short adornment comes back through the dispatch as a title's own
+text, so `...` over `===` draws the "so short" INFO and then the error,
+where both lines used to be swallowed into one paragraph — the same
+bubble-up that makes the pair a real section at the top level.
 
 An **adornment-shaped line is never a CONTINUING definition term**
 (v0.86.0+): the list ends there on the unindent (with the usual

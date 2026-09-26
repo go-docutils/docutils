@@ -369,7 +369,15 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label,
 		// that was still passing the -1 "unknown" sentinel and so
 		// emitting every inline diagnostic in a footnote body with NO
 		// line attribute at all.
+		// The same freeze the directive body sets, for the same reason: a
+		// diagnostic raised INSIDE this body and taking its line from the
+		// document cursor must see where the FOOTNOTE ended, blank line
+		// included, not where its content did. parseBlockLines would
+		// otherwise freeze at the content's own last line (it is the
+		// outermost frame that sets it, so setting it here wins).
+		restore := p.freezeSMLine(lastConsumedLine(lines, next, lineBase))
 		p.parseBlockLines(content, el, i+lineBase)
+		restore()
 	} else {
 		// next-1, NOT next: this warning carries the line the construct
 		// itself ENDED on (the last line it actually consumed), where
@@ -384,7 +392,19 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label,
 		// no footnote fixture in the corpus has an empty body, so the
 		// identical bug on that side went uncaught until citations
 		// surfaced it.
-		el.Append(sectionMessage("2", "WARNING", contentKind+" content expected.", msgLine(next-1, lineBase), ""))
+		//
+		// docutils passes NO line here at all -- reporter.warning(
+		// 'Citation content expected.') -- so system_message falls back to
+		// the state machine's own position. Where a construct encloses this
+		// one, that position is the ENCLOSING block's end, which is what
+		// smFreeze holds; the locally computed value is the same number
+		// only at the top level, which is why the three shapes above were
+		// verified there and the nested ones still came out one line early.
+		line := msgLine(next-1, lineBase)
+		if p.smFreeze != 0 {
+			line = p.smFreeze
+		}
+		el.Append(sectionMessage("2", "WARNING", contentKind+" content expected.", line, ""))
 	}
 	nodes := []doctree.Node{el}
 	// Real docutils chains a whole RUN of explicit-markup constructs
@@ -951,7 +971,7 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 	// raised inside it reports the SECOND of those. Freezing from the
 	// content's own parseBlockLines frame gave the content's last line
 	// instead. See parser.smFreeze.
-	defer p.freezeSMLine(msgLine(next-1, lineBase))()
+	defer p.freezeSMLine(lastConsumedLine(lines, next, lineBase))()
 	if strings.EqualFold(name, "replace") || strings.EqualFold(name, "date") {
 		// Real docutils' Replace.run (misc.py, read directly) is only
 		// ever invoked FROM WITHIN a substitution definition's own
@@ -1267,6 +1287,27 @@ func (p *parser) parseComment(lines []string, i, lineBase int, rest string) ([]d
 // content without knowing whether one was there -- ".. class:: c1" plus a
 // blank line plus indented text is an argument and its content, while
 // ".. class:: c1" with ":no-index:" right under it is one argument block.
+// lastConsumedLine is where docutils' DOCUMENT-level state machine stops
+// after collecting a construct's block: the last line it actually
+// consumed, which includes the blank line(s) that TERMINATED the block --
+// get_indented reads them and leaves the cursor on the last one. next-1
+// alone is the block's last CONTENT line, which is the same number only
+// when nothing blank followed.
+//
+// This matters wherever a diagnostic takes its line from the cursor
+// rather than from an argument (see parser.smFreeze): a 216-case probe --
+// 18 diagnostic-producing snippets by 12 nesting wrappers -- found five
+// shapes off by one, all of them "Citation content expected." inside a
+// directive or footnote body, and one of them off by TWO where the
+// directive was followed by two blank lines.
+func lastConsumedLine(lines []string, next, lineBase int) int {
+	last := next - 1
+	if last < 0 {
+		last = 0
+	}
+	return msgLine(last+blankLinesAfter(lines, last), lineBase)
+}
+
 func blankLinesAfter(lines []string, i int) int {
 	n := 0
 	for j := i + 1; j < len(lines) && isBlankStr(lines[j]); j++ {
