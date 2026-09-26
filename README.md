@@ -1715,6 +1715,20 @@ becoming an `"Incomplete section title."` ERROR — so two items that look
 like one list are two. It may still OPEN a list, which is exactly what a
 demoted short adornment does.
 
+One node is excluded from the name machinery for a reason the other
+exclusions do not cover: the `<directive>` placeholder this package builds
+for a directive it does not implement (only under
+`ReportUnknownDirectives: false`). docutils has no such node, and its `name`
+attribute is the DIRECTIVE's own name, so letting it claim a target made any
+document that uses `.. deprecated::` AND has a target or section called
+"Deprecated" collide with itself (v0.136.12). One overloaded attribute, three
+wrong things: the directive lost its name — a consumer rebuilding the source
+then wrote `.. :: 9.1`, which reads back as a COMMENT, which is how this was
+found — a `Duplicate explicit target name` WARNING was fabricated, and the
+REAL target was invalidated so every reference to it dangled. Neither corpus
+can see it, since both run with the default options where that node does not
+exist; the witness is `go-richdoc/rst`, 53 of its 1564 files.
+
 **Duplicate reference names** are diagnosed and resolved (`dupnames.go`,
 v0.57.0+), a full port of docutils' own `set_duplicate_name` transition
 table. What happens when two elements claim one name depends on whether
