@@ -109,17 +109,26 @@ func (p *parser) runAdmonitionOrGeneric(tag, requireArg string, lines []string, 
 			el.SetAttr("class", "admonition-"+makeID(argument))
 		}
 	}
+	// BaseAdmonition.run appends the title's own inline-markup messages to
+	// the admonition NODE, right after the title and before its content is
+	// parsed into it ("admonition_node += title; admonition_node +=
+	// messages", admonitions.py, read directly). They are NOT siblings
+	// here, which is where this package put them -- a per-construct
+	// difference, not a general rule: Table.run really does return
+	// "[table_node] + messages" (tabledirective.go), and a 930-case inline
+	// probe agrees with the reference on every table title for exactly that
+	// reason.
+	for _, m := range titleMsgs {
+		el.Append(m)
+	}
+
 	// combined[k] is lines[i+k] one for one -- it was built from the
 	// same slice -- so the content's own first line is lines[i+contentStart]
 	// and a real base can be handed down. Every diagnostic raised inside
 	// an admonition's body used to carry no line at all.
 	p.parseBlockLines(content, el, nestedLineBase(i+contentStart, lineBase))
 
-	out := []doctree.Node{el}
-	for _, m := range titleMsgs {
-		out = append(out, m)
-	}
-	return out
+	return []doctree.Node{el}
 }
 
 // parseDirectiveBlock mirrors Body.parse_directive_block +

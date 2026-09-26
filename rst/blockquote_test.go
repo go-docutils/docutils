@@ -134,3 +134,42 @@ func TestBlockQuoteAttribution(t *testing.T) {
 		})
 	}
 }
+
+// TestAttributionInlineMessagesCarryItsLine pins the line an inline
+// diagnostic raised in an ATTRIBUTION reports. parse_attribution passes
+// "1 + line_offset" -- the attribution's own first line -- to inline_text
+// (states.py, read directly), and this package passed zero, so every such
+// message came out with no line attribute at all. The messages themselves
+// were already in the right place: Body.block_quote does
+// "elements += messages", so they are siblings of the block quote, which
+// is the half a 930-case inline probe found already correct.
+//
+// The second case is what makes the derivation specific: a block quote
+// several lines deep still reports the ATTRIBUTION's line, not the quote's
+// own, and not the document's last.
+func TestAttributionInlineMessagesCarryItsLine(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{"a one-line quote", "intro\n\n   quoted text\n\n   -- a :nosuch:`x` b\n\nlast\n", `line="5"`},
+		{"a longer quote pushes the attribution down", "intro\n\n   one\n\n   two\n\n   three\n\n   -- a *unclosed b\n\nlast\n", `line="9"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dump := doctree.Dump(Parse(tc.source))
+			if !strings.Contains(dump, "<system_message") {
+				t.Fatalf("no diagnostic at all:\n%s", dump)
+			}
+			if !strings.Contains(dump, tc.want) {
+				t.Errorf("missing %s:\n%s", tc.want, dump)
+			}
+			if strings.Contains(dump, `<system_message level="1" type=`) ||
+				strings.Contains(dump, `<system_message level="2" type=`) ||
+				strings.Contains(dump, `<system_message level="3" type=`) {
+				t.Errorf("a diagnostic came out with NO line attribute:\n%s", dump)
+			}
+		})
+	}
+}

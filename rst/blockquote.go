@@ -58,7 +58,13 @@ func (p *parser) blockQuotesFromBlock(indented []string, i, lineBase int) []*doc
 		out = append(out, bq)
 		if attrLines != nil {
 			text := joinTrimmed(attrLines)
-			attrNodes, attrMsgs := p.parseInline(text, 0)
+			// parse_attribution passes "1 + line_offset" -- the
+			// attribution's OWN first line -- to inline_text (states.py,
+			// read directly), and splitAttribution returns everything
+			// before it as bqLines, so that line is i+offset+len(bqLines).
+			// A zero here meant every inline diagnostic in an attribution
+			// came out with no line attribute at all.
+			attrNodes, attrMsgs := p.parseInline(text, msgLine(i+offset+len(bqLines), lineBase))
 			bq.Append(doctree.NewElement(doctree.TagAttribution, attrNodes...))
 			// real docutils' Body.block_quote: "elements += messages" —
 			// the attribution's own inline-markup messages are SIBLINGS of

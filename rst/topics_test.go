@@ -135,3 +135,75 @@ func TestTopicsAndSidebarsNestedLineNumbers(t *testing.T) {
 		})
 	}
 }
+
+// TestTitleMessagesGoInsideTheNode pins WHERE a diagnostic raised while
+// parsing a directive's own title argument lands, which docutils decides
+// per construct rather than by a general rule:
+//
+//   - BaseAdmonition.run: "admonition_node += title; admonition_node +=
+//     messages", then the content is parsed INTO that node, so the
+//     messages sit between the title and the body (admonitions.py);
+//   - Topic.run: "node_class(text, *(titles + messages))" -- title,
+//     subtitle when there is one, then EVERY message from both, then the
+//     content (body.py);
+//   - Table.run: "[table_node] + messages" -- genuinely SIBLINGS, which
+//     is the shape this package applied everywhere.
+//
+// A 930-case inline probe (30 inline constructs x 31 containers,
+// /Users/Shared/rstcorpus/nestprobe/inlineprobe.py) found 12 of the 15
+// divergences here; the three table directives and the rubric argument
+// already agreed, and they are the CONTROLS below, because "move the
+// messages inside" is only right for the constructs whose reference code
+// does it.
+func TestTitleMessagesGoInsideTheNode(t *testing.T) {
+	cases := []struct {
+		name    string
+		source  string
+		inside  string // the tag the messages must be inside
+		msgText string
+	}{
+		{"an admonition's title", ".. admonition:: a :nosuch:`x` b\n\n   body\n", "admonition", `Unknown interpreted text role "nosuch".`},
+		{"a topic's title", ".. topic:: a *unclosed b\n\n   body\n", "topic", "Inline emphasis start-string without end-string."},
+		{"a sidebar's subtitle", ".. sidebar:: T\n   :subtitle: a *unclosed b\n\n   body\n", "sidebar", "Inline emphasis start-string without end-string."},
+		{"CONTROL: a table's title keeps them OUTSIDE", ".. table:: a *unclosed b\n\n   ===  ===\n   a    b\n   ===  ===\n", "", "Inline emphasis start-string without end-string."},
+		{"CONTROL: a list-table's title too", ".. list-table:: a *unclosed b\n\n   * - a\n     - b\n", "", "Inline emphasis start-string without end-string."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dump := doctree.Dump(Parse(tc.source))
+			if !strings.Contains(dump, tc.msgText) {
+				t.Fatalf("the message itself is missing:\n%s", dump)
+			}
+			// The message's own indentation says whether it is inside the
+			// element (deeper than the element's own line) or a sibling of
+			// it (the same depth).
+			var elIndent, msgIndent int
+			for _, line := range strings.Split(dump, "\n") {
+				trimmed := strings.TrimLeft(line, " ")
+				indent := len(line) - len(trimmed)
+				if tc.inside != "" && strings.HasPrefix(trimmed, "<"+tc.inside) {
+					elIndent = indent
+				}
+				if strings.HasPrefix(trimmed, "<system_message") {
+					msgIndent = indent
+				}
+			}
+			if tc.inside == "" {
+				// A sibling of the table sits at document depth, 4 spaces.
+				if msgIndent != 4 {
+					t.Errorf("a table's title message should stay a SIBLING (indent 4), got %d:\n%s", msgIndent, dump)
+				}
+				return
+			}
+			if msgIndent <= elIndent {
+				t.Errorf("message at indent %d is not inside <%s> at indent %d:\n%s", msgIndent, tc.inside, elIndent, dump)
+			}
+			// And it must precede the body, not follow it.
+			bodyAt := strings.Index(dump, "\n            body")
+			msgAt := strings.Index(dump, tc.msgText)
+			if bodyAt >= 0 && msgAt > bodyAt {
+				t.Errorf("the message follows the body; docutils puts it before:\n%s", dump)
+			}
+		})
+	}
+}
