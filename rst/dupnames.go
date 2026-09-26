@@ -47,11 +47,29 @@ import (
 // opposite reason: it has its own duplicate rule in Body.substitution_def
 // (where the LATER definition wins and the earlier one is invalidated),
 // not this one.
+//
+// <directive> is excluded for a third reason: docutils has no such node at
+// all. It is this package's own placeholder for a directive it does not
+// implement (ReportUnknownDirectives=false, see parseDirective), and its
+// "name" attribute holds the DIRECTIVE's own name -- "deprecated",
+// "versionadded", "toctree" -- not a target it claims. Letting it in made
+// any document that both uses such a directive and has a target or section
+// named the same word collide with itself: the directive lost its name to
+// dupname (a consumer reconstructing the source then wrote ".. :: 9.1",
+// which reads back as a COMMENT), a "Duplicate explicit target name" WARNING
+// was fabricated, and the real target was invalidated so every reference to
+// it dangled. Three wrong things from one overloaded attribute.
+//
+// Neither corpus can see it, because both run with the default options,
+// where an unimplemented directive is a diagnostic and no <directive> node
+// is built. The witness is go-richdoc/rst, which turns that option OFF --
+// sphinx's ".. deprecated::" plus a "Deprecated" section is an ordinary
+// shape in its corpus.
 func registersName(tag string) bool {
 	switch tag {
 	case doctree.TagReference, doctree.TagFootnoteReference,
 		doctree.TagCitationReference, doctree.TagSubstitutionRef,
-		doctree.TagSubstitutionDef:
+		doctree.TagSubstitutionDef, doctree.TagDirective:
 		return false
 	}
 	return true

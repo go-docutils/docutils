@@ -137,3 +137,49 @@ func TestDuplicateFootnoteNamePlacement(t *testing.T) {
 		t.Errorf("dump =\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// TestDirectiveNameIsNotATargetClaim covers the same rule as
+// TestReferenceNameIsNotATargetClaim for a node docutils does not have at
+// all: the <directive> placeholder this package builds for a directive it
+// does not implement, when a consumer turns ReportUnknownDirectives OFF. Its
+// "name" attribute is the DIRECTIVE's own name, so letting it claim a target
+// made a document collide with itself wherever a target or section is named
+// the same word -- ".. deprecated:: 9.1" plus a "Deprecated" section, which
+// is an ordinary shape in sphinx documentation.
+//
+// One overloaded attribute produced three wrong things, and all three are
+// asserted here: the directive lost its name (a consumer rebuilding the
+// source then wrote ".. :: 9.1", which reads back as a COMMENT -- the loss
+// that surfaced this), a "Duplicate explicit target name" WARNING was
+// fabricated, and the REAL target was invalidated so every reference to it
+// dangled.
+//
+// Neither corpus can see this: both run with the default options, where an
+// unimplemented directive is a diagnostic and no <directive> node exists.
+// The witness is go-richdoc/rst's own corpus measurement, 53 files.
+func TestDirectiveNameIsNotATargetClaim(t *testing.T) {
+	opts := DefaultOptions()
+	opts.ReportUnknownDirectives = false
+	got := doctree.Dump(ParseWithOptions(".. deprecated:: 9.1\n\n.. _deprecated:\n\nHeading\n~~~~~~~\n", opts))
+	for _, want := range []string{
+		`<directive arguments="9.1" name="deprecated">`,
+		`<target id="deprecated" name="deprecated">`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %s:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Duplicate") {
+		t.Errorf("a directive's own name was treated as a target claim:\n%s", got)
+	}
+	if strings.Contains(got, "dupname") {
+		t.Errorf("something was invalidated that claimed nothing:\n%s", got)
+	}
+	// The CONTROL, in the same configuration: a real duplicate between two
+	// explicit targets must still be caught, or "stop claiming" would have
+	// become "stop checking".
+	ctl := doctree.Dump(ParseWithOptions(".. _dup: http://a/\n\n.. _dup: http://b/\n", opts))
+	if !strings.Contains(ctl, `Duplicate explicit target name: "dup".`) {
+		t.Errorf("a real duplicate went unreported:\n%s", ctl)
+	}
+}
