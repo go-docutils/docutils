@@ -299,3 +299,56 @@ func TestNestedTitleAttempt(t *testing.T) {
 		})
 	}
 }
+
+// TestLiteralBlockExpectedLine is the last divergence the 348-case nesting
+// probe found, and the one the previous round named instead of guessing:
+// "text" then "::" with no literal block under it reports
+// "Literal block expected; none found." where the nested block RUNS OUT,
+// and that position depends on whether the enclosing construct's block
+// kept its trailing blank lines.
+//
+// docutils hands a footnote's or citation's block to the nested parse WITH
+// them (get_first_known_indented), and a directive's WITHOUT (
+// parse_directive_block trims them) -- so the same input reports the blank
+// line inside a note or a topic, and one line further inside a footnote,
+// two further where two blank lines follow. This package trimmed before
+// parsing, and so gave the directive's answer everywhere.
+//
+// Fifteen shapes were measured before the rule was named; these are all of
+// them, and eleven are CONTROLS in the sense that matters here -- they were
+// already right, and keeping the blanks must not move them.
+func TestLiteralBlockExpectedLine(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   int
+	}{
+		{"footnote body, one blank line after", "intro\n\n.. [9]\n   text\n   ::\n\nlast\n", 7},
+		{"footnote body, TWO blank lines after", "intro\n\n.. [9]\n   text\n   ::\n\n\nlast\n", 8},
+		{"citation body", "intro\n\n.. [c]\n   text\n   ::\n\nlast\n", 7},
+		{"a footnote inside a bullet item", "intro\n\n- .. [9]\n     text\n     ::\n\nlast\n", 7},
+		{"CONTROL: footnote body at EOF, no blank to keep", "intro\n\n.. [9]\n   text\n   ::\n", 6},
+		{"CONTROL: more body after, so the block does not run out", "intro\n\n.. [9]\n   text\n   ::\n\n   more\n\nlast\n", 7},
+		{"CONTROL: a directive's block has its blanks trimmed", "intro\n\n.. note::\n\n   text\n   ::\n\nlast\n", 7},
+		{"CONTROL: and two blank lines do not move it", "intro\n\n.. note::\n\n   text\n   ::\n\n\nlast\n", 7},
+		{"CONTROL: a topic behaves as the note does", "intro\n\n.. topic:: T\n\n   text\n   ::\n\nlast\n", 7},
+		{"CONTROL: top level", "intro\n\ntext\n::\n\nlast\n", 6},
+		{"CONTROL: top level, two blanks", "intro\n\ntext\n::\n\n\nlast\n", 7},
+		{"CONTROL: top level at EOF", "intro\n\ntext\n::\n", 5},
+		{"CONTROL: block quote", "intro\n\n   text\n   ::\n\nlast\n", 6},
+		{"CONTROL: bullet item", "intro\n\n- text\n  ::\n\nlast\n", 6},
+	}
+	re := regexp.MustCompile(`<system_message level="2" line="(\d+)" type="WARNING">\n\s*<paragraph>\n\s*Literal block expected; none found\.`)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dump := doctree.Dump(Parse(tc.source))
+			m := re.FindStringSubmatch(dump)
+			if m == nil {
+				t.Fatalf("no literal-block warning with a line:\n%s", dump)
+			}
+			if got, _ := strconv.Atoi(m[1]); got != tc.want {
+				t.Errorf("line = %d, want %d:\n%s", got, tc.want, dump)
+			}
+		})
+	}
+}

@@ -310,7 +310,22 @@ func isSimpleName(s string) bool {
 // ports it so far).
 func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label, firstLineRest string) ([]doctree.Node, int) {
 	body, blankFinish, next := gatherFootnoteBody(lines, i)
-	content := append([]string{firstLineRest}, body...)
+	// full keeps the body's own trailing blank lines; content drops them.
+	// docutils needs both: get_first_known_indented hands the footnote's
+	// block to the nested parse WITH them (a directive's block has them
+	// trimmed by parse_directive_block, which is why the two constructs
+	// answer differently), so a diagnostic raised when that block RUNS OUT
+	// sits one line past the last blank -- while the "content expected"
+	// test below asks whether anything but blank lines is there at all.
+	//
+	// Measured across fifteen shapes of "text" then "::" with no literal
+	// block under it: at the top level, in a block quote, a bullet item, a
+	// note and a topic, "Literal block expected; none found." lands on the
+	// blank line; in a footnote or citation body it lands one further on,
+	// and two further where two blank lines follow. Trimming before the
+	// parse made this package report the directive's answer everywhere.
+	full := append([]string{firstLineRest}, body...)
+	content := full
 	for len(content) > 0 && isBlankStr(content[len(content)-1]) {
 		content = content[:len(content)-1]
 	}
@@ -376,7 +391,7 @@ func (p *parser) parseFootnoteOrCitation(lines []string, i, lineBase int, label,
 		// otherwise freeze at the content's own last line (it is the
 		// outermost frame that sets it, so setting it here wins).
 		restore := p.freezeSMLine(lastConsumedLine(lines, next, lineBase))
-		p.parseBlockLines(content, el, i+lineBase)
+		p.parseBlockLines(full, el, i+lineBase)
 		restore()
 	} else {
 		// next-1, NOT next: this warning carries the line the construct
