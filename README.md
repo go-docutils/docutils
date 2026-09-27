@@ -1779,6 +1779,30 @@ compares against.
 
 ## Writers
 
+Both writers' CONTENT fidelity is measured over the 1564-file real-world corpus
+for the first time (v0.136.13, `/Users/Shared/rstcorpus/htmlprobe`): every
+character of the tree's own text must appear, in order, in the rendered output.
+The question is deliberately not "does this match docutils' writer", which
+neither writer aims at (see each package's SCOPE note) — it is "does the writer
+DROP anything", since a node with no case in the switch takes its whole subtree
+with it.
+
+`html.Render`: **1564 of 1564**. `latex.Render`: **1551 of 1564**, the
+remainder being escapes that replace a character with a macro
+(`\textasciitilde{}`) and so cannot be compared character for character.
+
+The probe was shown able to FAIL before either number was believed: breaking one
+inline case in the html writer made 493 files report at once.
+
+It also has a blind spot worth naming — it is whitespace-INSENSITIVE, so it
+cannot see words running together. That is exactly the defect reading its output
+found: a LaTeX tabular cell holding a bullet list came out
+"Table cellscontainbody elements.", docutils' own GridTableParser docstring
+example. `doctree.AsText` concatenates every descendant with nothing between,
+which is right for inline content and wrong across blocks.
+
+
+
 **`html`**: `html.Render(doc) string` renders a doctree to an HTML
 **fragment** — body content only, no `<!DOCTYPE>`/`<html>`/`<head>`, no
 stylesheet, no CSS classes or ids beyond the few this parser can
