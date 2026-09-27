@@ -1824,6 +1824,45 @@ found: a LaTeX tabular cell holding a bullet list came out
 example. `doctree.AsText` concatenates every descendant with nothing between,
 which is right for inline content and wrong across blocks.
 
+Validity for the `latex` writer means something the HTML side cannot borrow:
+the output is only a document if a TeX engine can READ it. So the third
+measurement COMPILES all 1564 (`/Users/Shared/rstcorpus/texprobe`, through
+`go-tex/engine`'s `gotex -offline`). **1553 of 1564 compile.** The 11 that do
+not are all named: 8 are EMPTY sources — an empty `.rst` gives a document with
+nothing to typeset, and this engine calls that an error where pdftex only warns
+— and 3 carry the author's own `.. raw:: latex` with sphinx-only markup
+(`\sphinxsetup`, `\dimeval`) or `&` alignment in a formula the reference also
+writes into `equation*`.
+
+Compiling found two defects, and neither was visible to either probe above.
+
+The first is a **control word that swallowed the next word**. A footnote opened
+with `\par\noindent` and its own text followed immediately, so TeX read
+`\noindentFirst` — a backslash takes the LONGEST run of letters — and stopped.
+Every character was present, in order, and in the right container; the document
+just could not be read. 2130 sites in the corpus were correct for an accidental
+reason (a `name` puts a `\hypertarget` next, and its backslash ends the word),
+which is why only 12 files failed. A census of the writer's own vocabulary
+confirmed `\noindent` was the ONLY command it emits that can run into text:
+every other is followed by `{`, a newline, or another backslash.
+
+The second is the math environment. It was hardcoded to `equation*` and
+verified against the reference — on a one-line formula, which exercises one side
+of a rule that BRANCHES. `pick_math_environment` gives `align*` when the formula
+carries a top-level line break, and amsmath rejects `\\` inside `equation*`, so
+a multi-line formula was LaTeX that cannot compile. The rule is ported with its
+`toplevel_code` intact, because the naive reading is wrong for a real case: a
+`\\` inside `\begin{matrix}` stays `equation*`. This corpus has no such
+formula, so the witness comes from running the reference on the three shapes
+rather than from the corpus.
+
+The compile sweep was shown able to fail in both directions: the 12 failures
+went to 0 with the fix and nothing regressed (set-diff, not totals), and making
+the writer emit one bogus command made 912 files report it. Read with
+`-lenient -report-skipped` — which walks the WHOLE document instead of stopping
+at the first error, the way a compile does — the entire corpus leaves exactly
+two undefined commands, both the author's.
+
 
 
 **`html`**: `html.Render(doc) string` renders a doctree to an HTML
