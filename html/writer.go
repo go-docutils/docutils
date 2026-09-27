@@ -275,6 +275,28 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		} else {
 			renderChildren(b, el, headingLevel)
 		}
+	case doctree.TagImage:
+		writeImage(b, el)
+	case doctree.TagFigure:
+		writeFigure(b, el, headingLevel)
+	case doctree.TagCaption:
+		// <p>. The <figcaption> around it is the FIGURE's, not the caption's,
+		// because it has to span the caption AND the legend -- read from
+		// html5_polyglot's own visit_caption/visit_legend/depart_figure, which
+		// OVERRIDE _html_base's (that base emits <div class="figure"> and no
+		// <figcaption> at all, so reading the base alone gives the wrong
+		// answer for this writer).
+		writeTag(b, "p", "", el, headingLevel)
+	case doctree.TagLegend:
+		// docutils' <div class="legend">. The class is out of this writer's
+		// scope, the DIV is not: it is what keeps the legend's paragraphs from
+		// being read as more of the caption.
+		writeTag(b, "div", "", el, headingLevel)
+	case doctree.TagRubric, doctree.TagSubtitle:
+		// <p class="rubric"> / <p class="sidebar-subtitle"> in docutils;
+		// <p> here, for the same reason. A sidebar's subtitle had the same
+		// defect as a rubric: "<h1>Side</h1>Sub<p>Side body.</p>".
+		writeTag(b, "p", "", el, headingLevel)
 	default:
 		renderChildren(b, el, headingLevel)
 	}

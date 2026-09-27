@@ -1863,6 +1863,72 @@ the writer emit one bogus command made 912 files report it. Read with
 at the first error, the way a compile does — the entire corpus leaves exactly
 two undefined commands, both the author's.
 
+### What the writers had no case for at all
+
+Three measures said the writers were sound and a fourth question had never been
+asked: which doctree tags OCCUR in the corpus and have no case in each writer's
+switch, falling through to `default: renderChildren`? A census of all 1564 files
+answers it, and the answer separates into two kinds.
+
+For most of them the TEXT survives and only the container is lost: a `note`
+renders as an indistinguishable paragraph, a `topic`'s title as an `<h1>`. That
+is a presentation question, inside this writer's declared scope, and it is left
+alone — but now measured and named rather than unnoticed.
+
+For four of them it was content loss, and two probes were blind to each:
+
+**An `<image>` has no children, so it rendered as NOTHING.** 130 image nodes in
+47 files, 120 of them outside a `substitution_definition` and therefore meant to
+be rendered. A content probe cannot see one missing — an image carries no text —
+and a content-model probe has nothing to check. Both writers now emit them, and
+**120 of 120 reach the output**. The first sign of this was not a probe at all
+but reading a compiled PDF's LaTeX: `\href{https://github.com/python/peps/actions}{}`,
+a link with no clickable text, which is what PEP's CI badge became once the
+image inside its `:target:` was dropped.
+
+**A block whose children are INLINE lost its boundary.** A `rubric` or a
+`caption` rendered its words with no element around them, so they ran into the
+neighbouring block's: docutils' own `test-markup-rubric` fixture, a run of
+consecutive rubrics, came out as `This is a rubricThis is another`. Every
+character present, in order, in valid HTML. So there is a fourth probe
+(`/Users/Shared/rstcorpus/blockprobe`): text sitting directly inside a
+container, or at the fragment root, belongs to a block that lost its element.
+**35 files and 76 runs before, 0 after.**
+
+The `<img>` output matches the reference byte for byte on every shape tried,
+which took reading `image_size`: a measure with a UNIT becomes a `style`
+declaration and a unitless one a plain attribute, and `:scale:` multiplies
+whichever measures were declared. One branch is deliberately not ported — with
+`:scale:` and fewer than two measures docutils reads the missing dimension out of
+the image FILE, and a writer handed nothing but a doctree has no file to read.
+
+The LaTeX side reads the same attributes differently, which is the kind of thing
+only running the reference tells you: a unitless measure is BIG POINTS
+(`width=200bp`), and a percentage is a fraction of `\linewidth`. Where latex2e
+emits one of its own `DU*` macros this writer emits the FALLBACK DEFINITION
+docutils itself provides for it (`\DUrubric` → `\subsubsection*{\emph{#1}}`,
+`DUlegend` → `{\small …}`), since there is no preamble here to define a macro in.
+Taking docutils' own expansion is the difference between following the reference
+and guessing at it.
+
+Two things are worth stating plainly about the numbers.
+
+`\usepackage{graphicx}` and `\includegraphics` made the compile sweep go DOWN,
+1553 → 1540. Every one of the 13 new failures is a file whose image reference
+nothing local can satisfy: a remote badge URL, a `data:` URI, an absolute
+`/_static/…` path, or sphinx's own `image.*` language glob. The probe now writes
+a placeholder for every reference a local file COULD satisfy — otherwise it
+would be measuring the corpus's asset completeness rather than the writer's
+LaTeX — and reports the four unsatisfiable classes as their own class. docutils'
+latex2e writer emits all four verbatim too, so the drop is the documents saying
+what they reference, not a regression.
+
+The validity probe grew a rule at the same time, because a rule it does not have
+is a rule it passes: `<figure>`'s own content model (at most one `<figcaption>`,
+first or last child) was added when the writer started emitting figures at all,
+and shown able to fail — moving the `<figcaption>` off the end made 20 files
+report.
+
 
 
 **`html`**: `html.Render(doc) string` renders a doctree to an HTML
