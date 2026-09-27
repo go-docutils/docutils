@@ -1657,6 +1657,7 @@ func resolveTargets(doc *doctree.Element, initMsgCount int, reportDangling, reso
 	indirect := map[string]string{}
 	var anonTargets []anonTarget
 	collectTargets(doc, direct, indirect, &anonTargets)
+	chainBareTargets(doc, direct, indirect)
 	targets := map[string]string{}
 	for name := range direct {
 		targets[name] = direct[name]
@@ -2035,4 +2036,110 @@ func targetNameEnd(rest string) int {
 		}
 	}
 	return -1
+}
+
+// chainBareTargets implements the half of PropagateTargets (transforms/
+// references.py) that decides a bare target's DESTINATION rather than its
+// placement: a ".. _name:" with no reference of its own hands its ids and names
+// to the next node, so when that node is another TARGET the name ends up on it
+// and inherits whatever it points at.
+//
+// Asked about
+//
+//	.. _pythondoc:
+//	.. _gendoc: http://example.com/gendoc
+//
+// the reference answers `<reference name="pythondoc"
+// refuri="http://example.com/gendoc">` and
+// `<target ids="gendoc pythondoc" names="gendoc pythondoc" refuri="...">`.
+// collectTargets' own default branch had sent it to "#pythondoc" instead — right
+// for an inline internal target and for one preceding a real node, wrong here,
+// because the two cases wear the same tag and differ only in what FOLLOWS.
+//
+// A bare target chained onto another BARE one is left alone, and that is the
+// reference's answer too, not an omission: for
+//
+//	.. _a:
+//	.. _b:
+//
+//	Section One
+//	===========
+//
+// it gives `<section ids="section-one b a">` with `<reference name="a"
+// refid="a">` -- each name keeps its own id, and the section carries all three,
+// so both fragments land in the same place.
+func chainBareTargets(doc *doctree.Element, direct, indirect map[string]string) {
+	order := targetsInDocumentOrder(doc)
+	for i, el := range order {
+		if !isBareBlockTarget(el) {
+			continue
+		}
+		// Walk forward over the run of targets this one begins. The run's own
+		// LAST member decides: one carrying a reference makes every bare target
+		// before it an alias for it.
+		for j := i + 1; j < len(order); j++ {
+			next := order[j]
+			if next.Tag != doctree.TagTarget {
+				break
+			}
+			if u := next.Attr("refuri"); u != "" {
+				if name := el.Attr("name"); name != "" {
+					direct[name] = u
+					delete(indirect, name)
+				}
+				break
+			}
+			if r := next.Attr("refname"); r != "" {
+				if name := el.Attr("name"); name != "" {
+					// The delete is not tidying: resolveIndirect answers from
+					// "direct" FIRST, so leaving collectTargets' own "#name"
+					// there makes the chain unreachable and the reference
+					// resolves to a fragment again. Found by printing the two
+					// maps -- both were right, and the wrong answer came out
+					// anyway.
+					delete(direct, name)
+					indirect[name] = r
+				}
+				break
+			}
+			if !isBareBlockTarget(next) {
+				break
+			}
+		}
+	}
+}
+
+// isBareBlockTarget reports whether el is a block-level ".. _name:" with no
+// reference of its own. The no-children test is what separates it from an
+// INLINE internal target ("_`text`"), which carries its own visible text and
+// really is the destination.
+func isBareBlockTarget(el *doctree.Element) bool {
+	return el.Tag == doctree.TagTarget &&
+		el.Attr("name") != "" &&
+		el.Attr("refuri") == "" &&
+		el.Attr("refname") == "" &&
+		len(el.Children) == 0
+}
+
+// targetsInDocumentOrder returns every element pre-order -- a container before
+// its own children -- which is the order PropagateTargets reads the tree in, and
+// the only order in which a target parked at the end of one section is adjacent
+// to what follows that section.
+func targetsInDocumentOrder(el *doctree.Element) []*doctree.Element {
+	var out []*doctree.Element
+	var walk func(e *doctree.Element)
+	walk = func(e *doctree.Element) {
+		for _, ch := range e.Children {
+			ce, ok := ch.(*doctree.Element)
+			if !ok {
+				continue
+			}
+			if ce.Tag != doctree.TagSystemMessage {
+				out = append(out, ce)
+			}
+			walk(ce)
+		}
+	}
+	walk(el)
+	return out
 }

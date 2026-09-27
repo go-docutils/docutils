@@ -1929,6 +1929,43 @@ first or last child) was added when the writer started emitting figures at all,
 and shown able to fail — moving the `<figcaption>` off the end made 20 files
 report.
 
+### A bare target chained onto a URL
+
+`.. _name:` with no reference of its own hands its ids and names to the next
+node (`PropagateTargets`). `collectTargets` read that as "a same-document
+anchor, resolve it to `#id`" — right for an inline `_`text`` target and for one
+preceding a real node, and wrong when the next node is ANOTHER TARGET, where the
+name lands on that target and inherits what it points at. Asked about
+
+```rst
+.. _pythondoc:
+.. _gendoc: http://example.com/gendoc
+```
+
+the reference answers `<reference name="pythondoc"
+refuri="http://example.com/gendoc">`; this parser answered `#pythondoc`, a
+fragment nothing in the document carries.
+
+**Neither corpus sweep can see this**, and neither moved when it was fixed: both
+compare against docutils' own BARE parse, where a reference carries its refname
+and no refuri at all. The defect only exists once `ResolveReferences` is on,
+which is how every consumer reads it — it surfaced as a dangling link in
+`go-richdoc/rst`, not here.
+
+The rule's other side is pinned too, and is also the reference's answer: a bare
+target chained onto another BARE one keeps its own id
+(`<section ids="section-one b a">`, `<reference name="a" refid="a">`), because
+the node they both precede carries every one of the ids.
+
+Two things about the fix are worth recording. `resolveIndirect` answers from
+`direct` FIRST, so redirecting a name into the indirect map is not enough —
+`collectTargets`' own `#name` has to be removed, or the chain is unreachable and
+the old answer comes out anyway. That was found by printing the two maps: both
+were right, and the wrong answer appeared regardless. And the tests' first
+version matched the refuri ANYWHERE in the dump, where the chained target
+carries it too — so three of four cases passed with the defect still present.
+Each expectation now names the `<reference>` element.
+
 
 
 **`html`**: `html.Render(doc) string` renders a doctree to an HTML
