@@ -1787,9 +1787,15 @@ neither writer aims at (see each package's SCOPE note) — it is "does the write
 DROP anything", since a node with no case in the switch takes its whole subtree
 with it.
 
-`html.Render`: **1564 of 1564**. `latex.Render`: **1551 of 1564**, the
-remainder being escapes that replace a character with a macro
-(`\textasciitilde{}`) and so cannot be compared character for character.
+Both are now **1564 of 1564**. Getting there found one defect in each writer,
+and both were a table's own TITLE (`.. table:: Caption`): the latex writer
+DROPPED it -- the tabular came out alone -- and the html writer emitted it as an
+`<h1>` INSIDE the `<table>`, which is not valid HTML at all. A tabular is not a
+float, so the caption needs a `table` environment around the pair (vanilla LaTeX,
+no package); an uncaptioned table stays a bare tabular rather than being wrapped
+in a float it never asked for. The three LaTeX escapes that REPLACE their
+character with a macro (`\textasciitilde{}` and friends) are mapped back in the
+probe, since a character-level comparison cannot see them otherwise.
 
 The probe was shown able to FAIL before either number was believed: breaking one
 inline case in the html writer made 493 files report at once.
