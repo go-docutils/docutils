@@ -318,3 +318,49 @@ func TestTableCaptionIsACaption(t *testing.T) {
 		t.Errorf("a section title stopped being a heading:\n%s", sec)
 	}
 }
+
+// TestCommentCannotEndEarly pins the escaping a reST comment needs on its way
+// into an HTML comment. docutils' rule is re.sub('-(?=-)', '- ') -- a space after
+// EACH dash followed by another -- and this writer had ReplaceAll("--", "- -"),
+// which is not the same thing.
+//
+// An ODD run of dashes shows why: ".. a comment ---> longer arrow" became
+//
+//	<!-- a comment - --> longer arrow -->
+//
+// which still contains "-->", so the comment ENDED there and " longer arrow -->"
+// leaked into the document as visible text. One dash more than the pair the old
+// rule looked for.
+//
+// Found by a content-model probe over the 1564-file corpus
+// (/Users/Shared/rstcorpus/validprobe): it flagged a "<http>" tag inside a
+// comment, which turned out to be the probe not understanding comments -- and
+// checking that is what turned up the dash run. The artefact earned its keep.
+func TestCommentCannotEndEarly(t *testing.T) {
+	cases := []struct{ name, source string }{
+		{"an arrow", ".. a comment --> with an arrow\n"},
+		{"a longer arrow", ".. a comment ---> longer arrow\n"},
+		{"four dashes", ".. a comment ----> four\n"},
+		{"a bare pair", ".. a comment -- dashes\n"},
+		{"CONTROL: no dashes at all", ".. plain comment\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Render(rst.Parse(tc.source))
+			// The comment's own CONTENT, without either delimiter: "<!--"
+			// contains a double dash itself, which an earlier version of this
+			// test counted as a violation of the rule it was checking.
+			body := strings.TrimSuffix(strings.TrimPrefix(got, "<!-- "), " -->")
+			if strings.Contains(body, "-->") {
+				t.Errorf("the comment can end early, so its tail leaks into the document:\n%s", got)
+			}
+			if strings.Contains(body, "--") {
+				t.Errorf("a double dash survived, which HTML does not allow in a comment:\n%s", got)
+			}
+			// The text itself must still be there, dashes spaced but nothing lost.
+			if !strings.Contains(got, "comment") {
+				t.Errorf("the comment's own text is gone:\n%s", got)
+			}
+		})
+	}
+}

@@ -108,7 +108,7 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		b.WriteString("</code></pre>")
 	case doctree.TagComment:
 		b.WriteString("<!-- ")
-		b.WriteString(strings.ReplaceAll(doctree.AsText(el), "--", "- -"))
+		b.WriteString(escapeCommentDashes(doctree.AsText(el)))
 		b.WriteString(" -->")
 	case doctree.TagRaw:
 		// Verbatim, NOT escapeText: the whole point of "raw" is content
@@ -423,3 +423,29 @@ var htmlEscaper = strings.NewReplacer(
 	">", "&gt;",
 	`"`, "&quot;",
 )
+
+// escapeCommentDashes breaks every run of dashes so the comment cannot end
+// early, which is docutils' own rule: re.sub('-(?=-)', '- ') -- a space after
+// EACH dash that is followed by another.
+//
+// ReplaceAll("--", "- -") is not the same thing, and an ODD run shows why:
+// "--->" became "- -->", which still contains "-->", so the comment terminated
+// there and everything after it LEAKED into the document as visible text. One
+// dash more than the pair the old rule looked for.
+//
+// Found by a content-model probe over the corpus rather than by reading the
+// line: it flagged a <http> "tag" inside a comment, which turned out to be the
+// probe not understanding comments -- and while checking that, the dash run
+// turned up.
+func escapeCommentDashes(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 8)
+	rs := []rune(s)
+	for i, r := range rs {
+		b.WriteRune(r)
+		if r == '-' && i+1 < len(rs) && rs[i+1] == '-' {
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
+}

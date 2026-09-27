@@ -1800,6 +1800,23 @@ probe, since a character-level comparison cannot see them otherwise.
 The probe was shown able to FAIL before either number was believed: breaking one
 inline case in the html writer made 493 files report at once.
 
+A content probe answers "nothing is missing", not "everything is where HTML
+allows it" — it said the former while a table's caption sat in an `<h1>` INSIDE
+the `<table>`, which is not an allowed child. So there is a second measurement:
+every element the fragment emits is checked against the CONTENT MODEL of its
+parent (`/Users/Shared/rstcorpus/validprobe`), for the containers this writer
+emits. **1560 of 1564 valid, 0 violations**; the other 4 embed `raw` html of the
+author's own — sphinx's domains page opens `<span>` anchors it never closes — and
+nothing downstream can validate that. Falsifiable too: making a `<ul>` emit a
+`<p>` child made 959 files report.
+
+That probe is also what turned up the comment escaping. It flagged a `<http>`
+"tag" inside a comment, which was the probe not understanding comments — and
+checking THAT showed the real defect: an odd run of dashes
+(`.. a comment ---> arrow`) produced `- -->`, so the comment ended early and its
+tail leaked into the document as visible text. docutils' rule is a space after
+each dash FOLLOWED by another, which `ReplaceAll("--", "- -")` is not.
+
 It also has a blind spot worth naming — it is whitespace-INSENSITIVE, so it
 cannot see words running together. That is exactly the defect reading its output
 found: a LaTeX tabular cell holding a bullet list came out
