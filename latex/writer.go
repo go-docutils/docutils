@@ -178,7 +178,16 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		b.WriteString(" \\\\\n")
 	case doctree.TagFootnote, doctree.TagCitation:
 		id := el.Attr("name")
-		b.WriteString("\n\\par\\noindent")
+		// The space TERMINATES the control word. Without it the footnote's
+		// own first word is read as part of the command name --
+		// "\\par\\noindentFirst" -- and TeX stops on an undefined control
+		// sequence, so the document does not compile at all. Invisible to a
+		// content probe: every character is present, in order. The 2130
+		// sites in the real-world corpus that happened to be correct were
+		// the ones with a name, where \\hypertarget's own backslash ended
+		// the word by accident. TeX discards a space used as a control-word
+		// terminator, so nothing is added to the typeset output.
+		b.WriteString("\n\\par\\noindent ")
 		if id != "" {
 			b.WriteString("\\hypertarget{" + escapeText(id) + "}{}")
 		}
@@ -237,13 +246,18 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		// attributes: ..." straight into the output.
 		return
 	case doctree.TagMathBlock:
-		// equation* (unnumbered display math), matching real docutils'
-		// own latex2e writer output for a math_block exactly — verified
-		// directly against it rather than assumed, since $$...$$ and
-		// \[...\] would both have been plausible guesses. Verbatim for
-		// the same reason as the inline case above: escaping the TeX
-		// source would corrupt the math it is.
-		b.WriteString("\\begin{equation*}\n" + doctree.AsText(el) + "\n\\end{equation*}\n")
+		// The environment is CHOSEN, not fixed: visit_math_block calls
+		// pick_math_environment (docutils/utils/math/__init__.py, read
+		// directly), which gives align* for a formula carrying a
+		// top-level line break and equation* otherwise. Writing
+		// equation* unconditionally was verified against the reference —
+		// but only on a single-line formula, which exercises one side of
+		// a rule that branches, and amsmath rejects a \\ inside
+		// equation*, so a multi-line formula came out as LaTeX that
+		// cannot compile at all.
+		code := doctree.AsText(el)
+		env := pickMathEnvironment(code)
+		b.WriteString("\\begin{" + env + "}\n" + code + "\n\\end{" + env + "}\n")
 	case doctree.TagAbbreviation, doctree.TagAcronym, doctree.TagInline:
 		renderChildren(b, el, level)
 	case doctree.TagReference:
@@ -609,4 +623,38 @@ func cellText(n doctree.Node) string {
 		return b.String()
 	}
 	return ""
+}
+
+// pickMathEnvironment ports docutils.utils.math.pick_math_environment (read
+// directly): "The test simply looks for line-breaks (\\) outside
+// environments. Multi-line formulae are set with align, one-liners with
+// equation." Only the unnumbered ("starred") forms are reachable here, a
+// math_block never being numbered in this package.
+func pickMathEnvironment(code string) string {
+	if strings.Contains(toplevelCode(code), `\\`) {
+		return "align*"
+	}
+	return "equation*"
+}
+
+// toplevelCode ports docutils.utils.math.toplevel_code, which returns the
+// math source "with environments stripped out". The Python is three lines of
+// splitting and deserves spelling out, because the naive reading -- "does the
+// code contain \\ anywhere" -- gets a real case wrong:
+//
+//	chunks = code.split(r'\begin{')
+//	return r'\begin{'.join(chunk.split(r'\end{')[-1] for chunk in chunks)
+//
+// Each chunk keeps only what follows its LAST \end{, so everything between a
+// \begin{ and the matching \end{ disappears. A \\ inside \begin{matrix} ...
+// \end{matrix} therefore does NOT select align* -- confirmed by running the
+// reference on exactly that shape, which answers equation*.
+func toplevelCode(code string) string {
+	chunks := strings.Split(code, `\begin{`)
+	kept := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		parts := strings.Split(c, `\end{`)
+		kept = append(kept, parts[len(parts)-1])
+	}
+	return strings.Join(kept, `\begin{`)
 }
