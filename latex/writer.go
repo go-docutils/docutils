@@ -494,7 +494,7 @@ func renderTableRows(b *strings.Builder, group *doctree.Element) {
 			if !ok || entry.Tag != doctree.TagEntry {
 				continue
 			}
-			text := escapeText(doctree.AsText(entry))
+			text := escapeText(cellText(entry))
 			if mc := entry.Attr("morecols"); mc != "" {
 				if n, err := strconv.Atoi(mc); err == nil {
 					text = `\multicolumn{` + strconv.Itoa(n+1) + `}{l}{` + text + `}`
@@ -543,3 +543,52 @@ var latexEscaper = strings.NewReplacer(
 	`~`, `\textasciitilde{}`,
 	`%`, `\%`,
 )
+
+// cellBlockTags are the doctree elements that hold a cell's own BLOCK content.
+// A tabular cell is one line of LaTeX, so those blocks have to be flattened --
+// and a flattening that forgets the separator runs their words together.
+var cellBlockTags = map[string]bool{
+	doctree.TagParagraph: true, doctree.TagLiteralBlock: true,
+	doctree.TagDoctestBlock: true, doctree.TagBulletList: true,
+	doctree.TagEnumeratedList: true, doctree.TagListItem: true,
+	doctree.TagDefinitionList: true, doctree.TagDefinitionListItem: true,
+	doctree.TagFieldList: true, doctree.TagField: true,
+	doctree.TagLineBlock: true, doctree.TagLine: true,
+	doctree.TagBlockQuote: true, doctree.TagTerm: true,
+	doctree.TagDefinition: true,
+}
+
+// cellText flattens a table cell's content for a tabular row, joining BLOCK
+// siblings with a space.
+//
+// doctree.AsText concatenates every descendant with nothing between, which is
+// right for inline content and wrong across blocks: a cell holding the bullet
+// list "- Table cells / - contain / - body elements." came out
+// "Table cellscontainbody elements." -- the docutils GridTableParser docstring's
+// own example, so anything documenting reST tables hit it. The separator goes
+// between BLOCKS only: putting one between inline siblings would space out
+// "a *b*c", which is one word there.
+func cellText(n doctree.Node) string {
+	switch v := n.(type) {
+	case *doctree.Text:
+		return v.Data
+	case *doctree.Element:
+		var b strings.Builder
+		for _, c := range v.Children {
+			s := cellText(c)
+			if s == "" {
+				continue
+			}
+			if ce, ok := c.(*doctree.Element); ok && cellBlockTags[ce.Tag] {
+				if t := strings.TrimSpace(b.String()); t != "" {
+					b.WriteString(" ")
+				}
+				b.WriteString(strings.TrimSpace(s))
+				continue
+			}
+			b.WriteString(s)
+		}
+		return b.String()
+	}
+	return ""
+}

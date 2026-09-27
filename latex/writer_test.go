@@ -256,3 +256,45 @@ func parseFullyTransformed(src string) *doctree.Element {
 	opts.ResolveReferences = true
 	return rst.ParseWithOptions(src, opts)
 }
+
+// TestCellBlocksKeepTheirSeparator pins what a tabular cell does with BLOCK
+// content. A LaTeX cell is one line, so several blocks have to be flattened --
+// and doctree.AsText concatenates every descendant with nothing between, which
+// is right for inline content and wrong across blocks.
+//
+// The witness is docutils' own GridTableParser docstring example, the table
+// every reST tutorial shows: a cell holding the bullet list
+// "- Table cells / - contain / - body elements." came out as
+// "Table cellscontainbody elements.". Anything documenting reST tables hit it.
+//
+// Found by measuring the two writers against the 1564-file corpus for the first
+// time (/Users/Shared/rstcorpus/htmlprobe): that probe is
+// whitespace-INSENSITIVE, so it did not catch this one -- reading its output
+// did. The html writer has no such defect, since HTML nests blocks inside a
+// <td> and needs no flattening at all.
+//
+// Not fixed and not a defect: the rowspan in this table. A vanilla-LaTeX
+// tabular cannot span rows without the multirow package, which this writer's
+// scope excludes on purpose, so the spanned cell's content appears once in its
+// first row rather than twice. No content is lost.
+func TestCellBlocksKeepTheirSeparator(t *testing.T) {
+	src := "+--------+---------------------+\n" +
+		"| a      | - Table cells       |\n" +
+		"+--------+ - contain           |\n" +
+		"| b      | - body elements.    |\n" +
+		"+--------+---------------------+\n"
+	got := Render(rst.Parse(src))
+	if !strings.Contains(got, "Table cells contain body elements.") {
+		t.Errorf("a cell's blocks ran together:\n%s", got)
+	}
+	if strings.Contains(got, "cellscontain") || strings.Contains(got, "containbody") {
+		t.Errorf("words joined with no separator:\n%s", got)
+	}
+	// CONTROL: the separator goes between BLOCKS, not between inline siblings.
+	// "one *two*three" is one word there, and spacing it out would be the same
+	// class of defect in the other direction.
+	inline := Render(rst.Parse("=====  =====\nA      B\n=====  =====\none *two*three   x\n=====  =====\n"))
+	if strings.Contains(inline, "two three") {
+		t.Errorf("a space was inserted between inline siblings:\n%s", inline)
+	}
+}
