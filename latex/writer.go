@@ -58,6 +58,11 @@ func Render(doc *doctree.Element) string {
 	var b strings.Builder
 	b.WriteString("\\documentclass{article}\n")
 	b.WriteString("\\usepackage{hyperref}\n")
+	// graphicx is what \includegraphics comes from, and latex2e names it the
+	// same way (self.graphicx_package). Loaded unconditionally, like hyperref
+	// above, rather than tracked per document: this writer has no
+	// requirements set, and an unused package costs nothing.
+	b.WriteString("\\usepackage{graphicx}\n")
 	b.WriteString("\\begin{document}\n")
 	b.WriteString(body.String())
 	b.WriteString("\n\\end{document}\n")
@@ -292,6 +297,41 @@ func renderElement(b *strings.Builder, el *doctree.Element, level int) {
 		} else {
 			renderChildren(b, el, level)
 		}
+	case doctree.TagImage:
+		renderImage(b, el)
+	case doctree.TagFigure:
+		// latex2e puts a figure's image, caption and legend inside a real
+		// "figure" float. \caption is only legal in a float, which is why the
+		// caption case below writes one only when it is inside one.
+		b.WriteString("\n\\begin{figure}\n")
+		renderChildren(b, el, level)
+		b.WriteString("\\end{figure}\n")
+	case doctree.TagCaption:
+		b.WriteString("\\caption{")
+		renderChildren(b, el, level)
+		b.WriteString("}\n")
+	case doctree.TagLegend:
+		// docutils' own fallback definition of its DUlegend environment is
+		// "{\small}{}" (PreambleCmds.legend, read directly), so that is what
+		// goes here -- a group, which is also what keeps the legend from
+		// running into the caption.
+		b.WriteString("\n{\\small\n")
+		renderChildren(b, el, level)
+		b.WriteString("\n}\n")
+	case doctree.TagRubric:
+		// \DUrubric's own fallback definition, verbatim:
+		// \providecommand*{\DUrubric}[1]{\subsubsection*{\emph{#1}}}
+		b.WriteString("\n\\subsubsection*{\\emph{")
+		renderChildren(b, el, level)
+		b.WriteString("}}\n")
+	case doctree.TagSubtitle:
+		// \DUsubtitle has no fallback of its own in latex2e; \DUtitle's is
+		// "\smallskip\noindent\textbf{#1}\smallskip", and a subtitle is a
+		// title, so that expansion is what it gets. The space after
+		// \noindent is the terminator (see v0.136.16).
+		b.WriteString("\n\\smallskip\\noindent\\textbf{")
+		renderChildren(b, el, level)
+		b.WriteString("}\\smallskip\n")
 	default:
 		renderChildren(b, el, level)
 	}
