@@ -185,7 +185,21 @@ func renderElement(b *strings.Builder, el *doctree.Element, headingLevel int) {
 		// output of its own, only its (unresolved, see inline.go)
 		// references do.
 	case doctree.TagTable:
-		writeTag(b, "table", "", el, headingLevel)
+		// A table's own TITLE is a <caption>. It used to reach the generic title
+		// case, which emits <h1> -- and an <h1> is not allowed inside a <table>
+		// at all, so every captioned table produced invalid HTML. docutils'
+		// html5 writer emits <caption> here too.
+		b.WriteString("<table>")
+		for _, c := range el.Children {
+			if ce, ok := c.(*doctree.Element); ok && ce.Tag == doctree.TagTitle {
+				b.WriteString("<caption>")
+				renderChildren(b, ce, headingLevel)
+				b.WriteString("</caption>")
+				continue
+			}
+			renderNode(b, c, headingLevel)
+		}
+		b.WriteString("</table>")
 	case doctree.TagThead:
 		renderRowGroup(b, "thead", "th", el, headingLevel)
 	case doctree.TagTbody:

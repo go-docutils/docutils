@@ -298,3 +298,29 @@ func TestCellBlocksKeepTheirSeparator(t *testing.T) {
 		t.Errorf("a space was inserted between inline siblings:\n%s", inline)
 	}
 }
+
+// TestTableCaptionSurvives pins a table's own title in LaTeX. It was DROPPED:
+// renderTable emitted the tabular and nothing else, so every captioned table
+// lost its caption -- the 13 files the corpus content probe still reported after
+// everything else was explained, and the reason it now reports none.
+//
+// A tabular is not a float and cannot carry \caption, so the pair goes inside a
+// "table" environment. That is vanilla LaTeX (article class), which this
+// writer's scope requires -- no package needed.
+func TestTableCaptionSurvives(t *testing.T) {
+	got := Render(rst.Parse(".. table:: Caption Here\n\n   =====  =====\n   A      B\n   =====  =====\n   1      2\n   =====  =====\n"))
+	for _, want := range []string{`\begin{table}[h]`, `\caption{Caption Here}`, `\begin{tabular}{ll}`, `\end{table}`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q:\n%s", want, got)
+		}
+	}
+	// CONTROL: a table with NO caption stays a bare tabular. Wrapping every
+	// table in a float would change placement for documents that never asked.
+	plain := Render(rst.Parse("=====  =====\nA      B\n=====  =====\n1      2\n=====  =====\n"))
+	if strings.Contains(plain, `\begin{table}`) {
+		t.Errorf("an uncaptioned table was wrapped in a float:\n%s", plain)
+	}
+	if !strings.Contains(plain, `\begin{tabular}{ll}`) {
+		t.Errorf("no tabular at all:\n%s", plain)
+	}
+}

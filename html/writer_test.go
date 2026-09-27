@@ -292,3 +292,29 @@ func parseFullyTransformed(src string) *doctree.Element {
 	opts.ResolveReferences = true
 	return rst.ParseWithOptions(src, opts)
 }
+
+// TestTableCaptionIsACaption pins where a table's own title goes. A
+// ".. table:: Caption" gives the <table> a <title> child, which used to reach
+// the generic title case and come out as an <h1> INSIDE the <table> -- and an
+// <h1> is not allowed there at all, so every captioned table produced invalid
+// HTML. docutils' html5 writer emits <caption>, and so does this one now.
+//
+// Found while measuring both writers' content fidelity against the 1564-file
+// corpus: the latex writer dropped the same caption entirely, which is what drew
+// attention to the title. The html writer had been emitting it all along, in the
+// wrong element.
+func TestTableCaptionIsACaption(t *testing.T) {
+	got := Render(rst.Parse(".. table:: Caption Here\n\n   =====  =====\n   A      B\n   =====  =====\n   1      2\n   =====  =====\n"))
+	if !strings.Contains(got, "<caption>Caption Here</caption>") {
+		t.Errorf("no <caption>:\n%s", got)
+	}
+	if strings.Contains(got, "<h1>") {
+		t.Errorf("an <h1> inside a <table> is invalid HTML:\n%s", got)
+	}
+	// CONTROL: a section title is still an <h1>. The fix is about a title whose
+	// PARENT is a table, not about titles.
+	sec := Render(rst.Parse("Heading\n=======\n\nbody\n"))
+	if !strings.Contains(sec, "<h1>Heading</h1>") {
+		t.Errorf("a section title stopped being a heading:\n%s", sec)
+	}
+}

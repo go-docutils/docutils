@@ -462,6 +462,21 @@ func renderTable(b *strings.Builder, table *doctree.Element, level int) {
 	if cols == 0 {
 		cols = 1
 	}
+	// A table's own TITLE (".. table:: Caption") was dropped: the writer emitted
+	// the tabular and nothing else, so every captioned table in the corpus lost
+	// its caption -- the 13 files the content probe still reported. A tabular is
+	// not a float and cannot carry \caption, so the pair goes inside a "table"
+	// environment, which is vanilla LaTeX (article class) and needs no package.
+	caption := ""
+	for _, c := range table.Children {
+		if ce, ok := c.(*doctree.Element); ok && ce.Tag == doctree.TagTitle {
+			caption = escapeText(cellText(ce))
+			break
+		}
+	}
+	if caption != "" {
+		b.WriteString("\n\\begin{table}[h]\n\\caption{" + caption + "}\n")
+	}
 	b.WriteString("\n\\begin{tabular}{" + strings.Repeat("l", cols) + "}\n\\hline\n")
 	if thead != nil {
 		renderTableRows(b, thead)
@@ -471,6 +486,9 @@ func renderTable(b *strings.Builder, table *doctree.Element, level int) {
 		renderTableRows(b, tbody)
 	}
 	b.WriteString("\\hline\n\\end{tabular}\n")
+	if caption != "" {
+		b.WriteString("\\end{table}\n")
+	}
 }
 
 func firstRow(group *doctree.Element) (*doctree.Element, bool) {
