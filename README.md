@@ -2102,6 +2102,28 @@ os.WriteFile("out.tex", []byte(latex.Render(doc)), 0644)
 // tectonic out.tex  (or any other LaTeX engine, incl. go-tex)
 ```
 
+## The toolchain
+
+`go.mod` requires **Go 1.27.1**, which is the version the CI workflow pins — the two
+were out of step, with CI already on 1.27.1 while the module asked for 1.26.4, and the
+difference is not cosmetic:
+
+- **coverage moves.** 1.27 counts statements more finely, so the same tree reads 93.2%
+  under 1.26.4 and 93.7% under 1.27.1. A figure measured with an older toolchain than
+  the gate's is an upper bound, not a measurement — every number in this README is now
+  a 1.27.1 one.
+- **`gofmt` moves.** 1.27 reindents a composite literal inside a multi-value return,
+  and an older local `gofmt` reports the tree clean while CI does not. The tree is
+  clean under 1.27.1's.
+
+The pin is deliberate rather than `stable`: a workflow that follows `stable` changes
+language and formatter under a commit that touched nothing.
+
+Cross-compilation is checked for linux/amd64, arm64, riscv64, ppc64le, s390x and
+loong64, plus js/wasm — all built, none executed, which is worth saying because
+`golang/go#81147` (a loong64 code-generation bug whose backport is still open at the
+1.27.2 milestone) can only affect a lane that RUNS the tests there.
+
 ## Security
 
 This section is the result of an audit, not a statement of intent: every claim below
@@ -2181,6 +2203,11 @@ foreign judge (see the package doc comment) before being frozen — not
 hand-transcribed (for footnotes/citations/substitutions, "docutils
 foreign judge" means `Parser().parse(src, document)` directly rather
 than `publish_string`, to see the tree before docutils' own transforms
-run — see the `rst` package doc comment). Coverage as of this writing:
-`doctree` 97%, `rst` 93%, `html` 89%, `latex` 87%. `go vet ./...` and
-`gofmt -l .` clean.
+run — see the `rst` package doc comment). Coverage **measured with the toolchain CI pins** (Go 1.27.1), because a
+figure from an older one is an upper bound rather than a measurement — 1.27
+counts statements more finely, and the same tree reads 93.2% under 1.26.4 and
+93.7% under 1.27.1: `doctree` 97.7%, `rst` 93.9%, `html` 92.4%, `latex` 91.2%,
+93.7% together. `go vet ./...` and `gofmt -l .` are clean under 1.27.1 too,
+which is the version that matters for the gofmt check — 1.27 reindents a
+composite literal inside a multi-value return, and an older local gofmt does
+not see it.
