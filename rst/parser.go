@@ -61,6 +61,19 @@ type Options struct {
 	// structural capture, the same as any other unimplemented directive.
 	RawEnabled bool
 
+	// SourcePath is the path of the document being parsed, and it is what
+	// makes the "include" directive work: a relative include resolves
+	// against this file's directory, exactly as the reference resolves one
+	// against its own current_source.
+	//
+	// EMPTY DISABLES INCLUDES, and that is the safe default rather than an
+	// omission. A caller that handed this parser nothing but a string has
+	// not asked it to read the filesystem, and docutils gates the same
+	// directive behind its own file_insertion_enabled setting for the same
+	// reason. With no path, an ".. include::" reports the reference's own
+	// `"include" directive disabled.` warning and parses on.
+	SourcePath string
+
 	// ReportDanglingReferences rewrites a reference with no matching
 	// target into a <problematic>, and appends one trailing
 	// "Docutils System Messages" section collecting every such
@@ -193,6 +206,18 @@ type parser struct {
 	// a divergence this project needs to defend, just an improvement on a
 	// real wart in the reference implementation's own architecture.
 	roles map[string]roleDef
+	// pendingInclude carries the lines an ".. include::" read, for the block
+	// loop to splice into its own input at the directive's position. A
+	// directive cannot do it itself: the lines belong to the loop.
+	pendingInclude []string
+	// includeLog is the inclusion CHAIN, for the circular-inclusion check --
+	// pushed by the directive and popped by the end-of-inclusion comment it
+	// appends, the same mechanism the reference uses.
+	includeLog []includeEntry
+	// includeDirs is the directory of each file currently spliced in, innermost
+	// last: a relative include resolves against the file it is WRITTEN IN, not
+	// against the document.
+	includeDirs []string
 	// defaultRole is the role name bare interpreted text (`` `text` ``,
 	// no explicit role prefix and no trailing hyperlink underscore)
 	// resolves to — "" means real docutils' own standard default
@@ -541,6 +566,7 @@ func (p *parser) parseDocument(lines []string, doc *doctree.Element) {
 				current.Append(n)
 			}
 			i = next
+			lines = p.spliceInclude(lines, next)
 			continue
 		}
 		if isAnonymousTargetLine(lines[i]) {
@@ -810,6 +836,7 @@ func (p *parser) parseBlockLines(lines []string, parent *doctree.Element, lineBa
 				parent.Append(n)
 			}
 			i = next
+			lines = p.spliceInclude(lines, next)
 			continue
 		}
 		if isAnonymousTargetLine(lines[i]) {

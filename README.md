@@ -1205,42 +1205,84 @@ single `:class:` entry; the GENERAL per-directive validation described
 further down arrived in v0.133.0 and now covers seventeen. **Still not
 dispatched**: `contents` and `date`.
 
-`include` and `raw`'s `:file:`/`:url:` forms are a DELIBERATE non-target,
-and the real-world corpus makes the reason visible: eleven of its files use
-`.. include::`, and docutils reports each as
-`Problems with "include" directive path: InputError: [Errno 2] No such
-file or directory: '...'` — because the corpus flattens every file into
-one directory, so every relative path is broken. Matching that output
-would mean doing file I/O *and* reproducing the text of a Python
-`OSError`. This package emits its own unknown-directive diagnostics
-instead, which is why those eleven files stay mismatched and will: the
-divergence is the corpus's own arrangement meeting a scope boundary, not
-a defect. A consumer that wants inclusion resolves it before parsing, or
-after, with the tree in hand.
+`include` is implemented as of v0.138.0. `raw`'s `:file:`/`:url:` forms are
+still a deliberate non-target.
 
-As of v0.136.6 those eleven are **the whole remainder**: 1553 of the 1564
-files match, and every mismatch left is one of them. That is the corpus's
-floor, not the parser's — implementing `include` faithfully would make
-these files diverge MORE, since a working inclusion produces the included
-content where the recorded expectation is an error about a path the corpus
-itself broke. Further fidelity work needs a corpus whose files sit where
-they were written.
+An inclusion SPLICES the file's text into the input being parsed, which is
+what makes it an inclusion rather than a graft: a section title in the
+included file nests under the including document's sections, a construct is
+not cut at the file boundary, and ids are assigned in document order.
+Parsing the file separately and attaching its nodes gets all three wrong.
+`:literal:`, `:code:` (with `:number-lines:`), `:start-line:`,
+`:end-line:`, `:start-after:`, `:end-before:`, `:tab-width:`, `:class:` and
+`:name:` are all ported, each checked against what the reference answers for
+the same input.
 
-**The testsuite corpus is at its own floor too**, as of v0.136.8: **578 of
-579, and nothing is skipped any more**. The five cases whose recorded
-output is a `TableMarkupError` rather than a tree now carry a
-document-level expectation generated from the live reference (see the table
-diagnostics above) — the population a sweep measures is defined by the
-sweep, and five unmeasured cases were hiding three real defects. That
-leaves ONE mismatch, `test_directives/test_role.py[role][2]`. That one is an artefact
-of docutils' own test file rather than a divergence, and the check is
-short: run that input through the live reference BY ITSELF and it produces
-what this package produces — the unknown-role INFO and ERROR, and
-`<inline classes="custom">` for the use after the definition. The recorded
-expectation instead has `<inline classes="custom-class">` for the use
-BEFORE it, which needs a `custom` role left in the registry by an earlier
-case in the same file. A corpus entry that the reference itself no longer
-reproduces in isolation cannot be met without reproducing the leak.
+**It needs a path, and without one it does nothing.** `Options.SourcePath`
+is the document's own path; a relative include resolves against its
+directory, and a NESTED include against the directory of the file it is
+written in — the reference resolves every include against
+`document.current_source`, which follows the inclusion. With no `SourcePath`
+the directive is disabled, which is the safe default rather than an
+omission: a caller that handed this parser a string has not asked it to read
+the filesystem, and docutils gates the same directive behind its own
+`file_insertion_enabled` setting for the same reason. Disabled, it reports
+the reference's own `"include" directive disabled.` warning — unless
+`ReportUnknownDirectives` is off, in which case it falls back to the
+structural capture like every other directive this parser cannot act on, so
+a consumer that converts documents without a path (go-richdoc/rst does)
+still sees the directive rather than a diagnostic.
+
+Like `csv-table`, `include` is absent from `optionspec.go`'s transcribed
+table, so an unknown option KEY on it is ignored rather than reported. That
+is the same documented gap, not a new one.
+
+A **circular inclusion** is a warning naming the whole chain, and the
+mechanism is the reference's own: the directive appends an
+`end of inclusion from "..."` comment to the lines it splices, and that
+comment pops the log and produces no node. It matters because the simpler
+rule — "refuse a file already included" — would also refuse the SAME FILE
+TWICE IN SEQUENCE, which is legal.
+
+Three things are NOT ported, each for a stated reason: `:parser:`, which
+runs another docutils parser over the content and has no meaning here; the
+`<name>` form, which reads from docutils' own bundled include directory
+(`isonum.txt` and friends), since this package bundles no such files and
+answers with the same error a missing file gets; and the line-length limit,
+which this parser has no setting for. And one limitation is real: a message
+raised inside included text carries the line number of the SPLICED input,
+not of the file it came from. The reference has its own version of that
+problem and says so in a TODO.
+
+**The real-world corpus is at 1564 of 1564** as of v0.138.0, up from 1553.
+The eleven that moved all use `.. include::` on a file the corpus's flat
+arrangement does not have, and both implementations now report the same
+error about it. One normalisation was needed in the sweep to see that, and
+it is worth stating: the path inside that message is printed RELATIVE TO THE
+PROCESS'S WORKING DIRECTORY — `directives.adapt_path` ends with
+`utils.relative_path(None, ...)` and says why ("convert to relative path for
+shorter system messages") — so its spelling depends on where the run was
+started, not on the parser. The recorded judgement was generated from a
+different directory than the sweep runs in, which made those eleven differ
+over five leading `..`. The sweep compares the basename, and a unit test
+holds the other half: a DIFFERENT file still differs.
+
+**The testsuite corpus is at 579 of 579.** The one mismatch that stood
+there until v0.138.0 was the judge's, and the correction is worth recording
+because the earlier diagnosis in this README was wrong. `.. role:: custom`
+calls `roles.register_local_role`, which writes into a module-level
+`roles._roles` — process-global state that docutils' own test framework
+resets between cases. The script that regenerates each case's expectation
+with default settings ran all 579 in ONE process without clearing it, so a
+case defining `:custom:` with `:class: custom-class` leaked into the NEXT
+case, whose whole subject is using a role BEFORE defining it: its
+regenerated expectation became `<inline classes="custom-class">` where the
+docutils test file itself expects `<problematic>` — which is what this
+package produces. Clearing the registry per case changed exactly one
+expectation out of 579, which is also the evidence that the leak was hiding
+nothing else. This parser's own role registry is per-document and always
+was, for the reason its comment gives: no cross-document leakage between
+concurrent `Parse` calls.
 
 **Five `Options` fields decide whether a docutils behaviour that is NOT
 part of parsing happens at parse time here**, and each default follows
@@ -1256,6 +1298,11 @@ the PARSER, or in a TRANSFORM?*
 | `PromoteDocInfo` | **false** | `DocInfo` is a transform |
 | `NumberAutoFootnotes` | **false** | `references.Footnotes` is a transform |
 | `ResolveReferences` | **false** | `references.Hyperlinks` is a transform |
+
+`SourcePath` is a different kind of option and not one of those seven: it
+does not decide whether a behaviour happens, it supplies the one piece of
+information an inclusion cannot work without. Empty disables `include`; see
+above.
 
 The third one was added in v0.107.0 after MEASURING what faithfulness
 costs a renderer rather than assuming it was free: 32 of the 1564
