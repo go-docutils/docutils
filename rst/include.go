@@ -99,7 +99,12 @@ func (p *parser) runIncludeDirective(lines []string, i, next, lineBase int, args
 				path+"'.", lineno, blockText)}, true
 	}
 	resolved := path
-	if !filepath.IsAbs(resolved) {
+	if filepath.IsAbs(resolved) && p.opts.IncludeRootPrefix != "" {
+		// docutils' root_prefix: an absolute path is read UNDER the prefix, not
+		// from the real root. `if root_prefix and path.startswith('/'): base =
+		// Path(root_prefix); path = path[1:]`, read from directives.adapt_path.
+		resolved = filepath.Join(p.opts.IncludeRootPrefix, strings.TrimPrefix(resolved, string(filepath.Separator)))
+	} else if !filepath.IsAbs(resolved) {
 		// Against the INNERMOST file's directory, not the document's. The
 		// reference resolves every include against
 		// `self.state.document.current_source`, which follows the inclusion as
@@ -172,6 +177,24 @@ func (p *parser) runIncludeDirective(lines []string, i, next, lineBase int, args
 	}
 	p.includeLog = append(p.includeLog, entry)
 	p.includeDirs = append(p.includeDirs, filepath.Dir(resolved))
+
+	// The reference checks the INCLUDED lines against the same limit the parser
+	// applies to its own input, and refuses the inclusion rather than the
+	// document: `raise self.warning(f'"{source}": line {line_no} exceeds the
+	// line-length-limit.')` (Include.insert_into_input_lines).
+	if n := p.opts.LineLengthLimit; n > 0 {
+		for k, l := range splitLines(text) {
+			if len(l) > n {
+				line := k + 1
+				if v, ok := intOption(options, "start-line"); ok {
+					line += v
+				}
+				return []doctree.Node{sectionMessage("2", "WARNING",
+					"\""+shown+"\": line "+strconv.Itoa(line)+" exceeds the line-length-limit.",
+					lineno, blockText)}, true
+			}
+		}
+	}
 
 	spliced := splitLines(text)
 	// A blank line on EACH side of the marker. The leading one separates it from

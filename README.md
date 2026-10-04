@@ -1299,10 +1299,12 @@ the PARSER, or in a TRANSFORM?*
 | `NumberAutoFootnotes` | **false** | `references.Footnotes` is a transform |
 | `ResolveReferences` | **false** | `references.Hyperlinks` is a transform |
 
-`SourcePath` is a different kind of option and not one of those seven: it
-does not decide whether a behaviour happens, it supplies the one piece of
-information an inclusion cannot work without. Empty disables `include`; see
-above.
+Three more options are a different kind and not one of those seven: they do
+not decide whether a behaviour happens. `SourcePath` supplies the one piece of
+information an inclusion cannot work without (empty disables `include`),
+`IncludeRootPrefix` confines an absolute include path (docutils' own
+`root_prefix`), and `LineLengthLimit` is the reference's denial-of-service
+guard, 10000 by default and 0 for none. See **Security** below.
 
 The third one was added in v0.107.0 after MEASURING what faithfulness
 costs a renderer rather than assuming it was free: 32 of the 1564
@@ -2099,6 +2101,77 @@ import "github.com/go-docutils/docutils/latex"
 os.WriteFile("out.tex", []byte(latex.Render(doc)), 0644)
 // tectonic out.tex  (or any other LaTeX engine, incl. go-tex)
 ```
+
+## Security
+
+This section is the result of an audit, not a statement of intent: every claim below
+was produced by running something. Where the behaviour is the reference's, that is
+said so explicitly — this package's purpose is fidelity, and a divergence would be a
+defect even when it looks safer.
+
+### What touches the filesystem
+
+Exactly one thing: the `include` directive, and only when `Options.SourcePath` is
+set. With no path it is disabled (the reference's own
+`"include" directive disabled.`, or the structural capture when
+`ReportUnknownDirectives` is off), so a caller that handed this parser a string
+cannot be made to read a file. `raw`'s `:file:`/`:url:` forms are not implemented,
+and nothing else opens anything.
+
+`Options.IncludeRootPrefix` (docutils' `root_prefix`) is the confinement knob: an
+ABSOLUTE include path resolves under it instead of at the real root. It does not
+confine a RELATIVE path that climbs with `..`, because the reference does not either
+— a caller that needs that guarantee leaves `SourcePath` empty.
+
+### Denial of service
+
+| guard | default | what it stops |
+|---|---|---|
+| `Options.LineLengthLimit` | 10000 (the reference's) | a document with one enormous line; the parse is refused with the reference's own `Line N exceeds the line-length-limit.` ERROR and produces no tree. The included lines of an `include` are checked too, and refuse the INCLUSION with a warning naming the file |
+| circular inclusion | always | a file that includes itself, directly or through a chain; the same file twice in SEQUENCE is still allowed, which is why the guard is a chain and not a set |
+
+A complexity attack was found by this audit and fixed: **20000 hyperlink targets
+sharing one name took 14 seconds for 340 KB**, while 20000 DISTINCT names took 26ms.
+Four O(n)-per-duplicate operations were responsible — searching the body for the
+element's inline host, searching it again for its top-level ancestor, a slice
+insertion that copied the whole tail, and an id allocator that rescanned `name-1`,
+`name-2`, … from 1 for every collision. The same document now parses in **70ms**, and
+`TestADuplicateNameIsNotQuadratic` holds the bound as a RATIO (4× the input must not
+cost more than 8× the time) rather than as a wall-clock budget. Restoring the old id
+allocator makes it report `4x the duplicates cost 16.1x the time`, which is what a
+regression test for a complexity bound has to be able to say.
+
+What is still unbounded, as in the reference: the total size an inclusion chain may
+read, and how deep it may nest. A caller parsing untrusted documents with
+`SourcePath` set should bound those itself.
+
+Measured for shape, not just for speed: a 2 MB single line, 50000 consecutive `*`
+or `` ` ``, 20000 unterminated grid-table rows and 2000 levels of nested bullets all
+parse without a panic, in a second or less each.
+
+### What is passed through verbatim
+
+The writers escape TEXT and HTML attribute values. These probes are the evidence:
+
+| input | HTML output |
+|---|---|
+| `` `click <javascript:alert(1)>`_ `` | `<a href="javascript:alert(1)">click</a>` |
+| `:alt:` of `"><script>alert(1)</script>` | `alt="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"` |
+| a `&` in a URL | `&amp;` |
+
+**A URI scheme is not filtered**, and the reference does not filter one either — asked
+the same question it also writes `href="javascript:alert(1)"`. Serving HTML built from
+untrusted reST therefore needs a scheme allow-list in the CONSUMER; this package will
+not quietly diverge from the reference to provide one.
+
+The same holds for LaTeX, more sharply. Text is escaped (`\textbackslash{}`, `\{`,
+`\$`), but a URI or an image path goes into `\href{…}`/`\includegraphics{…}`
+verbatim, so a path containing `}` closes the argument early — in this package and in
+docutils alike (`\href{http://x/a}\input{b}}{link}` is the reference's own output for
+that input). `.. raw:: latex` and `:math:` are TeX by definition and pass through
+untouched, the first gated by `Options.RawEnabled` (default true, as in the
+reference). **Do not compile a .tex generated from an untrusted document**, and never
+with shell-escape enabled.
 
 ## Testing
 

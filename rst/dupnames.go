@@ -115,8 +115,15 @@ type nameEntry struct {
 // names this pass may invalidate).
 func (p *parser) resolveDuplicateNames(doc *doctree.Element) {
 	names := map[string]*nameEntry{}
-	p.walkNames(doc, doc, names)
+	p.walkNames(doc, doc, nil, nil, names)
+	// One rebuild per parent, after the walk, instead of one slice insertion per
+	// message during it. Inserting immediately copies the whole tail of the
+	// children slice every time, which is O(n) allocation per message and so
+	// O(n^2) bytes for a document whose names collide -- the GC time dominated
+	// the profile once the id counter was fixed.
+	p.flushQueuedMessages()
 	p.resolveDuplicateSubstitutions(doc, doc)
+	p.flushQueuedMessages()
 }
 
 // resolveDuplicateSubstitutions is document.note_substitution_def's own
@@ -144,7 +151,7 @@ func (p *parser) resolveDuplicateSubstitutions(el, body *doctree.Element) {
 						msg := sectionMessage("3", "ERROR",
 							`Duplicate substitution definition name: "`+name+`".`,
 							p.nameLines[ce], "")
-						insertBefore(childBody, topLevelAncestor(childBody, ce), msg)
+						p.queueMessage(childBody, topLevelAncestor(childBody, ce), msg)
 					}
 					seen[name] = ce
 				}
@@ -159,22 +166,40 @@ func (p *parser) resolveDuplicateSubstitutions(el, body *doctree.Element) {
 // can hold body elements — where a diagnostic about one of its
 // descendants belongs, and the reason a duplicate inside a <line> is
 // reported nowhere at all (see emitDuplicateMessage).
-func (p *parser) walkNames(el, body *doctree.Element, names map[string]*nameEntry) {
+// walkNames carries the two positions a duplicate message needs -- el's own
+// PARENT, and the child of body on the path down to it -- rather than searching
+// for them afterwards.
+//
+// They used to be found by inlineHost and topLevelAncestor, each of which walks
+// the whole body per duplicate. That is O(n) per message and so O(n^2) for a
+// document whose names collide: 20000 targets sharing one name took 14 SECONDS for
+// 340 KB, while 20000 DISTINCT ones took 26ms. A complexity attack needs no
+// special construct, just a repeated name -- found by a security audit's DoS probe,
+// not by the corpus, where no file collides at that scale.
+func (p *parser) walkNames(el, body, parent, topLevel *doctree.Element, names map[string]*nameEntry) {
 	if name := el.Attr("name"); name != "" && registersName(el.Tag) {
-		p.noteName(el, name, body, names)
+		p.noteName(el, name, body, parent, topLevel, names)
 	}
 	childBody := body
 	if admitsBodyElements(el.Tag) {
 		childBody = el
 	}
 	for _, c := range el.Children {
-		if ce, ok := c.(*doctree.Element); ok {
-			p.walkNames(ce, childBody, names)
+		ce, ok := c.(*doctree.Element)
+		if !ok {
+			continue
 		}
+		// The top-level ancestor is the child of the BODY, so it resets every
+		// time the body does and is otherwise carried down unchanged.
+		childTop := topLevel
+		if childBody == el {
+			childTop = ce
+		}
+		p.walkNames(ce, childBody, el, childTop, names)
 	}
 }
 
-func (p *parser) noteName(el *doctree.Element, name string, body *doctree.Element, names map[string]*nameEntry) {
+func (p *parser) noteName(el *doctree.Element, name string, body, parent, topLevel *doctree.Element, names map[string]*nameEntry) {
 	explicit := !p.isImplicitTarget(el)
 	entry, seen := names[name]
 	if !seen {
@@ -184,10 +209,10 @@ func (p *parser) noteName(el *doctree.Element, name string, body *doctree.Elemen
 	if entry.node == el {
 		return
 	}
-	p.setDuplicateName(el, name, body, explicit, entry)
+	p.setDuplicateName(el, name, body, parent, topLevel, explicit, entry)
 }
 
-func (p *parser) setDuplicateName(el *doctree.Element, name string, body *doctree.Element, explicit bool, entry *nameEntry) {
+func (p *parser) setDuplicateName(el *doctree.Element, name string, body, parent, topLevel *doctree.Element, explicit bool, entry *nameEntry) {
 	old, oldExplicit := entry.node, entry.explicit
 	entry.explicit = oldExplicit || explicit
 
@@ -238,7 +263,7 @@ func (p *parser) setDuplicateName(el *doctree.Element, name string, body *doctre
 		}
 	}
 	if level != 0 {
-		p.emitDuplicateMessage(el, body, level, msgType, text)
+		p.emitDuplicateMessage(el, body, parent, topLevel, level, msgType, text)
 	}
 }
 
@@ -293,7 +318,7 @@ func (p *parser) isImplicitTarget(el *doctree.Element) bool {
 // element the state machine is currently filling, and the paragraph
 // holding the duplicate has not been appended to it yet — so the message
 // lands as a SIBLING immediately BEFORE that paragraph, not inside it.
-func (p *parser) emitDuplicateMessage(el, body *doctree.Element, level int, msgType, text string) {
+func (p *parser) emitDuplicateMessage(el, body, parent, topLevel *doctree.Element, level int, msgType, text string) {
 	if body == nil {
 		return
 	}
@@ -345,7 +370,7 @@ func (p *parser) emitDuplicateMessage(el, body *doctree.Element, level int, msgT
 		insertAfterLabel(el, msg)
 		return
 	}
-	host := inlineHost(body, el)
+	host := parent
 	if host == nil || !admitsBodyElements(hostMsgnodeTag(host, body)) {
 		// msgnode cannot hold body elements, so docutils BUILDS the
 		// message and then drops it. A duplicate inside a line block is
@@ -353,7 +378,74 @@ func (p *parser) emitDuplicateMessage(el, body *doctree.Element, level int, msgT
 		// "System messages are no longer inserted between <line>s".
 		return
 	}
-	insertBefore(body, topLevelAncestor(body, el), msg)
+	p.queueMessage(body, topLevel, msg)
+}
+
+// queueMessage records a message to be inserted before mark in parent, for
+// flushQueuedMessages to apply. A nil mark appends.
+func (p *parser) queueMessage(parent, mark, msg *doctree.Element) {
+	p.queuedMessages = append(p.queuedMessages, queuedMessage{parent: parent, mark: mark, msg: msg})
+}
+
+// flushQueuedMessages applies every queued insertion, rebuilding each parent's
+// children slice ONCE however many messages land in it. Messages queued for the
+// same mark keep the order they were queued in, which is the order
+// insertBefore produced when it ran one at a time.
+func (p *parser) flushQueuedMessages() {
+	if len(p.queuedMessages) == 0 {
+		return
+	}
+	type plan struct {
+		before map[*doctree.Element][]*doctree.Element
+		atEnd  []*doctree.Element
+	}
+	plans := map[*doctree.Element]*plan{}
+	var order []*doctree.Element
+	for _, q := range p.queuedMessages {
+		pl, ok := plans[q.parent]
+		if !ok {
+			pl = &plan{before: map[*doctree.Element][]*doctree.Element{}}
+			plans[q.parent] = pl
+			order = append(order, q.parent)
+		}
+		if q.mark == nil {
+			pl.atEnd = append(pl.atEnd, q.msg)
+			continue
+		}
+		pl.before[q.mark] = append(pl.before[q.mark], q.msg)
+	}
+	p.queuedMessages = nil
+	for _, parent := range order {
+		pl := plans[parent]
+		out := make([]doctree.Node, 0, len(parent.Children)+len(pl.atEnd))
+		for _, c := range parent.Children {
+			if ce, ok := c.(*doctree.Element); ok {
+				for _, msg := range pl.before[ce] {
+					out = append(out, msg)
+				}
+				delete(pl.before, ce)
+			}
+			out = append(out, c)
+		}
+		// A mark that is no longer a child of parent -- nothing in the corpus
+		// produces one, but insertBefore appended in that case and so does this.
+		for _, msgs := range pl.before {
+			for _, msg := range msgs {
+				out = append(out, msg)
+			}
+		}
+		out = append(out, nodesOf(pl.atEnd)...)
+		parent.Children = out
+	}
+}
+
+// nodesOf widens a slice of elements to a slice of nodes.
+func nodesOf(els []*doctree.Element) []doctree.Node {
+	out := make([]doctree.Node, len(els))
+	for i, el := range els {
+		out[i] = el
+	}
+	return out
 }
 
 // inlineHost returns the block whose inline content el belongs to — the
@@ -482,4 +574,12 @@ func admitsBodyElements(tag string) bool {
 		return true
 	}
 	return false
+}
+
+// queuedMessage is one pending insertion: msg goes before mark in parent, or at
+// the end of parent when mark is nil.
+type queuedMessage struct {
+	parent *doctree.Element
+	mark   *doctree.Element
+	msg    *doctree.Element
 }

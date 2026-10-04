@@ -74,6 +74,30 @@ type Options struct {
 	// `"include" directive disabled.` warning and parses on.
 	SourcePath string
 
+	// LineLengthLimit refuses a document containing a line longer than this,
+	// which is the reference's own denial-of-service guard: rst.Parser.parse
+	// checks every line BEFORE parsing and, on the first one over the limit,
+	// appends `Line N exceeds the line-length-limit.` as an ERROR and parses
+	// nothing at all. docutils added it because reST's inline grammar has
+	// pathological cases, and 10000 is its default, matched here.
+	//
+	// ZERO MEANS NO LIMIT, so a bare Options{} does not refuse every line;
+	// DefaultOptions sets 10000. A caller handling untrusted input should keep
+	// the default or lower it.
+	LineLengthLimit int
+
+	// IncludeRootPrefix is the directory an ABSOLUTE path in an "include"
+	// directive resolves against -- docutils' own root_prefix setting, whose
+	// help text is "Base directory for absolute paths when reading from the
+	// local filesystem".
+	//
+	// It is the confinement knob for a caller that must parse untrusted reST
+	// with SourcePath set: without it, ".. include:: /etc/passwd" reads that
+	// file. It does NOT confine a RELATIVE path that climbs with "..", because
+	// the reference does not either; a caller that needs that guarantee should
+	// leave SourcePath empty, which disables inclusion entirely.
+	IncludeRootPrefix string
+
 	// ReportDanglingReferences rewrites a reference with no matching
 	// target into a <problematic>, and appends one trailing
 	// "Docutils System Messages" section collecting every such
@@ -187,6 +211,7 @@ type Options struct {
 // docutils' own defaults.
 func DefaultOptions() Options {
 	return Options{
+		LineLengthLimit:               10000,
 		RawEnabled:                    true,
 		ReportUnknownDirectives:       true,
 		ReportUnknownRoles:            true,
@@ -350,6 +375,13 @@ type parser struct {
 	// "citation-withdot", and the corpus fixture pairing them is what
 	// surfaced this.
 	usedIDs map[string]bool
+	// idCounter is the last "-N" suffix handed out for each base id, so a
+	// collision does not rescan from 1 -- see claimID.
+	idCounter map[string]int
+	// queuedMessages holds duplicate-name messages until the walk is done, so
+	// each parent's children slice is rebuilt once rather than per message --
+	// see flushQueuedMessages.
+	queuedMessages []queuedMessage
 	// implicitTargets records the <target>s registered with docutils'
 	// note_implicit_target rather than note_explicit_target (see
 	// dupnames.go) -- nothing in the tree itself distinguishes them.
@@ -410,10 +442,25 @@ func (p *parser) claimID(id string) string {
 		p.usedIDs[id] = true
 		return id
 	}
-	for n := 1; ; n++ {
+	// Resume from the last suffix tried for THIS base rather than from 1. The
+	// sequence is the same -- the loop still steps over any id claimed through
+	// another path -- but the work is amortised O(1) instead of O(n) per
+	// collision, which is what the reference does with its own
+	// `self.id_counter[prefix]` (document.create_id, read for this).
+	//
+	// Restarting at 1 made a document whose names collide quadratic: 20000
+	// targets sharing one name took 14 SECONDS for 340 KB, against 26ms for
+	// 20000 distinct ones. Found by a DoS probe during a security audit, not by
+	// the corpus -- no corpus file collides at that scale, which is exactly why
+	// a complexity bound needs its own measurement.
+	if p.idCounter == nil {
+		p.idCounter = map[string]int{}
+	}
+	for n := p.idCounter[id] + 1; ; n++ {
 		candidate := id + "-" + strconv.Itoa(n)
 		if !p.usedIDs[candidate] {
 			p.usedIDs[candidate] = true
+			p.idCounter[id] = n
 			return candidate
 		}
 	}
@@ -455,7 +502,24 @@ func Parse(source string) *doctree.Element {
 func ParseWithOptions(source string, opts Options) *doctree.Element {
 	p := &parser{opts: opts}
 	doc := doctree.NewElement(doctree.TagDocument)
-	p.parseDocument(splitLines(source), doc)
+	lines := splitLines(source)
+	// The line-length limit is checked BEFORE anything is parsed and stops the
+	// parse dead, which is what the reference does (rst.Parser.parse: the check
+	// runs over inputlines and the state machine runs only in the loop's else
+	// branch). A document that trips it gets exactly one ERROR and no tree.
+	if n := opts.LineLengthLimit; n > 0 {
+		for i, l := range lines {
+			if len(l) > n {
+				// No line attribute: the reference creates this message
+				// without one (reporter.error with no line= argument), so its
+				// dump has none either.
+				doc.Append(sectionMessage("3", "ERROR",
+					"Line "+strconv.Itoa(i+1)+" exceeds the line-length-limit.", 0, ""))
+				return doc
+			}
+		}
+	}
+	p.parseDocument(lines, doc)
 	p.resolveDuplicateNames(doc)
 	resolveTargets(doc, p.msgCount, opts.ReportDanglingReferences, opts.ResolveReferences)
 	if opts.NumberAutoFootnotes {
