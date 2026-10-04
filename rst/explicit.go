@@ -1136,6 +1136,14 @@ func (p *parser) parseDirectiveBody(lines []string, i, lineBase int, name, args 
 		// An invocation this port does not cover (:file:, :url:, or a
 		// changed dialect): fall through to the structural capture.
 	}
+	if strings.EqualFold(name, "include") {
+		if nodes, ok := p.runIncludeDirective(lines, i, next, lineBase, args, body); ok {
+			return nodes, next
+		}
+		// No SourcePath and the reports turned off: fall through to the
+		// structural capture, the same answer every directive this parser
+		// cannot act on gets in that mode.
+	}
 	if strings.EqualFold(name, "contents") {
 		return p.runContentsDirective(args, body, lineBase, i), next
 	}
@@ -1260,6 +1268,19 @@ func (p *parser) parseComment(lines []string, i, lineBase int, rest string) ([]d
 			text += "\n"
 		}
 		text += strings.Join(body, "\n")
+	}
+	// The marker an inclusion appends to its own spliced lines: it pops the
+	// include log and produces NO node, which is what lets the same file be
+	// included twice in sequence while a file that includes itself is still
+	// caught. Body.comment does exactly this, and checks the FIRST line only.
+	if strings.HasPrefix(text, endOfInclusionPrefix) && blankFinish {
+		if len(p.includeLog) > 0 {
+			p.includeLog = p.includeLog[:len(p.includeLog)-1]
+		}
+		if len(p.includeDirs) > 0 {
+			p.includeDirs = p.includeDirs[:len(p.includeDirs)-1]
+		}
+		return nil, next
 	}
 	var el *doctree.Element
 	if text == "" {
@@ -1967,7 +1988,8 @@ func isImplementedDirective(name string) bool {
 	}
 	switch strings.ToLower(name) {
 	case "admonition", "class", "code", "compound", "container", "date",
-		"default-role", "figure", "footer", "header", "image", "line-block",
+		"default-role", "figure", "footer", "header", "image", "include",
+		"line-block",
 		"list-table", "math", "meta", "parsed-literal", "raw", "replace",
 		"role", "rst-class", "rubric", "section-numbering", "sectnum",
 		"sidebar", "table", "target-notes", "title", "topic":
