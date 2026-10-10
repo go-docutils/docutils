@@ -1267,6 +1267,30 @@ different directory than the sweep runs in, which made those eleven differ
 over five leading `..`. The sweep compares the basename, and a unit test
 holds the other half: a DIFFERENT file still differs.
 
+**What 1564 of 1564 does NOT say.** The sweep compares PSEUDOXML, and a text
+node's value is printed indented under its element, so a trailing newline in
+one is invisible — the two renderings are byte-identical either way. Twelve
+real-world files had a paragraph whose text node differed from the reference's
+by exactly that, and the whole conformance measure read green.
+
+What produced it is one line. docutils builds a paragraph as
+`'\n'.join(lines).rstrip()` (states.py, `Text.paragraph`), and `rstrip` takes
+every kind of trailing whitespace; `consumeParagraph` trimmed only `" "`. That
+difference cannot show until the paragraph's last line is taken AWAY from it,
+which is exactly what happens to the `::` of a literal block written on a line
+of its own — docutils then does `data[:-3].rstrip()`. So PEP 223's paragraph
+was `"In a Unicode string,\n"` here and `'In a Unicode string,'` there, asked
+of the reference directly (`publish_doctree`, then the node's own value, not
+its pseudoxml).
+
+The fix is to call `trimTrailingSpace`, which was already in the same file and
+is a *measured* equivalent of Python's `rstrip` down to U+001C..U+001F. The
+helper existed; the two call sites did not use it. Found from the other end —
+`go-richdoc/rst`'s round-trip probe, where those twelve files could not come
+back as themselves — and the new test reads the text node's VALUE rather than
+its pseudoxml, because every other test of this construct in the package
+compares pseudoxml and would pass with the defect in place.
+
 **The testsuite corpus is at 579 of 579.** The one mismatch that stood
 there until v0.138.0 was the judge's, and the correction is worth recording
 because the earlier diagnosis in this README was wrong. `.. role:: custom`
