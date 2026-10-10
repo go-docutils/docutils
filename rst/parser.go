@@ -1665,7 +1665,18 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 		text = append(text, lines[j])
 		j++
 	}
-	data := strings.TrimRight(strings.Join(text, "\n"), " ")
+	// rstrip, not "trim spaces": real docutils builds this text as
+	// "'\n'.join(lines).rstrip()" (states.py Text.paragraph), and rstrip takes
+	// every kind of trailing whitespace. Trimming only " " here left the
+	// NEWLINE on a paragraph whose last line was taken away -- which is exactly
+	// what happens to the "::" of a literal block written on a line of its own,
+	// below. The reference's text node for PEP 223's "In a Unicode string,"
+	// paragraph is 'In a Unicode string,'; ours was "In a Unicode string,\n".
+	//
+	// Invisible to the pseudoxml comparison, which prints a text node's value
+	// indented and cannot show a trailing newline at all -- 1564/1564 means
+	// identical pseudoxml, not identical trees.
+	data := trimTrailingSpace(strings.Join(text, "\n"))
 	empty := false
 	if strings.HasSuffix(data, "::") {
 		n := 0
@@ -1677,7 +1688,7 @@ func (p *parser) consumeParagraph(lines []string, i int, lineBase int) (para *do
 			if data == "::" {
 				empty = true
 			} else if len(data) >= 3 && (data[len(data)-3] == ' ' || data[len(data)-3] == '\n') {
-				data = strings.TrimRight(data[:len(data)-2], " ")
+				data = trimTrailingSpace(data[:len(data)-2])
 			} else {
 				data = data[:len(data)-1]
 			}
